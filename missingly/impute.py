@@ -4,13 +4,70 @@ from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.linear_model import BayesianRidge
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.preprocessing import OrdinalEncoder
+
+
+def _split_encode(df: pd.DataFrame):
+    """Split df into numeric and categorical parts, ordinal-encode categoricals.
+
+    Returns
+    -------
+    df_work : pd.DataFrame
+        All columns as float64 — numerics unchanged, categoricals encoded.
+    cat_cols : list[str]
+        Names of categorical columns.
+    num_cols : list[str]
+        Names of numeric columns.
+    encoder : OrdinalEncoder or None
+        Fitted encoder (None if no categorical columns).
+    cat_dtypes : dict[str, dtype]
+        Original dtypes of categorical columns (for decode).
+    """
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+    df_work = df.copy()
+    encoder = None
+    cat_dtypes = {}
+
+    if cat_cols:
+        cat_dtypes = {c: df[c].dtype for c in cat_cols}
+        encoder = OrdinalEncoder(
+            handle_unknown='use_encoded_value',
+            unknown_value=np.nan,
+            encoded_missing_value=np.nan,
+        )
+        df_work[cat_cols] = encoder.fit_transform(df[cat_cols])
+
+    # ensure all float so sklearn imputers don't complain
+    df_work = df_work.astype(float)
+    return df_work, cat_cols, num_cols, encoder, cat_dtypes
+
+
+def _decode(df_imputed: pd.DataFrame, cat_cols: list, encoder, cat_dtypes: dict) -> pd.DataFrame:
+    """Inverse-transform ordinal-encoded columns back to original categories."""
+    if not cat_cols or encoder is None:
+        return df_imputed
+
+    result = df_imputed.copy()
+    # Round encoded values to nearest integer before inverse transform
+    result[cat_cols] = np.round(result[cat_cols]).clip(0)
+    decoded = encoder.inverse_transform(result[cat_cols])
+    for i, col in enumerate(cat_cols):
+        result[col] = decoded[:, i]
+        # restore original dtype where possible
+        try:
+            result[col] = result[col].astype(cat_dtypes[col])
+        except (ValueError, TypeError):
+            pass
+    return result
 
 
 def impute_mean(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the mean of each column.
+    """Impute missing values using the mean of each numeric column.
 
-    Only applicable to numeric columns. Non-numeric columns are returned
-    unchanged.
+    Non-numeric columns are imputed with their most frequent value
+    (same behaviour as impute_mode for categoricals).
 
     Parameters
     ----------
@@ -23,20 +80,22 @@ def impute_mean(df: pd.DataFrame) -> pd.DataFrame:
         A new dataframe with missing values imputed.
     """
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
 
     result = df.copy()
     if numeric_cols:
         imputer = SimpleImputer(strategy='mean')
         result[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    if cat_cols:
+        imputer_cat = SimpleImputer(strategy='most_frequent')
+        result[cat_cols] = imputer_cat.fit_transform(df[cat_cols])
     return result
 
 
 def impute_median(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the median of each column.
+    """Impute missing values using the median of each numeric column.
 
-    Only applicable to numeric columns. Non-numeric columns are returned
-    unchanged.
+    Non-numeric columns are imputed with their most frequent value.
 
     Parameters
     ----------
@@ -49,11 +108,15 @@ def impute_median(df: pd.DataFrame) -> pd.DataFrame:
         A new dataframe with missing values imputed.
     """
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
 
     result = df.copy()
     if numeric_cols:
         imputer = SimpleImputer(strategy='median')
         result[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    if cat_cols:
+        imputer_cat = SimpleImputer(strategy='most_frequent')
+        result[cat_cols] = imputer_cat.fit_transform(df[cat_cols])
     return result
 
 
@@ -80,13 +143,13 @@ def impute_mode(df: pd.DataFrame) -> pd.DataFrame:
 def impute_knn(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
     """Impute missing values using k-Nearest Neighbors.
 
-    Only applicable to numeric columns. Raises ValueError if any
-    non-numeric columns are present.
+    Categorical columns are automatically ordinal-encoded before imputation
+    and decoded back to their original categories afterwards.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute. Must contain only numeric columns.
+        The dataframe to impute.
     n_neighbors : int, optional
         The number of neighbors to use for imputation. Default is 5.
 
@@ -94,22 +157,12 @@ def impute_knn(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
-
-    Raises
-    ------
-    ValueError
-        If the dataframe contains non-numeric columns.
     """
-    non_numeric = df.select_dtypes(exclude=[np.number]).columns.tolist()
-    if non_numeric:
-        raise ValueError(
-            f"KNN imputation requires numeric columns only. "
-            f"Non-numeric columns found: {non_numeric}. "
-            f"Please encode or drop them before calling impute_knn()."
-        )
+    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     imputer = KNNImputer(n_neighbors=n_neighbors)
-    imputed_array = imputer.fit_transform(df)
-    return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    imputed_array = imputer.fit_transform(df_work)
+    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
+    return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
 
 
 def impute_mice(
@@ -121,44 +174,27 @@ def impute_mice(
     """Impute missing values using Multiple Imputation by Chained Equations (MICE).
 
     Uses sklearn's IterativeImputer with BayesianRidge as the default
-    estimator, which is the standard MICE-equivalent in the Python
-    ecosystem. Each feature is imputed as a function of all other features
-    in a round-robin fashion for ``max_iter`` iterations.
-
-    Only applicable to numeric columns. Raises ValueError if any
-    non-numeric columns are present.
+    estimator. Categorical columns are automatically ordinal-encoded before
+    imputation and decoded back to their original categories afterwards.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute. Must contain only numeric columns.
+        The dataframe to impute.
     max_iter : int, optional
         Maximum number of imputation rounds. Default is 10.
     random_state : int, optional
         Random seed for reproducibility. Default is 0.
     estimator : sklearn estimator, optional
         The estimator to use for each round-robin imputation step.
-        Defaults to BayesianRidge(), which is the standard MICE estimator.
-        You may pass any sklearn-compatible regressor, e.g.
-        RandomForestRegressor().
+        Defaults to BayesianRidge().
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
-
-    Raises
-    ------
-    ValueError
-        If the dataframe contains non-numeric columns.
     """
-    non_numeric = df.select_dtypes(exclude=[np.number]).columns.tolist()
-    if non_numeric:
-        raise ValueError(
-            f"MICE imputation requires numeric columns only. "
-            f"Non-numeric columns found: {non_numeric}. "
-            f"Please encode or drop them before calling impute_mice()."
-        )
+    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
 
     if estimator is None:
         estimator = BayesianRidge()
@@ -167,10 +203,11 @@ def impute_mice(
         estimator=estimator,
         max_iter=max_iter,
         random_state=random_state,
-        imputation_order='roman',  # left-to-right, standard MICE order
+        imputation_order='roman',
     )
-    imputed_array = imputer.fit_transform(df)
-    return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    imputed_array = imputer.fit_transform(df_work)
+    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
+    return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
 
 
 def impute_rf(
@@ -181,13 +218,13 @@ def impute_rf(
 ) -> pd.DataFrame:
     """Impute missing values using Random Forest via IterativeImputer.
 
-    Only applicable to numeric columns. Raises ValueError if any
-    non-numeric columns are present.
+    Categorical columns are automatically ordinal-encoded before imputation
+    and decoded back to their original categories afterwards.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute. Must contain only numeric columns.
+        The dataframe to impute.
     max_iter : int, optional
         Maximum number of imputation rounds. Default is 10.
     random_state : int, optional
@@ -199,27 +236,17 @@ def impute_rf(
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
-
-    Raises
-    ------
-    ValueError
-        If the dataframe contains non-numeric columns.
     """
-    non_numeric = df.select_dtypes(exclude=[np.number]).columns.tolist()
-    if non_numeric:
-        raise ValueError(
-            f"Random Forest imputation requires numeric columns only. "
-            f"Non-numeric columns found: {non_numeric}. "
-            f"Please encode or drop them before calling impute_rf()."
-        )
+    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     estimator = RandomForestRegressor(random_state=random_state, **rf_kwargs)
     imputer = IterativeImputer(
         estimator=estimator,
         max_iter=max_iter,
         random_state=random_state,
     )
-    imputed_array = imputer.fit_transform(df)
-    return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    imputed_array = imputer.fit_transform(df_work)
+    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
+    return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
 
 
 def impute_gb(
@@ -230,13 +257,13 @@ def impute_gb(
 ) -> pd.DataFrame:
     """Impute missing values using Gradient Boosting via IterativeImputer.
 
-    Only applicable to numeric columns. Raises ValueError if any
-    non-numeric columns are present.
+    Categorical columns are automatically ordinal-encoded before imputation
+    and decoded back to their original categories afterwards.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute. Must contain only numeric columns.
+        The dataframe to impute.
     max_iter : int, optional
         Maximum number of imputation rounds. Default is 10.
     random_state : int, optional
@@ -248,24 +275,14 @@ def impute_gb(
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
-
-    Raises
-    ------
-    ValueError
-        If the dataframe contains non-numeric columns.
     """
-    non_numeric = df.select_dtypes(exclude=[np.number]).columns.tolist()
-    if non_numeric:
-        raise ValueError(
-            f"Gradient Boosting imputation requires numeric columns only. "
-            f"Non-numeric columns found: {non_numeric}. "
-            f"Please encode or drop them before calling impute_gb()."
-        )
+    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     estimator = GradientBoostingRegressor(random_state=random_state, **gb_kwargs)
     imputer = IterativeImputer(
         estimator=estimator,
         max_iter=max_iter,
         random_state=random_state,
     )
-    imputed_array = imputer.fit_transform(df)
-    return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    imputed_array = imputer.fit_transform(df_work)
+    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
+    return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
