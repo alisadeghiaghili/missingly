@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "missingly"
+version = "0.1.0"
+authors = [
+  { name="Ali Sadeghi Aghili", email="alisadeghiaghili@gmail.com" },
+]
+description = "A comprehensive package for missing data analysis and visualization."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pandas>=1.0.0",
+    "numpy>=1.18.0",
+    "matplotlib>=3.0.0",
+    "seaborn>=0.10.0",
+    "scipy>=1.5.0",
+    "upsetplot>=0.6.0",
+    "scikit-learn>=1.0.0",
+    "statsmodels>=0.12.0",
+    "jinja2>=3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/alisadeghiaghili/missingly"
+"Bug Tracker" = "https://github.com/alisadeghiaghili/missingly/issues"
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=4.0.0",
+    "furo>=2021.10.9",
+    "nbsphinx>=0.8.7",
+    "ipykernel"
+]
+test = [
+    "pytest>=6.0.0"
+]
+
+[tool.setuptools]
+packages = ["missingly"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+missingly = ["templates/*.html"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["docs/build/*"]
