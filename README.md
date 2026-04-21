@@ -2,6 +2,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/missingly/"><img src="https://badge.fury.io/py/missingly.svg" alt="PyPI version"></a>
+  <a href="https://github.com/alisadeghiaghili/missingly/actions/workflows/ci.yml"><img src="https://github.com/alisadeghiaghili/missingly/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/alisadeghiaghili/missingly/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://github.com/alisadeghiaghili/missingly"><img src="https://img.shields.io/github/stars/alisadeghiaghili/missingly?style=social" alt="GitHub stars"></a>
   <a href="https://pepy.tech/project/missingly"><img src="https://pepy.tech/badge/missingly" alt="Downloads"></a>
@@ -38,7 +39,7 @@ Missing data is ubiquitous in real-world datasets and handling it poorly can lea
 
 - **Comprehensive Analysis**: Statistical tests to understand missing data mechanisms (MCAR, MAR, MNAR)
 - **Rich Visualizations**: Over 10 specialized plots to explore missing data patterns
-- **Multiple Imputation Methods**: From simple mean imputation to advanced machine learning approaches
+- **Multiple Imputation Methods**: From simple mean imputation to advanced machine learning approaches — all supporting mixed numeric/categorical DataFrames
 - **Automated Reporting**: Generate publication-ready HTML reports
 - **Pandas Integration**: Seamless workflow with existing data science tools
 
@@ -59,10 +60,10 @@ Missing data is ubiquitous in real-world datasets and handling it poorly can lea
 - **Distribution comparisons**: Before/after imputation analysis
 
 ### 🔧 **Advanced Imputation Methods**
-- **Simple methods**: Mean, median, mode
-- **Machine learning**: K-NN, Random Forest, Gradient Boosting
-- **Statistical**: Multiple Imputation by Chained Equations (MICE)
-- **Comparison tools**: Evaluate and compare imputation performance
+- **Simple methods**: Mean, median, mode — all categorical-aware
+- **Machine learning**: K-NN, Random Forest, Gradient Boosting — auto-encode/decode categoricals
+- **Statistical**: Multiple Imputation by Chained Equations (MICE) via `sklearn` `IterativeImputer` + `BayesianRidge`
+- **Comparison tools**: Evaluate and compare imputation performance across methods
 
 ### 📈 **Automated Reporting**
 - Comprehensive HTML reports with embedded visualizations
@@ -77,7 +78,7 @@ Install `missingly` via pip:
 pip install missingly
 ```
 
-**Requirements**: Python 3.8+ with pandas, numpy, matplotlib, seaborn, scipy, scikit-learn, statsmodels, and supporting libraries.
+**Requirements**: Python 3.9+ with pandas, numpy, matplotlib, seaborn, scipy, scikit-learn, upsetplot, and jinja2.
 
 ## Quick Start
 
@@ -86,12 +87,12 @@ import pandas as pd
 import numpy as np
 import missingly as mi
 
-# Load your data (or create sample data)
+# Mixed numeric + categorical dataset — no pre-processing needed
 data = {
-    'age': [25, 30, np.nan, 45, 35, np.nan, 28],
-    'income': [50000, np.nan, 75000, np.nan, 65000, 80000, 55000],
+    'age':       [25, 30, np.nan, 45, 35, np.nan, 28],
+    'income':    [50000, np.nan, 75000, np.nan, 65000, 80000, 55000],
     'education': ['HS', 'College', 'Graduate', np.nan, 'College', 'Graduate', 'HS'],
-    'score': [85, 92, np.nan, 78, np.nan, 95, 88]
+    'score':     [85, 92, np.nan, 78, np.nan, 95, 88]
 }
 df = pd.DataFrame(data)
 
@@ -113,8 +114,8 @@ mi.dendrogram(df)      # Variable clustering
 mcar_result = mi.mcar_test(df)
 print(f"MCAR test p-value: {mcar_result['p_value']:.4f}")
 
-# Impute missing values
-df_imputed = mi.impute_knn(df.select_dtypes(include=[np.number]), n_neighbors=3)
+# Impute missing values — works directly on mixed DataFrames
+df_imputed = mi.impute_knn(df, n_neighbors=3)
 
 # Generate comprehensive report
 mi.create_report(df, "missing_data_analysis.html")
@@ -147,15 +148,17 @@ mi.create_report(df, "missing_data_analysis.html")
 
 ### Imputation Methods
 
-| Method | Function | Strengths | Limitations |
-|--------|----------|-----------|-------------|
-| Mean | `impute_mean()` | Fast, simple | Reduces variance |
-| Median | `impute_median()` | Robust to outliers | Reduces variance |
-| Mode | `impute_mode()` | Works with categorical | May not preserve relationships |
-| K-NN | `impute_knn()` | Preserves local patterns | Computationally intensive |
-| MICE | `impute_mice()` | Handles complex relationships | Requires convergence |
-| Random Forest | `impute_rf()` | Handles non-linearity | Black box approach |
-| Gradient Boosting | `impute_gb()` | High accuracy potential | Prone to overfitting |
+All imputation methods support mixed numeric/categorical DataFrames. Categorical columns are automatically ordinal-encoded before imputation and decoded back to their original categories.
+
+| Method | Function | Strengths | Notes |
+|--------|----------|-----------|-------|
+| Mean | `impute_mean()` | Fast, simple | Categoricals filled with mode |
+| Median | `impute_median()` | Robust to outliers | Categoricals filled with mode |
+| Mode | `impute_mode()` | Works with all dtypes | Best for categorical-heavy data |
+| K-NN | `impute_knn()` | Preserves local patterns | O(n²) — slow on large datasets |
+| MICE | `impute_mice()` | Statistically rigorous | Uses BayesianRidge by default |
+| Random Forest | `impute_rf()` | Handles non-linearity | Slower; accepts `**rf_kwargs` |
+| Gradient Boosting | `impute_gb()` | High accuracy potential | Slower; accepts `**gb_kwargs` |
 
 ## Advanced Usage Examples
 
@@ -188,14 +191,24 @@ else:
 ### Imputation Comparison and Selection
 
 ```python
-# Compare multiple imputation methods
-numeric_df = df.select_dtypes(include=[np.number]).dropna()  # Complete data for testing
-comparison = mi.compare_imputations(numeric_df)
+# Compare all imputation methods on a complete DataFrame
+# Mixed dtypes are supported — RMSE is evaluated on numeric columns only
+complete_df = df.dropna()
+comparison = mi.compare_imputations(complete_df)
 print(comparison)
 
 # Select best method based on RMSE
 best_method = comparison.index[0]
 print(f"Best imputation method: {best_method}")
+```
+
+### Custom MICE Estimator
+
+```python
+from sklearn.ensemble import RandomForestRegressor
+
+# Use Random Forest as the MICE estimator instead of BayesianRidge
+df_imputed = mi.impute_mice(df, estimator=RandomForestRegressor(n_estimators=50), max_iter=5)
 ```
 
 ### Advanced Visualization
@@ -238,7 +251,7 @@ df_clean = mi.replace_with_na_all(df, condition=lambda x: x == 'missing')
 
 **Summary Statistics**
 - `n_miss(df, missing_values=None)` → int
-- `n_complete(df, missing_values=None)` → int  
+- `n_complete(df, missing_values=None)` → int
 - `pct_miss(df, missing_values=None)` → float
 - `pct_complete(df, missing_values=None)` → float
 - `miss_var_summary(df, missing_values=None)` → DataFrame
@@ -250,12 +263,12 @@ df_clean = mi.replace_with_na_all(df, condition=lambda x: x == 'missing')
 
 **Imputation**
 - `impute_mean(df)` → DataFrame
-- `impute_median(df)` → DataFrame  
+- `impute_median(df)` → DataFrame
 - `impute_mode(df)` → DataFrame
 - `impute_knn(df, n_neighbors=5)` → DataFrame
-- `impute_mice(df)` → DataFrame
-- `impute_rf(df)` → DataFrame
-- `impute_gb(df)` → DataFrame
+- `impute_mice(df, max_iter=10, random_state=0, estimator=None)` → DataFrame
+- `impute_rf(df, max_iter=10, random_state=0, **rf_kwargs)` → DataFrame
+- `impute_gb(df, max_iter=10, random_state=0, **gb_kwargs)` → DataFrame
 
 **Utilities**
 - `compare_imputations(df, methods=None)` → DataFrame
@@ -266,7 +279,8 @@ df_clean = mi.replace_with_na_all(df, condition=lambda x: x == 'missing')
 
 - **Large datasets**: For datasets >100k rows, consider sampling for visualization
 - **Memory usage**: MICE and tree-based imputation methods require more memory
-- **Computational complexity**: K-NN imputation is O(n²) - consider alternatives for very large datasets
+- **Computational complexity**: K-NN imputation is O(n²) — consider RF or MICE for very large datasets
+- **Categorical encoding**: ML-based imputers internally encode/decode categoricals via `OrdinalEncoder` — no manual pre-processing required
 - **Statistical tests**: MCAR test performance degrades with >50% missingness
 
 ## Contributing
@@ -285,8 +299,8 @@ See our [Contributing Guidelines](CONTRIBUTING.md) for detailed information.
 ```bash
 git clone https://github.com/alisadeghiaghili/missingly.git
 cd missingly
-pip install -e .[dev]
-pytest tests/
+pip install -e .[test]
+pytest tests/ -v
 ```
 
 ## Citation
@@ -305,13 +319,13 @@ If you use `missingly` in your research, please cite:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 **Note on Dependencies**: The MCAR test implementation is adapted from the XeroGraph library by Julhash Kazi, licensed under Apache License 2.0. See [XeroGraph_LICENSE](XeroGraph_LICENSE) for details.
 
 ## About the Author
 
-**Ali Sadeghi Aghili** is a data scientist and software developer passionate about making statistical methods accessible to the broader data science community. 
+**Ali Sadeghi Aghili** is a data scientist and software developer passionate about making statistical methods accessible to the broader data science community.
 
 - **LinkedIn**: [https://www.linkedin.com/in/ali-sadeghi-aghili/](https://www.linkedin.com/in/ali-sadeghi-aghili/)
 - **GitHub**: [https://github.com/alisadeghiaghili](https://github.com/alisadeghiaghili)
