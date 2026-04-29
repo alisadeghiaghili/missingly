@@ -18,6 +18,7 @@ from .visualise import (
     matrix,
     bar,
     upset,
+    dendrogram,
     scatter_miss,
     miss_case,
     vis_impute_dist,
