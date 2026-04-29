@@ -123,14 +123,13 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
 
     Notes
     -----
-    Uses ``upsetplot.from_memberships()`` instead of a manual
-    ``groupby``-based MultiIndex.  The ``groupby`` approach produces
-    ``NaN`` entries in the index under pandas >= 2 for unobserved
-    combinations, which propagate into upsetplot's internal colour
-    arrays and cause ``ValueError: Invalid RGBA argument: nan`` in
-    matplotlib >= 3.8.  ``from_memberships`` is the canonical upsetplot
-    API for building a series from a boolean membership matrix and
-    avoids this issue entirely.
+    Uses ``upsetplot.from_memberships()`` to build the upset Series from
+    a per-row list of missing columns.  ``from_memberships`` returns a
+    Series with non-unique index entries when multiple rows share the same
+    combination; ``subset_size='count'`` is therefore required so that
+    ``UpSet`` counts occurrences rather than attempting to sum values,
+    which would fail with ``ValueError: subset_size='auto' cannot be used
+    for a Series with non-unique groups``.
     """
     if missing_values is None:
         nullity_matrix = df.isnull()
@@ -145,14 +144,19 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
     nullity_matrix = nullity_matrix[missing_cols].astype(bool)
 
     # Build memberships: for each row, the list of columns that ARE missing.
-    # from_memberships is the correct upsetplot API — it never produces NaN
-    # in the resulting Series index, unlike a manual groupby on bool columns.
+    # from_memberships never produces NaN in the index, unlike groupby on
+    # bool columns (which causes 'Invalid RGBA argument: nan' in matplotlib
+    # >= 3.8 via upsetplot's internal colour arrays).
     memberships = [
         [col for col in missing_cols if row[col]]
         for _, row in nullity_matrix.iterrows()
     ]
     upset_data = from_memberships(memberships)
-    return UpSet(upset_data, sort_by='cardinality', **kwargs).plot()
+
+    # subset_size='count' is required because from_memberships() returns a
+    # Series with repeated index entries for identical combinations.
+    # UpSet's default 'auto' rejects non-unique groups with ValueError.
+    return UpSet(upset_data, subset_size='count', sort_by='cardinality', **kwargs).plot()
 
 
 def scatter_miss(df: pd.DataFrame, x: str, y: str, ax=None, missing_values: list = None, **kwargs):
