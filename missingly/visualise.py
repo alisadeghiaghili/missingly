@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from upsetplot import UpSet
+from upsetplot import UpSet, from_memberships
 from scipy.cluster.hierarchy import linkage, dendrogram as scipy_dendrogram
 from scipy.spatial.distance import squareform
 
@@ -123,10 +123,14 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
 
     Notes
     -----
-    The nullity matrix is explicitly cast to ``bool`` after filling any
-    residual ``NaN`` values with ``False``.  This prevents ``NaN`` values
-    from propagating into upsetplot's internal colour arrays, which causes
-    ``ValueError: Invalid RGBA argument: nan`` in matplotlib >= 3.8.
+    Uses ``upsetplot.from_memberships()`` instead of a manual
+    ``groupby``-based MultiIndex.  The ``groupby`` approach produces
+    ``NaN`` entries in the index under pandas >= 2 for unobserved
+    combinations, which propagate into upsetplot's internal colour
+    arrays and cause ``ValueError: Invalid RGBA argument: nan`` in
+    matplotlib >= 3.8.  ``from_memberships`` is the canonical upsetplot
+    API for building a series from a boolean membership matrix and
+    avoids this issue entirely.
     """
     if missing_values is None:
         nullity_matrix = df.isnull()
@@ -138,11 +142,17 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
         print("No missing values to plot.")
         return
 
-    # fillna(False) + astype(bool) ensures no NaN leaks into upsetplot
-    nullity_matrix = nullity_matrix[missing_cols].fillna(False).astype(bool)
+    nullity_matrix = nullity_matrix[missing_cols].astype(bool)
 
-    miss_combinations = nullity_matrix.groupby(list(missing_cols)).size()
-    return UpSet(miss_combinations, sort_by='cardinality', **kwargs).plot()
+    # Build memberships: for each row, the list of columns that ARE missing.
+    # from_memberships is the correct upsetplot API — it never produces NaN
+    # in the resulting Series index, unlike a manual groupby on bool columns.
+    memberships = [
+        [col for col in missing_cols if row[col]]
+        for _, row in nullity_matrix.iterrows()
+    ]
+    upset_data = from_memberships(memberships)
+    return UpSet(upset_data, sort_by='cardinality', **kwargs).plot()
 
 
 def scatter_miss(df: pd.DataFrame, x: str, y: str, ax=None, missing_values: list = None, **kwargs):
@@ -483,15 +493,24 @@ def dendrogram(df: pd.DataFrame, ax=None, missing_values: list = None, method='w
     matplotlib.axes.Axes
         The Axes containing the plot.
 
+    Raises
+    ------
+    ValueError
+        If fewer than two columns have variable missingness patterns
+        (i.e. all columns are either always-missing or never-missing),
+        making clustering impossible.
+
     Notes
     -----
+    Columns with zero variance in their nullity indicator (always-missing
+    or never-missing) are dropped before computing the correlation matrix.
+    Such columns produce ``NaN`` in the Pearson correlation and would make
+    the distance matrix non-finite, causing scipy linkage to fail.
+
     The distance between two columns is defined as
     ``1 - |correlation of their missingness indicators|``.
-    ``scipy.spatial.distance.squareform`` is used to convert the
-    square distance matrix to the condensed vector form required by
-    ``scipy.cluster.hierarchy.linkage``.  The previous implementation
-    incorrectly used ``pdist(..., metric='precomputed')`` which is a
-    scikit-learn convention and is not supported by scipy's ``pdist``.
+    ``scipy.spatial.distance.squareform`` converts the square distance
+    matrix to the condensed 1-D vector required by ``linkage``.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -501,19 +520,30 @@ def dendrogram(df: pd.DataFrame, ax=None, missing_values: list = None, method='w
     else:
         nullity_matrix = df.isin(missing_values).astype(int)
 
+    # Drop columns with zero variance: always-missing or never-missing columns
+    # produce NaN in the Pearson correlation, making the distance matrix
+    # non-finite and causing linkage() to raise ValueError.
+    variable_cols = nullity_matrix.columns[nullity_matrix.var() > 0]
+    if len(variable_cols) < 2:
+        raise ValueError(
+            "dendrogram requires at least 2 columns with variable missingness "
+            "(i.e. not always-missing or never-missing). "
+            f"Only {len(variable_cols)} such column(s) found."
+        )
+    nullity_matrix = nullity_matrix[variable_cols]
+
     corr_matrix = nullity_matrix.corr()
     distance_matrix = 1 - corr_matrix.abs()
 
     # squareform converts a symmetric square distance matrix to the
-    # condensed 1-D vector that linkage() expects.  pdist does NOT
-    # support metric='precomputed' — that is a scikit-learn concept.
+    # condensed 1-D vector that linkage() expects.
     condensed_distances = squareform(distance_matrix.values, checks=False)
 
     linkage_matrix = linkage(condensed_distances, method=method)
 
     scipy_dendrogram(
         linkage_matrix,
-        labels=df.columns.tolist(),
+        labels=variable_cols.tolist(),
         ax=ax,
         orientation='top',
         **kwargs
