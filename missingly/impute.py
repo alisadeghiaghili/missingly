@@ -1,3 +1,20 @@
+"""Imputation utilities for missing data.
+
+This module provides a collection of imputation strategies that work on
+pandas DataFrames containing numeric and/or categorical columns.  All
+public functions accept a DataFrame, impute missing values in-place on a
+copy, and return the filled copy without modifying the input.
+
+Key design decisions
+--------------------
+* Python ``None`` in object-dtype columns is normalised to ``np.nan``
+  before any sklearn estimator sees the data, because sklearn only
+  treats ``np.nan`` as a missing sentinel.
+* Categorical columns are ordinal-encoded to float before ML-based
+  imputers (KNN, MICE, RF, GB) and decoded back afterwards via
+  ``_split_encode`` / ``_decode``.
+"""
+
 import pandas as pd
 import numpy as np
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
@@ -7,8 +24,47 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import OrdinalEncoder
 
 
+def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace Python ``None`` with ``np.nan`` in all object-dtype columns.
+
+    sklearn estimators only recognise ``np.nan`` as a missing sentinel;
+    Python ``None`` stored in object columns is silently ignored, which
+    causes imputation to leave those cells unfilled.  This helper
+    normalises the representation so downstream imputers behave correctly.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe, possibly containing ``None`` in object columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of *df* where every ``None`` in object-dtype columns has
+        been replaced with ``np.nan``.
+
+    Notes
+    -----
+    Only object-dtype columns are touched; numeric columns are unchanged
+    because ``None`` in a numeric column is already coerced to ``np.nan``
+    by pandas at construction time.
+    """
+    result = df.copy()
+    obj_cols = result.select_dtypes(include=["object"]).columns
+    if len(obj_cols):
+        result[obj_cols] = result[obj_cols].where(
+            result[obj_cols].notna(), other=np.nan
+        )
+    return result
+
+
 def _split_encode(df: pd.DataFrame):
     """Split df into numeric and categorical parts, ordinal-encode categoricals.
+
+    Assumes ``None`` has already been normalised to ``np.nan`` (call
+    ``_normalize_missing`` first).  ``OrdinalEncoder`` is configured with
+    ``encoded_missing_value=np.nan`` so it propagates ``np.nan`` through
+    to the imputer rather than raising on unseen missing markers.
 
     Returns
     -------
@@ -33,7 +89,7 @@ def _split_encode(df: pd.DataFrame):
     if cat_cols:
         cat_dtypes = {c: df[c].dtype for c in cat_cols}
         encoder = OrdinalEncoder(
-            handle_unknown='use_encoded_value',
+            handle_unknown="use_encoded_value",
             unknown_value=np.nan,
             encoded_missing_value=np.nan,
         )
@@ -45,7 +101,31 @@ def _split_encode(df: pd.DataFrame):
 
 
 def _decode(df_imputed: pd.DataFrame, cat_cols: list, encoder, cat_dtypes: dict) -> pd.DataFrame:
-    """Inverse-transform ordinal-encoded columns back to original categories."""
+    """Inverse-transform ordinal-encoded columns back to original categories.
+
+    Parameters
+    ----------
+    df_imputed : pd.DataFrame
+        DataFrame whose categorical columns contain float-encoded values.
+    cat_cols : list[str]
+        Names of the categorical columns to decode.
+    encoder : OrdinalEncoder or None
+        The fitted encoder returned by ``_split_encode``.
+    cat_dtypes : dict[str, dtype]
+        Original dtypes to restore after decoding.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df_imputed* with categorical columns decoded back to
+        their original string/category values.
+
+    Notes
+    -----
+    Encoded values are rounded and clipped to ``[0, n_categories - 1]``
+    before inverse-transforming to handle any floating-point drift
+    introduced by ML-based imputers.
+    """
     if not cat_cols or encoder is None:
         return df_imputed
 
@@ -67,27 +147,29 @@ def impute_mean(df: pd.DataFrame) -> pd.DataFrame:
     """Impute missing values using the mean of each numeric column.
 
     Non-numeric columns are imputed with their most frequent value
-    (same behaviour as impute_mode for categoricals).
+    (same behaviour as ``impute_mode`` for categoricals).
 
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
     """
+    df = _normalize_missing(df)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
 
     result = df.copy()
     if numeric_cols:
-        imputer = SimpleImputer(strategy='mean')
+        imputer = SimpleImputer(strategy="mean")
         result[numeric_cols] = imputer.fit_transform(df[numeric_cols])
     if cat_cols:
-        imputer_cat = SimpleImputer(strategy='most_frequent')
+        imputer_cat = SimpleImputer(strategy="most_frequent")
         result[cat_cols] = imputer_cat.fit_transform(df[cat_cols])
     return result
 
@@ -100,22 +182,24 @@ def impute_median(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
     """
+    df = _normalize_missing(df)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
 
     result = df.copy()
     if numeric_cols:
-        imputer = SimpleImputer(strategy='median')
+        imputer = SimpleImputer(strategy="median")
         result[numeric_cols] = imputer.fit_transform(df[numeric_cols])
     if cat_cols:
-        imputer_cat = SimpleImputer(strategy='most_frequent')
+        imputer_cat = SimpleImputer(strategy="most_frequent")
         result[cat_cols] = imputer_cat.fit_transform(df[cat_cols])
     return result
 
@@ -128,14 +212,23 @@ def impute_mode(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
+
+    Notes
+    -----
+    Unlike ``impute_mean``/``impute_median``, this function passes all
+    columns to a single ``SimpleImputer``.  Original dtypes may change
+    to ``object`` for columns that were mixed numeric/string.  If dtype
+    preservation is important, use ``impute_mean`` instead.
     """
-    imputer = SimpleImputer(strategy='most_frequent')
+    df = _normalize_missing(df)
+    imputer = SimpleImputer(strategy="most_frequent")
     imputed_array = imputer.fit_transform(df)
     return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
 
@@ -149,7 +242,8 @@ def impute_knn(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
     n_neighbors : int, optional
         The number of neighbors to use for imputation. Default is 5.
 
@@ -158,6 +252,7 @@ def impute_knn(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
     pd.DataFrame
         A new dataframe with missing values imputed.
     """
+    df = _normalize_missing(df)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     imputer = KNNImputer(n_neighbors=n_neighbors)
     imputed_array = imputer.fit_transform(df_work)
@@ -173,27 +268,29 @@ def impute_mice(
 ) -> pd.DataFrame:
     """Impute missing values using Multiple Imputation by Chained Equations (MICE).
 
-    Uses sklearn's IterativeImputer with BayesianRidge as the default
+    Uses sklearn's ``IterativeImputer`` with ``BayesianRidge`` as the default
     estimator. Categorical columns are automatically ordinal-encoded before
     imputation and decoded back to their original categories afterwards.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
     max_iter : int, optional
         Maximum number of imputation rounds. Default is 10.
     random_state : int, optional
         Random seed for reproducibility. Default is 0.
     estimator : sklearn estimator, optional
         The estimator to use for each round-robin imputation step.
-        Defaults to BayesianRidge().
+        Defaults to ``BayesianRidge()``.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
     """
+    df = _normalize_missing(df)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
 
     if estimator is None:
@@ -203,7 +300,7 @@ def impute_mice(
         estimator=estimator,
         max_iter=max_iter,
         random_state=random_state,
-        imputation_order='roman',
+        imputation_order="roman",
     )
     imputed_array = imputer.fit_transform(df_work)
     df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
@@ -224,19 +321,21 @@ def impute_rf(
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
     max_iter : int, optional
         Maximum number of imputation rounds. Default is 10.
     random_state : int, optional
         Random seed for reproducibility. Default is 0.
     **rf_kwargs
-        Additional keyword arguments passed to RandomForestRegressor.
+        Additional keyword arguments passed to ``RandomForestRegressor``.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
     """
+    df = _normalize_missing(df)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     estimator = RandomForestRegressor(random_state=random_state, **rf_kwargs)
     imputer = IterativeImputer(
@@ -263,19 +362,21 @@ def impute_gb(
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to impute.
+        The dataframe to impute.  May contain ``None`` or ``np.nan`` as
+        missing markers in object columns.
     max_iter : int, optional
         Maximum number of imputation rounds. Default is 10.
     random_state : int, optional
         Random seed for reproducibility. Default is 0.
     **gb_kwargs
-        Additional keyword arguments passed to GradientBoostingRegressor.
+        Additional keyword arguments passed to ``GradientBoostingRegressor``.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with missing values imputed.
     """
+    df = _normalize_missing(df)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     estimator = GradientBoostingRegressor(random_state=random_state, **gb_kwargs)
     imputer = IterativeImputer(
