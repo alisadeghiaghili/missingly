@@ -25,7 +25,7 @@ from sklearn.preprocessing import OrdinalEncoder
 
 
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
-    """Replace Python ``None`` with ``np.nan`` in all object-dtype columns.
+    """Replace Python ``None`` with ``np.nan`` in all object/string-dtype columns.
 
     sklearn estimators only recognise ``np.nan`` as a missing sentinel;
     Python ``None`` stored in object columns is silently ignored, which
@@ -40,17 +40,19 @@ def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        A copy of *df* where every ``None`` in object-dtype columns has
-        been replaced with ``np.nan``.
+        A copy of *df* where every ``None`` in object/string-dtype columns
+        has been replaced with ``np.nan``.
 
     Notes
     -----
-    Only object-dtype columns are touched; numeric columns are unchanged
-    because ``None`` in a numeric column is already coerced to ``np.nan``
-    by pandas at construction time.
+    Both ``'object'`` and ``'string'`` dtypes are included explicitly.
+    Under pandas >= 3.0, ``select_dtypes(include=['object'])`` no longer
+    implicitly captures the ``StringDtype`` (``pd.StringDtype()``), so
+    passing both prevents a ``Pandas4Warning`` and ensures correctness
+    across pandas 1.x – 3.x.
     """
     result = df.copy()
-    obj_cols = result.select_dtypes(include=["object"]).columns
+    obj_cols = result.select_dtypes(include=["object", "string"]).columns
     if len(obj_cols):
         result[obj_cols] = result[obj_cols].where(
             result[obj_cols].notna(), other=np.nan
