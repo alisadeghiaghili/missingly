@@ -14,8 +14,8 @@ pandas DataFrames.  Every function follows the same convention:
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import seaborn as sns
-from upsetplot import UpSet, from_memberships
 from scipy.cluster.hierarchy import linkage, dendrogram as scipy_dendrogram
 from scipy.spatial.distance import squareform
 
@@ -107,6 +107,18 @@ def bar(df: pd.DataFrame, ax=None, missing_values: list = None, **kwargs):
 def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
     """An UpSet plot to visualize combinations of missing values.
 
+    Renders three panels in a single figure:
+
+    * **top** — bar chart of intersection sizes, sorted by cardinality
+      (descending).
+    * **middle** — dot-and-line matrix showing which columns participate
+      in each intersection.
+    * **left** — horizontal bar chart of per-column missing totals.
+
+    This is a pure-matplotlib implementation that carries no dependency on
+    the ``upsetplot`` package, which has an unfixed bug under
+    pandas >= 3.0 / Python 3.11+.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -114,49 +126,141 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
     missing_values : list, optional
         A list of values to treat as missing in addition to ``NaN``.
     **kwargs
-        Additional keyword arguments forwarded to ``upsetplot.UpSet``.
+        Ignored.  Present for API compatibility with the previous
+        ``upsetplot``-based signature.
 
     Returns
     -------
     dict
-        A dict of matplotlib Axes objects returned by ``UpSet.plot()``.
+        A dictionary with keys ``'intersections'``, ``'matrix'``, and
+        ``'totals'``, each mapping to the corresponding
+        ``matplotlib.axes.Axes``.
 
     Notes
     -----
-    Uses ``upsetplot.from_memberships()`` to build the upset Series from
-    a per-row list of missing columns.  ``from_memberships`` returns a
-    Series with non-unique index entries when multiple rows share the same
-    combination; ``subset_size='count'`` is therefore required so that
-    ``UpSet`` counts occurrences rather than attempting to sum values,
-    which would fail with ``ValueError: subset_size='auto' cannot be used
-    for a Series with non-unique groups``.
+    The previous implementation delegated to ``upsetplot.UpSet``, which
+    calls ``fillna(inplace=True)`` on a DataFrame slice.  Under
+    pandas >= 3.0 Copy-on-Write this is a silent no-op, leaving ``NaN``
+    values in matplotlib colour arrays and raising
+    ``ValueError: Invalid RGBA argument: nan`` on Python 3.11/3.12.
+
+    Example
+    -------
+    >>> import pandas as pd
+    >>> from missingly import visualise
+    >>> df = pd.DataFrame({'A': [None, 1, None], 'B': [None, None, 1]})
+    >>> axes = visualise.upset(df)
+    >>> isinstance(axes, dict)
+    True
     """
     if missing_values is None:
         nullity_matrix = df.isnull()
     else:
         nullity_matrix = df.isin(missing_values)
 
-    missing_cols = nullity_matrix.columns[nullity_matrix.any()]
-    if missing_cols.empty:
+    missing_cols = list(nullity_matrix.columns[nullity_matrix.any()])
+    if not missing_cols:
         print("No missing values to plot.")
-        return
+        return {}
 
     nullity_matrix = nullity_matrix[missing_cols].astype(bool)
+    n_cols = len(missing_cols)
 
-    # Build memberships: for each row, the list of columns that ARE missing.
-    # from_memberships never produces NaN in the index, unlike groupby on
-    # bool columns (which causes 'Invalid RGBA argument: nan' in matplotlib
-    # >= 3.8 via upsetplot's internal colour arrays).
-    memberships = [
-        [col for col in missing_cols if row[col]]
-        for _, row in nullity_matrix.iterrows()
-    ]
-    upset_data = from_memberships(memberships)
+    # --- build combination counts -----------------------------------------
+    # Represent each row as a tuple of booleans, count occurrences.
+    combos: dict = {}
+    for row in nullity_matrix.itertuples(index=False):
+        key = tuple(row)
+        combos[key] = combos.get(key, 0) + 1
 
-    # subset_size='count' is required because from_memberships() returns a
-    # Series with repeated index entries for identical combinations.
-    # UpSet's default 'auto' rejects non-unique groups with ValueError.
-    return UpSet(upset_data, subset_size='count', sort_by='cardinality', **kwargs).plot()
+    # Only keep combinations where at least one column is missing.
+    combos = {k: v for k, v in combos.items() if any(k)}
+    if not combos:
+        print("No missing combinations to plot.")
+        return {}
+
+    # Sort by count descending (cardinality order).
+    sorted_combos = sorted(combos.items(), key=lambda x: x[1], reverse=True)
+    combo_keys = [c[0] for c in sorted_combos]
+    combo_counts = [c[1] for c in sorted_combos]
+    n_combos = len(combo_keys)
+
+    col_totals = [nullity_matrix[c].sum() for c in missing_cols]
+
+    # --- layout -------------------------------------------------------------
+    # GridSpec: 2 rows × 2 cols
+    #   [0, 1]  intersection bar chart   (top-right)
+    #   [1, 0]  column-totals h-bar      (bottom-left)
+    #   [1, 1]  dot-matrix               (bottom-right)
+    fig = plt.figure(figsize=(max(8, n_combos * 1.2), max(6, n_cols * 0.9 + 3)))
+    gs = gridspec.GridSpec(
+        2, 2,
+        width_ratios=[1, n_combos],
+        height_ratios=[2, n_cols],
+        hspace=0.05,
+        wspace=0.05,
+    )
+    ax_bar   = fig.add_subplot(gs[0, 1])          # intersection sizes
+    ax_mat   = fig.add_subplot(gs[1, 1])          # dot matrix
+    ax_tot   = fig.add_subplot(gs[1, 0])          # column totals
+    fig.add_subplot(gs[0, 0]).set_visible(False)  # empty corner
+
+    x_pos = np.arange(n_combos)
+    y_pos = np.arange(n_cols)
+
+    # --- top bar chart (intersection sizes) --------------------------------
+    ax_bar.bar(x_pos, combo_counts, color="steelblue", edgecolor="white")
+    ax_bar.set_xlim(-0.5, n_combos - 0.5)
+    ax_bar.set_xticks([])
+    ax_bar.set_ylabel("Intersection size")
+    ax_bar.spines["top"].set_visible(False)
+    ax_bar.spines["right"].set_visible(False)
+
+    # --- dot-and-line matrix -----------------------------------------------
+    dot_color_on  = "#333333"
+    dot_color_off = "#cccccc"
+
+    for xi, key in enumerate(combo_keys):
+        # Vertical connector between the topmost and bottommost active dots.
+        active_rows = [yi for yi, active in enumerate(key) if active]
+        if len(active_rows) > 1:
+            ax_mat.plot(
+                [xi, xi],
+                [min(active_rows), max(active_rows)],
+                color=dot_color_on,
+                linewidth=2,
+                zorder=1,
+            )
+        for yi, active in enumerate(key):
+            ax_mat.scatter(
+                xi, yi,
+                s=150,
+                color=dot_color_on if active else dot_color_off,
+                zorder=2,
+            )
+
+    ax_mat.set_xlim(-0.5, n_combos - 0.5)
+    ax_mat.set_ylim(-0.5, n_cols - 0.5)
+    ax_mat.set_xticks([])
+    ax_mat.set_yticks(y_pos)
+    ax_mat.set_yticklabels(missing_cols)
+    ax_mat.spines["top"].set_visible(False)
+    ax_mat.spines["right"].set_visible(False)
+    ax_mat.spines["bottom"].set_visible(False)
+
+    # --- left horizontal bar chart (per-column totals) ---------------------
+    ax_tot.barh(y_pos, col_totals, color="steelblue", edgecolor="white")
+    ax_tot.set_ylim(-0.5, n_cols - 0.5)
+    ax_tot.set_yticks([])
+    ax_tot.set_xlabel("Set size")
+    ax_tot.invert_xaxis()
+    ax_tot.spines["top"].set_visible(False)
+    ax_tot.spines["left"].set_visible(False)
+
+    fig.suptitle("UpSet Plot of Missing Value Combinations", y=1.01)
+    plt.tight_layout()
+
+    return {"intersections": ax_bar, "matrix": ax_mat, "totals": ax_tot}
 
 
 def scatter_miss(df: pd.DataFrame, x: str, y: str, ax=None, missing_values: list = None, **kwargs):
