@@ -61,5 +61,4 @@ missingly = ["templates/*.html"]
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore::FutureWarning:sklearn",
-    "ignore::pandas.errors.Pandas4Warning",
 ]
