@@ -20,6 +20,7 @@
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Pandas Chaining API](#pandas-chaining-api)
 - [Comprehensive Feature Overview](#comprehensive-feature-overview)
 - [Advanced Usage Examples](#advanced-usage-examples)
 - [API Reference](#api-reference)
@@ -41,7 +42,7 @@ Missing data is ubiquitous in real-world datasets and handling it poorly can lea
 - **Rich Visualizations**: Over 10 specialized plots to explore missing data patterns
 - **Multiple Imputation Methods**: From simple mean imputation to advanced machine learning approaches — all supporting mixed numeric/categorical DataFrames
 - **Automated Reporting**: Generate publication-ready HTML reports
-- **Pandas Integration**: Seamless workflow with existing data science tools
+- **Pandas Integration**: Seamless workflow via both functional API and the `df.miss.*` chaining accessor
 
 ## Key Features
 
@@ -65,6 +66,11 @@ Missing data is ubiquitous in real-world datasets and handling it poorly can lea
 - **Statistical**: Multiple Imputation by Chained Equations (MICE) via `sklearn` `IterativeImputer` + `BayesianRidge`
 - **Comparison tools**: Evaluate and compare imputation performance across methods
 
+### 🔗 **Pandas Chaining API**
+- `df.miss.*` accessor exposes every function as a chainable method
+- Manipulation and imputation methods return DataFrames for fluent pipelines
+- Zero config — just `import missingly` to activate
+
 ### 📈 **Automated Reporting**
 - Comprehensive HTML reports with embedded visualizations
 - Customizable templates
@@ -78,7 +84,7 @@ Install `missingly` via pip:
 pip install missingly
 ```
 
-**Requirements**: Python 3.9+ with pandas, numpy, matplotlib, seaborn, scipy, scikit-learn, upsetplot, and jinja2.
+**Requirements**: Python 3.9+, pandas ≥ 2.0, numpy ≥ 1.24, and standard data-science stack (matplotlib, seaborn, scipy, scikit-learn, statsmodels, jinja2).
 
 ## Quick Start
 
@@ -97,29 +103,63 @@ data = {
 df = pd.DataFrame(data)
 
 # Quick overview
-print(f"Dataset shape: {df.shape}")
 print(f"Missing values: {mi.n_miss(df)} ({mi.pct_miss(df):.1f}%)")
-
-# Variable-level summary
-summary = mi.miss_var_summary(df)
-print(summary)
+print(mi.miss_var_summary(df))
 
 # Visualize missing patterns
-mi.matrix(df)          # Missing data matrix
-mi.bar(df)             # Bar plot of missing counts
-mi.upset(df)           # Upset plot for combinations
-mi.dendrogram(df)      # Variable clustering
+mi.vis_miss(df)
+mi.upset(df)
 
 # Test missing data mechanisms
-mcar_result = mi.mcar_test(df)
-print(f"MCAR test p-value: {mcar_result['p_value']:.4f}")
+result = mi.mcar_test(df)
+print(f"MCAR p-value: {result['p_value']:.4f}")
 
-# Impute missing values — works directly on mixed DataFrames
+# Impute
 df_imputed = mi.impute_knn(df, n_neighbors=3)
 
-# Generate comprehensive report
+# Report
 mi.create_report(df, "missing_data_analysis.html")
 ```
+
+## Pandas Chaining API
+
+After `import missingly`, every DataFrame gains a `.miss` accessor. Manipulation and imputation methods return a new DataFrame so calls chain naturally:
+
+```python
+import missingly  # registers df.miss — nothing else needed
+
+# Full pipeline in one expression
+result = (
+    df
+    .miss.replace_with_na({'age': -99, 'income': -1})
+    .miss.remove_empty(thresh_col=0.9)
+    .miss.coalesce_columns('income', 'fallback_income')
+    .miss.clean_names()
+    .miss.miss_as_feature()          # adds binary _NA indicator columns
+    .miss.impute_mean()              # returns fully-observed DataFrame
+)
+
+# Summary — returns scalars / DataFrames, not chainable
+df.miss.n_miss()                     # → int
+df.miss.pct_miss()                   # → float
+df.miss.miss_var_summary()           # → DataFrame
+df.miss.bind_shadow()                # → DataFrame (doubled columns)
+
+# Visualisation — returns Axes
+df.miss.vis_miss()
+df.miss.heatmap()
+df.miss.miss_var_pct()
+```
+
+### Accessor method reference
+
+| Category | Methods | Returns |
+|---|---|---|
+| Manipulation | `replace_with_na`, `replace_with_na_all`, `clean_names`, `remove_empty`, `coalesce_columns`, `miss_as_feature` | `DataFrame` (chainable) |
+| Imputation | `impute_mean`, `impute_median`, `impute_mode`, `impute_knn`, `impute_mice`, `impute_rf`, `impute_gb` | `DataFrame` (chainable) |
+| Summary | `n_miss`, `n_complete`, `pct_miss`, `pct_complete`, `miss_var_summary`, `miss_case_summary`, `bind_shadow` | scalar / `DataFrame` |
+| Stats | `mcar_test`, `mar_mnar_test` | dict / `DataFrame` |
+| Visualisation | `matrix`, `bar`, `upset`, `heatmap`, `vis_miss`, `miss_var_pct`, `miss_cluster`, `miss_which`, `scatter_miss`, `miss_case`, `vis_impute_dist`, `vis_miss_fct`, `vis_miss_cumsum_var`, `vis_miss_cumsum_case`, `vis_miss_span`, `vis_parallel_coords`, `dendrogram` | `Axes` |
 
 ## Comprehensive Feature Overview
 
@@ -138,6 +178,7 @@ mi.create_report(df, "missing_data_analysis.html")
 
 | Function | Description | Best For |
 |----------|-------------|----------|
+| `vis_miss()` | Annotated missingness overview | Default first look |
 | `matrix()` | Heatmap of missing patterns | Overall pattern visualization |
 | `bar()` | Bar chart of missing counts per variable | Variable comparison |
 | `miss_case()` | Bar chart of missing counts per row | Case-wise analysis |
@@ -145,6 +186,21 @@ mi.create_report(df, "missing_data_analysis.html")
 | `upset()` | Intersection plot of missing combinations | Complex pattern analysis |
 | `scatter_miss()` | Scatterplot highlighting missing values | Bivariate relationships |
 | `vis_impute_dist()` | Distribution comparison (before/after) | Imputation quality assessment |
+| `heatmap()` | Nullity-correlation heatmap | Correlation of missingness |
+| `miss_var_pct()` | % missing per variable (horizontal bar) | Quick variable ranking |
+| `miss_cluster()` | Clustered missingness heatmap | Pattern grouping |
+| `miss_which()` | Binary tile plot per column | Which columns have any missing |
+
+### Data Manipulation Functions
+
+| Function | Description |
+|---|---|
+| `replace_with_na(df, replace)` | Replace specific values with NaN |
+| `replace_with_na_all(df, condition)` | Replace all values matching a predicate with NaN |
+| `clean_names(df)` | Normalise column names to snake_case |
+| `remove_empty(df, ...)` | Drop fully- or mostly-empty rows/columns |
+| `coalesce_columns(df, target, *donors)` | SQL-style COALESCE across columns |
+| `miss_as_feature(df, ...)` | Add binary missingness indicator columns |
 
 ### Imputation Methods
 
@@ -165,10 +221,7 @@ All imputation methods support mixed numeric/categorical DataFrames. Categorical
 ### Custom Missing Value Indicators
 
 ```python
-# Handle non-standard missing indicators
-df_custom = df.replace([999, -99, 'unknown'], np.nan)
-
-# Or specify them directly in functions
+# Specify them directly in functions
 summary = mi.miss_var_summary(df, missing_values=[999, -99, 'unknown'])
 mi.matrix(df, missing_values=[999, -99])
 ```
@@ -176,92 +229,70 @@ mi.matrix(df, missing_values=[999, -99])
 ### Missing Data Mechanism Testing
 
 ```python
-# Test if data is Missing Completely at Random
 mcar_result = mi.mcar_test(df)
 print(f"Chi-square: {mcar_result['chi_square']:.4f}")
 print(f"p-value: {mcar_result['p_value']:.4f}")
-print(f"Missing patterns: {mcar_result['missing_patterns']}")
 
 if mcar_result['p_value'] > 0.05:
-    print("Data appears to be MCAR (missing completely at random)")
+    print("Data appears to be MCAR")
 else:
-    print("Data is not MCAR - patterns in missingness detected")
+    print("Data is not MCAR — patterns in missingness detected")
 ```
 
-### Imputation Comparison and Selection
+### Imputation Comparison
 
 ```python
-# Compare all imputation methods on a complete DataFrame
-# Mixed dtypes are supported — RMSE is evaluated on numeric columns only
 complete_df = df.dropna()
 comparison = mi.compare_imputations(complete_df)
 print(comparison)
-
-# Select best method based on RMSE
 best_method = comparison.index[0]
-print(f"Best imputation method: {best_method}")
 ```
 
 ### Custom MICE Estimator
 
 ```python
 from sklearn.ensemble import RandomForestRegressor
-
-# Use Random Forest as the MICE estimator instead of BayesianRidge
 df_imputed = mi.impute_mice(df, estimator=RandomForestRegressor(n_estimators=50), max_iter=5)
 ```
 
-### Advanced Visualization
+### Dashboard
 
 ```python
 import matplotlib.pyplot as plt
 
-# Create a comprehensive missing data dashboard
 fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-
-mi.matrix(df, ax=axes[0,0])
-mi.bar(df, ax=axes[0,1])
-mi.dendrogram(df, ax=axes[1,0])
-mi.miss_case(df, ax=axes[1,1])
-
+mi.matrix(df, ax=axes[0, 0])
+mi.bar(df, ax=axes[0, 1])
+mi.dendrogram(df, ax=axes[1, 0])
+mi.miss_case(df, ax=axes[1, 1])
 plt.tight_layout()
 plt.show()
-
-# Analyze specific variable relationships
-mi.scatter_miss(df, x='age', y='income')
-```
-
-### Data Manipulation
-
-```python
-# Replace problematic values with NA
-df_clean = mi.replace_with_na(df, {
-    'age': [0, 999],
-    'income': lambda x: x < 0,  # Negative incomes
-    'score': [0, 100]  # Impossible scores
-})
-
-# Replace all values meeting a condition
-df_clean = mi.replace_with_na_all(df, condition=lambda x: x == 'missing')
 ```
 
 ## API Reference
 
-### Core Functions
-
-**Summary Statistics**
+### Summary Statistics
 - `n_miss(df, missing_values=None)` → int
 - `n_complete(df, missing_values=None)` → int
 - `pct_miss(df, missing_values=None)` → float
 - `pct_complete(df, missing_values=None)` → float
 - `miss_var_summary(df, missing_values=None)` → DataFrame
 - `miss_case_summary(df, missing_values=None)` → DataFrame
+- `bind_shadow(df, missing_values=None)` → DataFrame
 
-**Statistical Tests**
-- `mcar_test(df, max_iter=100, tol=1e-5, ridge=1e-6, missing_values=None)` → dict
-- `mar_mnar_test(X, Y, missing_values=None)` → list
+### Statistical Tests
+- `mcar_test(df)` → dict
+- `mar_mnar_test(X, Y)` → list
 
-**Imputation**
+### Data Manipulation
+- `replace_with_na(df, replace)` → DataFrame
+- `replace_with_na_all(df, condition)` → DataFrame
+- `clean_names(df, case='lower', sep='_')` → DataFrame
+- `remove_empty(df, axis='both', thresh_col=None, thresh_row=None)` → DataFrame
+- `coalesce_columns(df, target, *donors, remove_donors=False)` → DataFrame
+- `miss_as_feature(df, columns=None, suffix='_NA', keep_original=True)` → DataFrame
+
+### Imputation
 - `impute_mean(df)` → DataFrame
 - `impute_median(df)` → DataFrame
 - `impute_mode(df)` → DataFrame
@@ -270,10 +301,9 @@ df_clean = mi.replace_with_na_all(df, condition=lambda x: x == 'missing')
 - `impute_rf(df, max_iter=10, random_state=0, **rf_kwargs)` → DataFrame
 - `impute_gb(df, max_iter=10, random_state=0, **gb_kwargs)` → DataFrame
 
-**Utilities**
+### Utilities
 - `compare_imputations(df, methods=None)` → DataFrame
-- `create_report(df, output_path="missing_data_report.html")` → None
-- `bind_shadow(df, missing_values=None)` → DataFrame
+- `create_report(df, output_path='missing_data_report.html')` → None
 
 ## Performance Considerations
 
@@ -282,6 +312,7 @@ df_clean = mi.replace_with_na_all(df, condition=lambda x: x == 'missing')
 - **Computational complexity**: K-NN imputation is O(n²) — consider RF or MICE for very large datasets
 - **Categorical encoding**: ML-based imputers internally encode/decode categoricals via `OrdinalEncoder` — no manual pre-processing required
 - **Statistical tests**: MCAR test performance degrades with >50% missingness
+- **pandas version**: missingly requires pandas ≥ 2.0 — the `DataFrame.map()` API is used throughout
 
 ## Contributing
 

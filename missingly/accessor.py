@@ -17,24 +17,24 @@ allows the entire missingly API to be used as fluent method chains:
         .miss.miss_as_feature()
     )
 
-    # Visualisation — returns the Axes, not the DataFrame
+    # Visualisation — returns Axes, not DataFrame
     ax = df.miss.vis_miss()
     summary = df.miss.miss_var_summary()
 
 Design notes
 ------------
-* Manipulation methods (``replace_with_na``, ``remove_empty``, …)
-  return the **transformed DataFrame** so they are chainable.
-* Summary / stats methods (``n_miss``, ``miss_var_summary``, …)
-  return their natural output type (scalar, DataFrame, dict, …).
-* Visualisation methods return the matplotlib Axes object (or dict
-  of Axes for multi-panel plots such as ``upset``).
+* Manipulation / imputation methods return the **transformed DataFrame**
+  so they are chainable.
+* Summary / stats methods return their natural output type
+  (scalar, DataFrame, dict, …).
+* Visualisation methods return the matplotlib Axes object (or dict of
+  Axes for multi-panel plots such as ``upset``).
 * The accessor never mutates ``self._df``; every manipulation method
   works on a copy.
 
 Compatibility
 -------------
-Compatible with Python 3.9+.
+Requires Python 3.9+ and pandas 2.0+.
 """
 
 from __future__ import annotations
@@ -86,10 +86,7 @@ class MissinglyAccessor:
     >>> df = pd.DataFrame({'A': [1, None, 3], 'B': [None, 2, 3]})
     >>> df.miss.n_miss()
     2
-    >>> df.miss.replace_with_na({'A': -99}).miss.remove_empty()
-         A    B
-    0  1.0  NaN
-    2  3.0  3.0
+    >>> cleaned = df.miss.replace_with_na({'A': -99}).miss.remove_empty()
     """
 
     def __init__(self, pandas_obj: pd.DataFrame) -> None:
@@ -128,13 +125,11 @@ class MissinglyAccessor:
         Parameters
         ----------
         condition : callable
-            Passed directly to
-            :func:`missingly.manipulation.replace_with_na_all`.
+            Passed to :func:`missingly.manipulation.replace_with_na_all`.
 
         Returns
         -------
         pd.DataFrame
-            Transformed copy of the wrapped DataFrame.
         """
         return manipulation.replace_with_na_all(self._df, condition)
 
@@ -152,14 +147,13 @@ class MissinglyAccessor:
         case : str, optional
             Passed to :func:`missingly.manipulation.clean_names`.
         sep : str, optional
-            Passed to :func:`missingly.manipulation.clean_names`.
+            Word separator.  Passed to :func:`missingly.manipulation.clean_names`.
         strip_accents : bool, optional
             Passed to :func:`missingly.manipulation.clean_names`.
 
         Returns
         -------
         pd.DataFrame
-            DataFrame with cleaned column names.
         """
         return manipulation.clean_names(
             self._df, case=case, sep=sep, strip_accents=strip_accents
@@ -177,13 +171,18 @@ class MissinglyAccessor:
 
         Parameters
         ----------
-        axis, missing_values, thresh_row, thresh_col
-            Passed to :func:`missingly.manipulation.remove_empty`.
+        axis : str or int, optional
+            ``'both'`` (default), ``'rows'``, or ``'cols'``.
+        missing_values : list, optional
+            Sentinel values treated as missing.
+        thresh_row : float, optional
+            Drop rows with a missing fraction above this threshold (0–1).
+        thresh_col : float, optional
+            Drop columns with a missing fraction above this threshold (0–1).
 
         Returns
         -------
         pd.DataFrame
-            Filtered copy of the wrapped DataFrame.
         """
         return manipulation.remove_empty(
             self._df,
@@ -199,17 +198,20 @@ class MissinglyAccessor:
         *donors: str,
         remove_donors: bool = False,
     ) -> pd.DataFrame:
-        """Fill missing values in *target* from donor columns.
+        """Fill missing values in *target* from donor columns (SQL COALESCE).
 
         Parameters
         ----------
-        target, *donors, remove_donors
-            Passed to :func:`missingly.manipulation.coalesce_columns`.
+        target : str
+            Column to fill.
+        *donors : str
+            One or more columns used as fill sources, in priority order.
+        remove_donors : bool, optional
+            If ``True``, drop donor columns after coalescing.
 
         Returns
         -------
         pd.DataFrame
-            Transformed copy of the wrapped DataFrame.
         """
         return manipulation.coalesce_columns(
             self._df, target, *donors, remove_donors=remove_donors
@@ -227,13 +229,19 @@ class MissinglyAccessor:
 
         Parameters
         ----------
-        columns, missing_values, suffix, keep_original
-            Passed to :func:`missingly.manipulation.miss_as_feature`.
+        columns : list of str, optional
+            Columns to create indicators for.  Defaults to all columns
+            that have at least one missing value.
+        missing_values : list, optional
+            Sentinel values treated as missing.
+        suffix : str, optional
+            Suffix appended to each indicator column name.
+        keep_original : bool, optional
+            If ``False``, original columns are dropped.
 
         Returns
         -------
         pd.DataFrame
-            DataFrame with indicator columns appended.
         """
         return manipulation.miss_as_feature(
             self._df,
@@ -258,7 +266,6 @@ class MissinglyAccessor:
         Returns
         -------
         pd.DataFrame
-            Imputed copy of the wrapped DataFrame.
         """
         return impute_mean(self._df, **kwargs)
 
@@ -421,6 +428,10 @@ class MissinglyAccessor:
     def bind_shadow(self, missing_values: Optional[List] = None) -> pd.DataFrame:
         """Return the DataFrame with a shadow matrix appended.
 
+        The shadow matrix contains binary (True/False) columns suffixed
+        with ``_NA``, one per original column, indicating missingness.
+        The result has twice as many columns as the input.
+
         Parameters
         ----------
         missing_values : list, optional
@@ -442,14 +453,14 @@ class MissinglyAccessor:
         Returns
         -------
         dict
-            Test result with keys ``statistic``, ``df``, ``p_value``.
+            Keys: ``statistic``, ``df``, ``p_value``.
         """
         return stats.mcar_test(self._df)
 
     def mar_mnar_test(
         self, target_col: Optional[str] = None
     ) -> pd.DataFrame:
-        """Test for MAR / MNAR patterns using logistic regression.
+        """Test for MAR / MNAR patterns.
 
         Parameters
         ----------
@@ -600,6 +611,30 @@ class MissinglyAccessor:
         return visualise.miss_case(
             self._df, ax=ax, missing_values=missing_values, **kwargs
         )
+
+    def vis_impute_dist(
+        self,
+        imputed_df: pd.DataFrame,
+        ax=None,
+        **kwargs,
+    ):
+        """Compare distributions before and after imputation.
+
+        Parameters
+        ----------
+        imputed_df : pd.DataFrame
+            The imputed version of the wrapped DataFrame, used as the
+            "after" distribution.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on.
+        **kwargs
+            Forwarded to :func:`missingly.visualise.vis_impute_dist`.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        return visualise.vis_impute_dist(self._df, imputed_df, ax=ax, **kwargs)
 
     def vis_miss_fct(
         self,

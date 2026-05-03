@@ -7,11 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `coalesce_columns()` — SQL-style COALESCE across columns; fills target
+  column from donor columns in priority order
+- `clean_names()` — normalise column names to `snake_case` (or `upper` /
+  `snake` variants); deduplicates collisions; preserves Persian/Unicode
+- `remove_empty()` — drop fully- or mostly-empty rows/columns with
+  `thresh_row` / `thresh_col` fraction thresholds and sentinel support
+- `miss_as_feature()` — add binary `_NA` indicator columns for each column
+  with missing values; configurable suffix, sentinel support, column ordering
+- **Pandas chaining accessor** (`df.miss.*`) — every public missingly
+  function exposed as a method; manipulation/imputation methods return
+  `DataFrame` for fluent pipelines; registered automatically on `import missingly`
+
+### Fixed
+- `test_coalesce_does_not_mutate` — replaced broken `list.__eq__` NaN
+  comparison with `np.testing.assert_array_equal` (IEEE 754: `nan != nan`)
+
+### Changed
+- **Minimum pandas version bumped to 2.0** (was 1.0).  The `DataFrame.map()`
+  API used in manipulation functions requires pandas ≥ 2.0.
+- Minimum versions of numpy (1.24), matplotlib (3.7), seaborn (0.12),
+  scipy (1.10), scikit-learn (1.2), statsmodels (0.14), and jinja2 (3.1)
+  aligned with the pandas 2.0 era.
+- `pyproject.toml` classifiers now include Python 3.14.
+
 ## [0.1.0] - 2025-09-12
 
 ### Added
 - Initial release of missingly package
-- **Summary Functions**: 
+- **Summary Functions**:
   - `bind_shadow()` - Bind shadow matrix to dataframe
   - `n_miss()` - Count total missing values
   - `n_complete()` - Count total non-missing values
@@ -33,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `vis_miss_cumsum_case()` - Cumulative sum of missing values per case
   - `vis_miss_span()` - Missing values in repeating spans
   - `vis_parallel_coords()` - Parallel coordinates plot of missingness patterns
+  - `heatmap()` - Nullity-correlation heatmap
+  - `vis_miss()` - Annotated missingness overview matrix
+  - `miss_var_pct()` - Horizontal bar chart of missingness % per variable
+  - `miss_cluster()` - Clustered missingness heatmap
+  - `miss_which()` - Binary tile plot showing which columns have missing data
 
 - **Statistical Tests**:
   - `mcar_test()` - Little's MCAR test (adapted from XeroGraph library)
@@ -73,12 +103,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - statsmodels >= 0.12.0
 - jinja2 >= 3.0.0
 
-### Documentation
-- Complete API documentation
-- Usage examples and tutorials
-- Contributing guidelines
-- MIT License
-
 ### Attribution
 - Little's MCAR test implementation adapted from XeroGraph library by Julhash Kazi (Apache License 2.0)
 - Package inspired by R's naniar package
@@ -86,21 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Future Releases
 
 ### Planned for 0.2.0
-- [ ] Additional visualization options
-- [ ] More sophisticated missing data pattern analysis
-- [ ] Integration with more imputation libraries
-- [ ] Performance optimizations for large datasets
-- [ ] Additional statistical tests for missing data mechanisms
-
-### Planned for 0.3.0
 - [ ] Interactive visualizations with plotly
 - [ ] Time series missing data analysis
 - [ ] Missing data simulation utilities
-- [ ] Advanced reporting with customizable templates
-
----
-
-**Note**: This project follows semantic versioning. Given the initial release nature:
-- MAJOR version increments for incompatible API changes
-- MINOR version increments for backwards-compatible functionality additions  
-- PATCH version increments for backwards-compatible bug fixes
+- [ ] Performance optimizations for large datasets
+- [ ] Additional statistical tests for missing data mechanisms
