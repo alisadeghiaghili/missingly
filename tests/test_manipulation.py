@@ -304,11 +304,15 @@ def test_coalesce_missing_col_raises():
 
 
 def test_coalesce_does_not_mutate():
-    """coalesce_columns must not mutate the original DataFrame."""
+    """coalesce_columns must not mutate the original DataFrame.
+
+    Uses pd.array_equiv for comparison because ``nan != nan`` in Python,
+    which causes a plain list equality check to fail spuriously.
+    """
     df = pd.DataFrame({'a': [1.0, np.nan], 'b': [np.nan, 2.0]})
-    original_a = list(df['a'])
+    original_a = df['a'].copy()
     coalesce_columns(df, 'a', 'b')
-    assert list(df['a']) == original_a
+    assert pd.array_equiv(df['a'].values, original_a.values)
 
 
 # ---------------------------------------------------------------------------
