@@ -26,10 +26,12 @@ impute_ts
 
 from __future__ import annotations
 
+import inspect
 from typing import List, Literal, Optional
 
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
@@ -132,6 +134,30 @@ def _gaps_for_column(
         })
 
     return gaps
+
+
+def _boxplot_compat(ax, data: list, labels: list, **kwargs) -> None:
+    """Call ax.boxplot() with the correct label parameter name.
+
+    matplotlib 3.9 renamed the ``labels`` parameter to ``tick_labels``.
+    This helper inspects the running matplotlib version and passes the
+    right keyword so the code works on both old and new releases without
+    deprecation warnings.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Target axes.
+    data : list
+        List of arrays to plot, one per box.
+    labels : list
+        Tick labels, one per box.
+    **kwargs
+        Additional keyword arguments forwarded to ``ax.boxplot``.
+    """
+    mpl_version = tuple(int(x) for x in matplotlib.__version__.split(".")[:2])
+    label_kwarg = "tick_labels" if mpl_version >= (3, 9) else "labels"
+    ax.boxplot(data, **{label_kwarg: labels}, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +431,7 @@ def vis_gap_lengths(
         data = [gt.loc[gt["column"] == col, "length"].values for col in df.columns
                 if col in gt["column"].values]
         labels = [col for col in df.columns if col in gt["column"].values]
-        ax.boxplot(data, labels=labels, **kwargs)
+        _boxplot_compat(ax, data, labels, **kwargs)
         ax.set_ylabel("Gap length (rows)")
         ax.set_title("Distribution of Gap Lengths per Variable")
         plt.xticks(rotation=45, ha="right")
@@ -581,12 +607,13 @@ def impute_ts(
     num_cols = result.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = result.select_dtypes(exclude=[np.number]).columns.tolist()
 
-    # Numeric columns — use the chosen strategy
+    # Numeric columns — use the chosen strategy.
+    # fillna(method=) was removed in pandas 2.2; use ffill()/bfill() directly.
     if num_cols:
-        if strategy in ("ffill", "bfill"):
-            result[num_cols] = result[num_cols].fillna(
-                method=strategy, limit=limit  # type: ignore[arg-type]
-            )
+        if strategy == "ffill":
+            result[num_cols] = result[num_cols].ffill(limit=limit)
+        elif strategy == "bfill":
+            result[num_cols] = result[num_cols].bfill(limit=limit)
         elif strategy == "linear":
             result[num_cols] = result[num_cols].interpolate(
                 method="linear", limit=limit, limit_direction="forward"
