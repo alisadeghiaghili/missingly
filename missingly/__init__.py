@@ -1,7 +1,7 @@
 # missingly - A Python library for missing data analysis
 #
 # Author: Ali Sadeghi Aghili <alisadeghiaghili@gmail.com>
-# inspired by the R package naniar
+# Inspired by the R package naniar
 
 __version__ = "0.1.0"
 
@@ -32,6 +32,13 @@ from .visualise import (
     miss_var_pct,
     miss_cluster,
     miss_which,
+    # new
+    miss_patterns,
+    miss_cooccurrence,
+    miss_row_profile,
+    shadow_scatter,
+    vis_miss_by_group,
+    miss_impute_compare,
 )
 from .stats import (
     mcar_test,
@@ -69,54 +76,43 @@ from .timeseries import (
 from . import accessor  # noqa: F401
 
 __all__ = [
-    "bind_shadow",
-    "n_miss",
-    "n_complete",
-    "pct_miss",
-    "pct_complete",
-    "miss_var_summary",
-    "miss_case_summary",
-    "matrix",
-    "bar",
-    "upset",
-    "dendrogram",
-    "scatter_miss",
-    "miss_case",
+    # summary
+    "bind_shadow", "n_miss", "n_complete", "pct_miss", "pct_complete",
+    "miss_var_summary", "miss_case_summary",
+    # visualise — basic
+    "matrix", "bar", "miss_case", "miss_var_pct", "vis_miss", "miss_which",
+    # visualise — pattern
+    "upset", "miss_patterns", "miss_cooccurrence",
+    # visualise — correlation / clustering
+    "heatmap", "dendrogram", "miss_cluster",
+    # visualise — row/variable profiles
+    "miss_row_profile", "miss_impute_compare",
+    # visualise — shadow / MAR
+    "shadow_scatter",
+    # visualise — factor / group
+    "vis_miss_fct", "vis_miss_by_group",
+    # visualise — imputation diagnostics
     "vis_impute_dist",
-    "vis_miss_fct",
-    "vis_miss_cumsum_var",
-    "vis_miss_cumsum_case",
-    "vis_miss_span",
-    "vis_parallel_coords",
-    "heatmap",
-    "vis_miss",
-    "miss_var_pct",
-    "miss_cluster",
-    "miss_which",
-    "mcar_test",
-    "mar_mnar_test",
-    "replace_with_na",
-    "replace_with_na_all",
-    "clean_names",
-    "remove_empty",
-    "coalesce_columns",
-    "miss_as_feature",
-    "impute_mean",
-    "impute_median",
-    "impute_mode",
-    "impute_knn",
-    "impute_mice",
-    "impute_rf",
-    "impute_gb",
+    # visualise — misc
+    "scatter_miss", "vis_miss_cumsum_var", "vis_miss_cumsum_case",
+    "vis_miss_span", "vis_parallel_coords",
+    # stats
+    "mcar_test", "mar_mnar_test",
+    # manipulation
+    "replace_with_na", "replace_with_na_all", "clean_names",
+    "remove_empty", "coalesce_columns", "miss_as_feature",
+    # impute
+    "impute_mean", "impute_median", "impute_mode",
+    "impute_knn", "impute_mice", "impute_rf", "impute_gb",
+    # transformer
     "MissinglyImputer",
+    # report
     "create_report",
+    # compare
     "compare_imputations",
-    # time series
-    "miss_ts_summary",
-    "gap_table",
-    "vis_ts_miss",
-    "vis_gap_lengths",
-    "vis_miss_over_time",
-    "impute_ts",
+    # timeseries
+    "miss_ts_summary", "gap_table", "vis_ts_miss",
+    "vis_gap_lengths", "vis_miss_over_time", "impute_ts",
+    # accessor
     "accessor",
 ]

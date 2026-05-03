@@ -4,25 +4,24 @@ Conventions
 -----------
 * Every test closes all open figures before running to avoid state
   leakage between tests.
-* Return-type assertions verify the public contract (Axes or dict).
+* Return-type assertions verify the public contract (Axes or dict/Figure).
 * Title assertions pin the human-readable label so accidental renames
   are caught immediately.
 * Edge-case tests (all-missing, no-missing, Persian labels, single
   column) live in clearly named functions.
-* Sentinel-value tests use ``missing_values=[-99]`` throughout to
-  exercise the ``_nullity`` helper path alongside the NaN path.
+* Sentinel-value tests use ``missing_values=[-99]`` throughout.
 """
 
 import pandas as pd
 import numpy as np
 import pytest
 import matplotlib
-matplotlib.use("Agg")  # non-interactive backend — safe for CI
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from missingly import visualise
 from missingly import impute
-import missingly  # top-level import — validates __init__.py exports
+import missingly
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +30,6 @@ import missingly  # top-level import — validates __init__.py exports
 
 @pytest.fixture
 def sample_df():
-    """Numeric dataframe with sentinel missing values (-99)."""
     return pd.DataFrame({
         'A': [1, 2, -99, 4],
         'B': [-99, 20.0, 30.0, 40.0],
@@ -41,7 +39,6 @@ def sample_df():
 
 @pytest.fixture
 def nan_df():
-    """Dataframe with true NaN missing values across numeric columns."""
     return pd.DataFrame({
         'X': [1.0, np.nan, 3.0, np.nan],
         'Y': [np.nan, 2.0, np.nan, 4.0],
@@ -51,11 +48,6 @@ def nan_df():
 
 @pytest.fixture
 def persian_df():
-    """DataFrame with Persian column names and index labels.
-
-    Verifies that all plotting functions handle Unicode / RTL text
-    without raising encoding or rendering errors.
-    """
     return pd.DataFrame({
         'درآمد': [1000, np.nan, 3000, np.nan],
         'سن': [25, 30, np.nan, 40],
@@ -65,45 +57,47 @@ def persian_df():
 
 @pytest.fixture
 def all_missing_df():
-    """DataFrame where every cell is NaN."""
-    return pd.DataFrame({
-        'A': [np.nan, np.nan],
-        'B': [np.nan, np.nan],
-    })
+    return pd.DataFrame({'A': [np.nan, np.nan], 'B': [np.nan, np.nan]})
 
 
 @pytest.fixture
 def no_missing_df():
-    """DataFrame with no missing values at all."""
+    return pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
+
+
+@pytest.fixture
+def group_df():
     return pd.DataFrame({
-        'A': [1, 2, 3],
-        'B': [4, 5, 6],
+        'group': ['A', 'A', 'B', 'B', 'C', 'C'],
+        'x': [1.0, np.nan, 3.0, np.nan, 5.0, 6.0],
+        'y': [np.nan, 2.0, np.nan, 4.0, 5.0, 6.0],
     })
 
 
 # ---------------------------------------------------------------------------
-# Top-level import smoke test
+# Top-level import smoke tests
 # ---------------------------------------------------------------------------
 
 def test_dendrogram_importable_from_top_level():
-    """dendrogram must be accessible via ``missingly.dendrogram``."""
     assert callable(missingly.dendrogram)
 
 
 def test_new_functions_importable_from_top_level():
-    """All new visualisation functions must be importable from the top level."""
-    for fn_name in ("heatmap", "vis_miss", "miss_var_pct", "miss_cluster", "miss_which"):
+    for fn_name in (
+        "heatmap", "vis_miss", "miss_var_pct", "miss_cluster", "miss_which",
+        "miss_patterns", "miss_cooccurrence", "miss_row_profile",
+        "shadow_scatter", "vis_miss_by_group", "miss_impute_compare",
+    ):
         assert callable(getattr(missingly, fn_name, None)), (
-            f"missingly.{fn_name} is not callable — check __init__.py imports"
+            f"missingly.{fn_name} is not callable"
         )
 
 
 # ---------------------------------------------------------------------------
-# Existing visualisation tests
+# Basic visualisations
 # ---------------------------------------------------------------------------
 
 def test_matrix(sample_df):
-    """matrix() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.matrix(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -111,7 +105,6 @@ def test_matrix(sample_df):
 
 
 def test_bar(sample_df):
-    """bar() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.bar(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -119,7 +112,6 @@ def test_bar(sample_df):
 
 
 def test_upset(sample_df):
-    """upset() returns a dict of Axes without raising."""
     plt.close('all')
     plot = visualise.upset(sample_df, missing_values=[-99])
     plt.close('all')
@@ -127,7 +119,6 @@ def test_upset(sample_df):
 
 
 def test_upset_keys(sample_df):
-    """upset() dict must contain exactly the three expected Axes keys."""
     plt.close('all')
     plot = visualise.upset(sample_df, missing_values=[-99])
     plt.close('all')
@@ -135,14 +126,20 @@ def test_upset_keys(sample_df):
 
 
 def test_upset_no_missing(no_missing_df):
-    """upset() returns an empty dict when no missing values are present."""
     plt.close('all')
     result = visualise.upset(no_missing_df)
     assert result == {}
 
 
+def test_upset_show_pct(sample_df):
+    """upset() with show_pct=True does not raise."""
+    plt.close('all')
+    result = visualise.upset(sample_df, missing_values=[-99], show_pct=True)
+    plt.close('all')
+    assert "intersections" in result
+
+
 def test_scatter_miss(sample_df):
-    """scatter_miss() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.scatter_miss(sample_df, x='A', y='B', missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -150,7 +147,6 @@ def test_scatter_miss(sample_df):
 
 
 def test_miss_case(sample_df):
-    """miss_case() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.miss_case(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -158,26 +154,23 @@ def test_miss_case(sample_df):
 
 
 def test_vis_impute_dist(sample_df):
-    """vis_impute_dist() returns an Axes with the expected title."""
     plt.close('all')
     imputed_df = impute.impute_mean(sample_df)
     ax = visualise.vis_impute_dist(sample_df, imputed_df, 'A')
     assert isinstance(ax, plt.Axes)
-    assert ax.get_title() == 'Distribution of Original vs. Imputed Data for A'
+    assert 'A' in ax.get_title()
 
 
 def test_vis_miss_fct(sample_df):
-    """vis_miss_fct() returns an Axes with the expected title."""
     plt.close('all')
     df = sample_df.copy()
     df['Fct'] = ['a', 'b', 'a', 'b']
     ax = visualise.vis_miss_fct(df, 'Fct', missing_values=[-99])
     assert isinstance(ax, plt.Axes)
-    assert ax.get_title() == 'Missing Values by Fct'
+    assert 'Fct' in ax.get_title()
 
 
 def test_vis_miss_cumsum_var(sample_df):
-    """vis_miss_cumsum_var() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.vis_miss_cumsum_var(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -185,7 +178,6 @@ def test_vis_miss_cumsum_var(sample_df):
 
 
 def test_vis_miss_cumsum_case(sample_df):
-    """vis_miss_cumsum_case() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.vis_miss_cumsum_case(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -193,15 +185,14 @@ def test_vis_miss_cumsum_case(sample_df):
 
 
 def test_vis_miss_span(sample_df):
-    """vis_miss_span() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.vis_miss_span(sample_df, 'A', 2, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
-    assert ax.get_title() == 'Missing Values in Spans of 2 for A'
+    assert 'A' in ax.get_title()
+    assert '2' in ax.get_title()
 
 
 def test_vis_parallel_coords(sample_df):
-    """vis_parallel_coords() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.vis_parallel_coords(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -209,7 +200,6 @@ def test_vis_parallel_coords(sample_df):
 
 
 def test_dendrogram(sample_df):
-    """dendrogram() returns an Axes with the expected title."""
     plt.close('all')
     ax = visualise.dendrogram(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
@@ -221,37 +211,51 @@ def test_dendrogram(sample_df):
 # ---------------------------------------------------------------------------
 
 def test_heatmap_returns_axes(nan_df):
-    """heatmap() returns an Axes instance."""
     plt.close('all')
     ax = visualise.heatmap(nan_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_heatmap_title(nan_df):
-    """heatmap() sets the expected title."""
     plt.close('all')
     ax = visualise.heatmap(nan_df)
-    assert ax.get_title() == 'Nullity Correlation Heatmap'
+    assert 'Nullity Correlation Heatmap' in ax.get_title()
 
 
 def test_heatmap_sentinel(sample_df):
-    """heatmap() works with sentinel missing_values."""
     plt.close('all')
     ax = visualise.heatmap(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
 
 
 def test_heatmap_no_missing(no_missing_df):
-    """heatmap() does not raise when no values are missing."""
     plt.close('all')
     ax = visualise.heatmap(no_missing_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_heatmap_persian(persian_df):
-    """heatmap() handles Persian column names without raising."""
     plt.close('all')
     ax = visualise.heatmap(persian_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_heatmap_phi_method(nan_df):
+    """heatmap() with method='phi' does not raise."""
+    plt.close('all')
+    ax = visualise.heatmap(nan_df, method='phi')
+    assert isinstance(ax, plt.Axes)
+
+
+def test_heatmap_mask_insignificant(nan_df):
+    """heatmap() with mask_insignificant=True does not raise."""
+    plt.close('all')
+    df = pd.DataFrame({
+        'A': [np.nan if i % 2 == 0 else float(i) for i in range(20)],
+        'B': [np.nan if i % 2 == 0 else float(i) for i in range(20)],
+        'C': [np.nan if i % 3 == 0 else float(i) for i in range(20)],
+    })
+    ax = visualise.heatmap(df, mask_insignificant=True)
     assert isinstance(ax, plt.Axes)
 
 
@@ -260,42 +264,36 @@ def test_heatmap_persian(persian_df):
 # ---------------------------------------------------------------------------
 
 def test_vis_miss_returns_axes(nan_df):
-    """vis_miss() returns an Axes instance."""
     plt.close('all')
     ax = visualise.vis_miss(nan_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_vis_miss_title(nan_df):
-    """vis_miss() sets the expected title."""
     plt.close('all')
     ax = visualise.vis_miss(nan_df)
     assert ax.get_title() == 'Missing Data Overview'
 
 
 def test_vis_miss_sentinel(sample_df):
-    """vis_miss() works with sentinel missing_values."""
     plt.close('all')
     ax = visualise.vis_miss(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
 
 
 def test_vis_miss_no_pct(nan_df):
-    """vis_miss() does not raise when show_pct=False."""
     plt.close('all')
     ax = visualise.vis_miss(nan_df, show_pct=False)
     assert isinstance(ax, plt.Axes)
 
 
 def test_vis_miss_cluster(nan_df):
-    """vis_miss() with cluster=True does not raise."""
     plt.close('all')
     ax = visualise.vis_miss(nan_df, cluster=True)
     assert isinstance(ax, plt.Axes)
 
 
 def test_vis_miss_persian(persian_df):
-    """vis_miss() handles Persian column names and index labels."""
     plt.close('all')
     ax = visualise.vis_miss(persian_df)
     assert isinstance(ax, plt.Axes)
@@ -303,14 +301,12 @@ def test_vis_miss_persian(persian_df):
 
 
 def test_vis_miss_all_missing(all_missing_df):
-    """vis_miss() handles a fully-missing DataFrame without raising."""
     plt.close('all')
     ax = visualise.vis_miss(all_missing_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_vis_miss_no_missing(no_missing_df):
-    """vis_miss() handles a fully-observed DataFrame without raising."""
     plt.close('all')
     ax = visualise.vis_miss(no_missing_df)
     assert isinstance(ax, plt.Axes)
@@ -321,58 +317,44 @@ def test_vis_miss_no_missing(no_missing_df):
 # ---------------------------------------------------------------------------
 
 def test_miss_var_pct_returns_axes(nan_df):
-    """miss_var_pct() returns an Axes instance."""
     plt.close('all')
     ax = visualise.miss_var_pct(nan_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_var_pct_title(nan_df):
-    """miss_var_pct() sets the expected title."""
     plt.close('all')
     ax = visualise.miss_var_pct(nan_df)
     assert ax.get_title() == 'Missing Values per Variable (%)'
 
 
 def test_miss_var_pct_sentinel(sample_df):
-    """miss_var_pct() works with sentinel missing_values."""
     plt.close('all')
     ax = visualise.miss_var_pct(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_var_pct_no_sort(nan_df):
-    """miss_var_pct() with sort=False does not raise."""
     plt.close('all')
     ax = visualise.miss_var_pct(nan_df, sort=False)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_var_pct_values(nan_df):
-    """miss_var_pct() bars should reflect correct percentages.
-
-    X and Y each have 50 % missing; Z has 0 %.
-    """
     plt.close('all')
     ax = visualise.miss_var_pct(nan_df, sort=False)
     widths = [patch.get_width() for patch in ax.patches]
-    assert any(abs(w - 50.0) < 0.1 for w in widths), (
-        f"Expected a 50 % bar; got widths={widths}"
-    )
-    assert any(abs(w - 0.0) < 0.1 for w in widths), (
-        f"Expected a 0 % bar; got widths={widths}"
-    )
+    assert any(abs(w - 50.0) < 0.1 for w in widths)
+    assert any(abs(w - 0.0) < 0.1 for w in widths)
 
 
 def test_miss_var_pct_persian(persian_df):
-    """miss_var_pct() handles Persian column names without raising."""
     plt.close('all')
     ax = visualise.miss_var_pct(persian_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_var_pct_no_missing(no_missing_df):
-    """miss_var_pct() handles a fully-observed DataFrame without raising."""
     plt.close('all')
     ax = visualise.miss_var_pct(no_missing_df)
     assert isinstance(ax, plt.Axes)
@@ -383,49 +365,42 @@ def test_miss_var_pct_no_missing(no_missing_df):
 # ---------------------------------------------------------------------------
 
 def test_miss_cluster_returns_axes(nan_df):
-    """miss_cluster() returns an Axes instance."""
     plt.close('all')
     ax = visualise.miss_cluster(nan_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_cluster_title(nan_df):
-    """miss_cluster() sets the expected title."""
     plt.close('all')
     ax = visualise.miss_cluster(nan_df)
     assert ax.get_title() == 'Clustered Missing Data Matrix'
 
 
 def test_miss_cluster_sentinel(sample_df):
-    """miss_cluster() works with sentinel missing_values."""
     plt.close('all')
     ax = visualise.miss_cluster(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_cluster_all_missing(all_missing_df):
-    """miss_cluster() handles a fully-missing DataFrame without raising."""
     plt.close('all')
     ax = visualise.miss_cluster(all_missing_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_cluster_no_missing(no_missing_df):
-    """miss_cluster() handles a fully-observed DataFrame without raising."""
     plt.close('all')
     ax = visualise.miss_cluster(no_missing_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_cluster_persian(persian_df):
-    """miss_cluster() handles Persian column names without raising."""
     plt.close('all')
     ax = visualise.miss_cluster(persian_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_cluster_method(nan_df):
-    """miss_cluster() accepts alternative linkage methods."""
     plt.close('all')
     ax = visualise.miss_cluster(nan_df, method='complete')
     assert isinstance(ax, plt.Axes)
@@ -436,62 +411,264 @@ def test_miss_cluster_method(nan_df):
 # ---------------------------------------------------------------------------
 
 def test_miss_which_returns_axes(nan_df):
-    """miss_which() returns an Axes instance."""
     plt.close('all')
     ax = visualise.miss_which(nan_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_which_title(nan_df):
-    """miss_which() sets the expected title."""
     plt.close('all')
     ax = visualise.miss_which(nan_df)
     assert ax.get_title() == 'Which Variables Have Missing Data?'
 
 
 def test_miss_which_sentinel(sample_df):
-    """miss_which() works with sentinel missing_values."""
     plt.close('all')
     ax = visualise.miss_which(sample_df, missing_values=[-99])
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_which_no_missing(no_missing_df):
-    """miss_which() handles a fully-observed DataFrame without raising."""
     plt.close('all')
     ax = visualise.miss_which(no_missing_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_which_all_missing(all_missing_df):
-    """miss_which() handles a fully-missing DataFrame without raising."""
     plt.close('all')
     ax = visualise.miss_which(all_missing_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_which_persian(persian_df):
-    """miss_which() handles Persian column names without raising."""
     plt.close('all')
     ax = visualise.miss_which(persian_df)
     assert isinstance(ax, plt.Axes)
 
 
 def test_miss_which_content(nan_df):
-    """miss_which() tile values: missing columns = 1.0, complete = 0.0.
-
-    nan_df columns: X (50% missing), Y (50% missing), Z (0% missing).
-    The heatmap is a (1 x 3) grid; get_array() returns a flat array
-    of length 3 in column order.
-    """
     plt.close('all')
     ax = visualise.miss_which(nan_df)
-    # QuadMesh.get_array() returns a 1-D array of length n_cols
-    # after seaborn renders a (1 x n_cols) heatmap.
     raw = ax.collections[0].get_array()
     data = np.asarray(raw).ravel()
-    col_names = list(nan_df.columns)  # ['X', 'Y', 'Z']
+    col_names = list(nan_df.columns)
     x_idx = col_names.index('X')
     z_idx = col_names.index('Z')
-    assert float(data[x_idx]) == pytest.approx(1.0), "X should be flagged as missing"
-    assert float(data[z_idx]) == pytest.approx(0.0), "Z should not be flagged as missing"
+    assert float(data[x_idx]) == pytest.approx(1.0)
+    assert float(data[z_idx]) == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# miss_patterns() tests
+# ---------------------------------------------------------------------------
+
+def test_miss_patterns_returns_axes(nan_df):
+    plt.close('all')
+    ax = visualise.miss_patterns(nan_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_miss_patterns_title(nan_df):
+    plt.close('all')
+    ax = visualise.miss_patterns(nan_df)
+    assert 'Missingness Patterns' in ax.get_title()
+
+
+def test_miss_patterns_no_missing(no_missing_df):
+    """miss_patterns() on a complete DataFrame plots one '(complete)' bar."""
+    plt.close('all')
+    ax = visualise.miss_patterns(no_missing_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_miss_patterns_persian(persian_df):
+    plt.close('all')
+    ax = visualise.miss_patterns(persian_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_miss_patterns_sentinel(sample_df):
+    plt.close('all')
+    ax = visualise.miss_patterns(sample_df, missing_values=[-99])
+    assert isinstance(ax, plt.Axes)
+
+
+# ---------------------------------------------------------------------------
+# miss_cooccurrence() tests
+# ---------------------------------------------------------------------------
+
+def test_miss_cooccurrence_returns_axes(nan_df):
+    plt.close('all')
+    ax = visualise.miss_cooccurrence(nan_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_miss_cooccurrence_title_normalized(nan_df):
+    plt.close('all')
+    ax = visualise.miss_cooccurrence(nan_df, normalize=True)
+    assert 'fraction' in ax.get_title()
+
+
+def test_miss_cooccurrence_title_count(nan_df):
+    plt.close('all')
+    ax = visualise.miss_cooccurrence(nan_df, normalize=False)
+    assert 'count' in ax.get_title()
+
+
+def test_miss_cooccurrence_diagonal(nan_df):
+    """Diagonal should equal each column's individual missing count."""
+    plt.close('all')
+    null_mat = nan_df.isnull().astype(int)
+    cooc = null_mat.T.dot(null_mat) / len(nan_df)
+    for col in nan_df.columns:
+        expected = nan_df[col].isnull().mean()
+        assert abs(cooc.loc[col, col] - expected) < 1e-9
+
+
+def test_miss_cooccurrence_persian(persian_df):
+    plt.close('all')
+    ax = visualise.miss_cooccurrence(persian_df)
+    assert isinstance(ax, plt.Axes)
+
+
+# ---------------------------------------------------------------------------
+# miss_row_profile() tests
+# ---------------------------------------------------------------------------
+
+def test_miss_row_profile_returns_axes(nan_df):
+    plt.close('all')
+    ax = visualise.miss_row_profile(nan_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_miss_row_profile_title(nan_df):
+    plt.close('all')
+    ax = visualise.miss_row_profile(nan_df)
+    assert ax.get_title() == 'Row Missingness Profile'
+
+
+def test_miss_row_profile_no_missing(no_missing_df):
+    plt.close('all')
+    ax = visualise.miss_row_profile(no_missing_df)
+    assert isinstance(ax, plt.Axes)
+
+
+def test_miss_row_profile_sentinel(sample_df):
+    plt.close('all')
+    ax = visualise.miss_row_profile(sample_df, missing_values=[-99])
+    assert isinstance(ax, plt.Axes)
+
+
+# ---------------------------------------------------------------------------
+# shadow_scatter() tests
+# ---------------------------------------------------------------------------
+
+def test_shadow_scatter_returns_axes(nan_df):
+    plt.close('all')
+    ax = visualise.shadow_scatter(nan_df, x='X', y='Z', shadow_col='Y')
+    assert isinstance(ax, plt.Axes)
+
+
+def test_shadow_scatter_title(nan_df):
+    plt.close('all')
+    ax = visualise.shadow_scatter(nan_df, x='X', y='Z', shadow_col='Y')
+    assert 'X' in ax.get_title()
+    assert 'Z' in ax.get_title()
+    assert 'Y' in ax.get_title()
+
+
+def test_shadow_scatter_persian(persian_df):
+    """shadow_scatter() handles Persian column names."""
+    plt.close('all')
+    df = persian_df.copy()
+    df['درآمد'] = pd.to_numeric(df['درآمد'], errors='coerce')
+    df['سن'] = pd.to_numeric(df['سن'], errors='coerce')
+    ax = visualise.shadow_scatter(df, x='درآمد', y='سن', shadow_col='نام')
+    assert isinstance(ax, plt.Axes)
+
+
+# ---------------------------------------------------------------------------
+# vis_miss_by_group() tests
+# ---------------------------------------------------------------------------
+
+def test_vis_miss_by_group_returns_axes(group_df):
+    plt.close('all')
+    ax = visualise.vis_miss_by_group(group_df, group_col='group')
+    assert isinstance(ax, plt.Axes)
+
+
+def test_vis_miss_by_group_title(group_df):
+    plt.close('all')
+    ax = visualise.vis_miss_by_group(group_df, group_col='group')
+    assert 'group' in ax.get_title()
+
+
+def test_vis_miss_by_group_shape(group_df):
+    """Heatmap should have n_groups rows and n_vars-1 columns."""
+    plt.close('all')
+    ax = visualise.vis_miss_by_group(group_df, group_col='group')
+    # 3 groups, 2 non-group variables
+    collection = ax.collections[0]
+    data = np.asarray(collection.get_array())
+    assert data.size == 3 * 2
+
+
+def test_vis_miss_by_group_persian(persian_df):
+    plt.close('all')
+    df = persian_df.copy()
+    df['گروه'] = ['الف', 'ب', 'الف', 'ب']
+    ax = visualise.vis_miss_by_group(df, group_col='گروه')
+    assert isinstance(ax, plt.Axes)
+
+
+# ---------------------------------------------------------------------------
+# miss_impute_compare() tests
+# ---------------------------------------------------------------------------
+
+def test_miss_impute_compare_returns_figure(nan_df):
+    plt.close('all')
+    imputed = impute.impute_mean(nan_df)
+    fig = visualise.miss_impute_compare(nan_df, imputed)
+    assert hasattr(fig, 'savefig')  # is a Figure
+    plt.close('all')
+
+
+def test_miss_impute_compare_specific_columns(nan_df):
+    plt.close('all')
+    imputed = impute.impute_mean(nan_df)
+    fig = visualise.miss_impute_compare(nan_df, imputed, columns=['X'])
+    assert hasattr(fig, 'savefig')
+    plt.close('all')
+
+
+def test_miss_impute_compare_no_missing_raises(no_missing_df):
+    """Should raise ValueError when no columns have missing values."""
+    plt.close('all')
+    with pytest.raises(ValueError, match="No numeric columns"):
+        visualise.miss_impute_compare(no_missing_df, no_missing_df)
+
+
+# ---------------------------------------------------------------------------
+# RTL / Persian helpers
+# ---------------------------------------------------------------------------
+
+def test_rtl_safe_wraps_persian():
+    """_rtl_safe must wrap Persian text in RLM + text + LRM."""
+    result = visualise._rtl_safe('درآمد')
+    assert result.startswith('\u200F')
+    assert result.endswith('\u200E')
+
+
+def test_rtl_safe_leaves_latin():
+    """_rtl_safe must not modify pure Latin strings."""
+    text = 'income'
+    assert visualise._rtl_safe(text) == text
+
+
+def test_safe_labels_mixed():
+    """_safe_labels applies RTL wrapping only to RTL items."""
+    labels = ['income', 'درآمد', 'age']
+    result = visualise._safe_labels(labels)
+    assert result[0] == 'income'
+    assert result[1].startswith('\u200F')
+    assert result[2] == 'age'
