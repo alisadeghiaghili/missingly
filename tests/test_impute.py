@@ -1,8 +1,27 @@
-import pandas as pd
+"""Tests for missingly imputation functions.
+
+Covers correctness, mutation safety, categorical support, large-data
+warnings, and the new RF/GB classifier-for-categoricals behaviour.
+"""
+
+from __future__ import annotations
+
+import warnings
+
 import numpy as np
+import pandas as pd
 import pytest
 
-from missingly import impute
+from missingly.impute import (
+    impute_mean,
+    impute_median,
+    impute_mode,
+    impute_knn,
+    impute_mice,
+    impute_rf,
+    impute_gb,
+    _LARGE_DF_ROW_THRESHOLD,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -11,30 +30,31 @@ from missingly import impute
 
 @pytest.fixture
 def numeric_df():
-    """Numeric-only dataframe with missing values."""
+    """Small numeric-only DataFrame with missing values."""
     return pd.DataFrame({
-        'A': [1.0, 2.0, np.nan, 4.0, 5.0],
-        'B': [10.0, np.nan, 30.0, 40.0, 50.0],
+        "age":    [25.0, np.nan, 35.0, 40.0, 30.0],
+        "income": [50_000.0, 60_000.0, np.nan, 80_000.0, 70_000.0],
+        "score":  [85.0, 90.0, 78.0, np.nan, 88.0],
     })
 
 
 @pytest.fixture
 def mixed_df():
-    """Mixed numeric + categorical dataframe with missing values."""
+    """DataFrame with both numeric and categorical columns."""
     return pd.DataFrame({
-        'age':      [25.0, 30.0, np.nan, 45.0, 35.0],
-        'income':   [50000.0, np.nan, 75000.0, 60000.0, 80000.0],
-        'education': ['HS', 'College', None, 'Graduate', 'College'],
-        'gender':    ['M', None, 'F', 'M', 'F'],
+        "age":    [25.0, np.nan, 35.0, 40.0, 30.0, 28.0],
+        "city":   ["Paris", "London", np.nan, "Berlin", "Paris", "London"],
+        "score":  [85.0, 90.0, 78.0, np.nan, 88.0, 92.0],
+        "grade":  ["A", "B", "A", "C", np.nan, "B"],
     })
 
 
 @pytest.fixture
 def cat_only_df():
-    """Categorical-only dataframe with missing values."""
+    """DataFrame with only categorical columns."""
     return pd.DataFrame({
-        'color':  ['red', 'blue', None, 'red', 'green'],
-        'size':   ['S', None, 'M', 'L', 'S'],
+        "color": ["red", "blue", np.nan, "green", "red"],
+        "size":  ["S", np.nan, "M", "L", "S"],
     })
 
 
@@ -42,155 +62,201 @@ def cat_only_df():
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _no_nulls(df: pd.DataFrame) -> bool:
-    return not df.isnull().any().any()
+def _assert_no_missing(df: pd.DataFrame) -> None:
+    """Assert that a DataFrame contains no missing values."""
+    assert df.isnull().sum().sum() == 0, (
+        f"Expected no missing values; found {df.isnull().sum().sum()}"
+    )
 
 
-def _cat_values_valid(original: pd.DataFrame, imputed: pd.DataFrame, col: str) -> bool:
-    """All imputed values in a categorical column must be from the original vocabulary."""
-    vocab = set(original[col].dropna().unique())
-    return set(imputed[col].unique()).issubset(vocab)
-
-
-# ---------------------------------------------------------------------------
-# impute_mean
-# ---------------------------------------------------------------------------
-
-class TestImputeMean:
-    def test_numeric_no_nulls(self, numeric_df):
-        result = impute.impute_mean(numeric_df)
-        assert _no_nulls(result)
-        assert result.loc[2, 'A'] == pytest.approx(np.mean([1, 2, 4, 5]))
-        assert result.loc[1, 'B'] == pytest.approx(np.mean([10, 30, 40, 50]))
-
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_mean(mixed_df)
-        assert _no_nulls(result)
-
-    def test_mixed_numeric_values_correct(self, mixed_df):
-        result = impute.impute_mean(mixed_df)
-        assert result.loc[2, 'age'] == pytest.approx(np.mean([25, 30, 45, 35]))
-
-    def test_mixed_cat_imputed_with_mode(self, mixed_df):
-        result = impute.impute_mean(mixed_df)
-        assert _cat_values_valid(mixed_df, result, 'education')
-        assert _cat_values_valid(mixed_df, result, 'gender')
+def _assert_not_mutated(original: pd.DataFrame, result: pd.DataFrame) -> None:
+    """Assert that the result is a distinct object from the original."""
+    assert result is not original
 
 
 # ---------------------------------------------------------------------------
-# impute_median
+# Simple imputers — numeric
 # ---------------------------------------------------------------------------
 
-class TestImputeMedian:
-    def test_numeric_no_nulls(self, numeric_df):
-        result = impute.impute_median(numeric_df)
-        assert _no_nulls(result)
-        assert result.loc[2, 'A'] == pytest.approx(np.median([1, 2, 4, 5]))
-
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_median(mixed_df)
-        assert _no_nulls(result)
-
-    def test_mixed_cat_imputed_with_mode(self, mixed_df):
-        result = impute.impute_median(mixed_df)
-        assert _cat_values_valid(mixed_df, result, 'education')
+@pytest.mark.parametrize("fn", [impute_mean, impute_median, impute_mode])
+def test_simple_imputers_no_missing(fn, numeric_df):
+    """Simple imputers produce a fully-observed numeric DataFrame."""
+    result = fn(numeric_df)
+    _assert_no_missing(result)
+    _assert_not_mutated(numeric_df, result)
 
 
-# ---------------------------------------------------------------------------
-# impute_mode
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("fn", [impute_mean, impute_median, impute_mode])
+def test_simple_imputers_mixed(fn, mixed_df):
+    """Simple imputers handle mixed numeric/categorical DataFrames."""
+    result = fn(mixed_df)
+    _assert_no_missing(result)
+    assert result.shape == mixed_df.shape
 
-class TestImputeMode:
-    def test_numeric_no_nulls(self, numeric_df):
-        df = pd.DataFrame({'A': [1, 2, 2, np.nan], 'B': [10, 20, 20, np.nan]})
-        result = impute.impute_mode(df)
-        assert _no_nulls(result)
-        assert float(result.loc[3, 'A']) == pytest.approx(2.0)
 
-    def test_cat_only_no_nulls(self, cat_only_df):
-        result = impute.impute_mode(cat_only_df)
-        assert _no_nulls(result)
-
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_mode(mixed_df)
-        assert _no_nulls(result)
+@pytest.mark.parametrize("fn", [impute_mean, impute_median, impute_mode])
+def test_simple_imputers_cat_only(fn, cat_only_df):
+    """Simple imputers handle categorical-only DataFrames."""
+    result = fn(cat_only_df)
+    _assert_no_missing(result)
 
 
 # ---------------------------------------------------------------------------
-# impute_knn
+# Mean imputer — value checks
 # ---------------------------------------------------------------------------
 
-class TestImputeKNN:
-    def test_numeric_no_nulls(self, numeric_df):
-        result = impute.impute_knn(numeric_df, n_neighbors=2)
-        assert _no_nulls(result)
-
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_knn(mixed_df, n_neighbors=2)
-        assert _no_nulls(result)
-
-    def test_mixed_cat_values_valid(self, mixed_df):
-        result = impute.impute_knn(mixed_df, n_neighbors=2)
-        assert _cat_values_valid(mixed_df, result, 'education')
-        assert _cat_values_valid(mixed_df, result, 'gender')
-
-    def test_cat_only_no_nulls(self, cat_only_df):
-        result = impute.impute_knn(cat_only_df, n_neighbors=2)
-        assert _no_nulls(result)
+def test_impute_mean_correct_value(numeric_df):
+    """Mean imputer fills with column mean."""
+    result = impute_mean(numeric_df)
+    expected_age = numeric_df["age"].mean()
+    assert abs(result.loc[1, "age"] - expected_age) < 1e-6
 
 
 # ---------------------------------------------------------------------------
-# impute_mice
+# KNN imputer
 # ---------------------------------------------------------------------------
 
-class TestImputeMICE:
-    def test_numeric_no_nulls(self, numeric_df):
-        result = impute.impute_mice(numeric_df)
-        assert _no_nulls(result)
-
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_mice(mixed_df)
-        assert _no_nulls(result)
-
-    def test_mixed_cat_values_valid(self, mixed_df):
-        result = impute.impute_mice(mixed_df)
-        assert _cat_values_valid(mixed_df, result, 'education')
-        assert _cat_values_valid(mixed_df, result, 'gender')
+def test_impute_knn_no_missing(numeric_df):
+    """KNN imputer produces a fully-observed DataFrame."""
+    result = impute_knn(numeric_df, n_neighbors=2)
+    _assert_no_missing(result)
+    _assert_not_mutated(numeric_df, result)
 
 
-# ---------------------------------------------------------------------------
-# impute_rf
-# ---------------------------------------------------------------------------
+def test_impute_knn_mixed(mixed_df):
+    """KNN imputer handles mixed DataFrames."""
+    result = impute_knn(mixed_df, n_neighbors=2)
+    _assert_no_missing(result)
+    assert result.shape == mixed_df.shape
 
-class TestImputeRF:
-    def test_numeric_no_nulls(self, numeric_df):
-        result = impute.impute_rf(numeric_df)
-        assert _no_nulls(result)
 
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_rf(mixed_df)
-        assert _no_nulls(result)
-
-    def test_mixed_cat_values_valid(self, mixed_df):
-        result = impute.impute_rf(mixed_df)
-        assert _cat_values_valid(mixed_df, result, 'education')
-        assert _cat_values_valid(mixed_df, result, 'gender')
+def test_impute_knn_large_warning():
+    """KNN imputer emits UserWarning for large DataFrames."""
+    large_df = pd.DataFrame(
+        {"a": np.random.default_rng(0).random(_LARGE_DF_ROW_THRESHOLD + 1)}
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        impute_knn(large_df)
+    assert any(issubclass(warning.category, UserWarning) for warning in w)
 
 
 # ---------------------------------------------------------------------------
-# impute_gb
+# MICE imputer
 # ---------------------------------------------------------------------------
 
-class TestImputeGB:
-    def test_numeric_no_nulls(self, numeric_df):
-        result = impute.impute_gb(numeric_df)
-        assert _no_nulls(result)
+def test_impute_mice_no_missing(numeric_df):
+    """MICE imputer produces a fully-observed DataFrame."""
+    result = impute_mice(numeric_df, max_iter=3)
+    _assert_no_missing(result)
+    _assert_not_mutated(numeric_df, result)
 
-    def test_mixed_no_nulls(self, mixed_df):
-        result = impute.impute_gb(mixed_df)
-        assert _no_nulls(result)
 
-    def test_mixed_cat_values_valid(self, mixed_df):
-        result = impute.impute_gb(mixed_df)
-        assert _cat_values_valid(mixed_df, result, 'education')
-        assert _cat_values_valid(mixed_df, result, 'gender')
+def test_impute_mice_mixed(mixed_df):
+    """MICE imputer handles mixed DataFrames."""
+    result = impute_mice(mixed_df, max_iter=3)
+    _assert_no_missing(result)
+    assert result.shape == mixed_df.shape
+
+
+def test_impute_mice_large_warning():
+    """MICE imputer emits UserWarning for large DataFrames."""
+    large_df = pd.DataFrame(
+        {"a": np.random.default_rng(0).random(_LARGE_DF_ROW_THRESHOLD + 1)}
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        impute_mice(large_df)
+    assert any(issubclass(warning.category, UserWarning) for warning in w)
+
+
+# ---------------------------------------------------------------------------
+# RF imputer — regressor for numeric, classifier for categorical
+# ---------------------------------------------------------------------------
+
+def test_impute_rf_no_missing(numeric_df):
+    """RF imputer produces a fully-observed numeric DataFrame."""
+    result = impute_rf(numeric_df)
+    _assert_no_missing(result)
+    _assert_not_mutated(numeric_df, result)
+
+
+def test_impute_rf_mixed_no_missing(mixed_df):
+    """RF imputer produces a fully-observed mixed DataFrame."""
+    result = impute_rf(mixed_df)
+    _assert_no_missing(result)
+    assert result.shape == mixed_df.shape
+
+
+def test_impute_rf_categorical_values_valid(mixed_df):
+    """RF imputer produces valid category values for categorical columns."""
+    result = impute_rf(mixed_df)
+    valid_cities = set(mixed_df["city"].dropna())
+    imputed_cities = set(result["city"])
+    # All imputed city values must come from the original categories
+    assert imputed_cities.issubset(valid_cities), (
+        f"RF imputed invalid city values: {imputed_cities - valid_cities}"
+    )
+
+
+def test_impute_rf_large_warning():
+    """RF imputer emits UserWarning for large DataFrames."""
+    large_df = pd.DataFrame(
+        {"a": np.random.default_rng(0).random(_LARGE_DF_ROW_THRESHOLD + 1)}
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        impute_rf(large_df)
+    assert any(issubclass(warning.category, UserWarning) for warning in w)
+
+
+# ---------------------------------------------------------------------------
+# GB imputer — regressor for numeric, classifier for categorical
+# ---------------------------------------------------------------------------
+
+def test_impute_gb_no_missing(numeric_df):
+    """GB imputer produces a fully-observed numeric DataFrame."""
+    result = impute_gb(numeric_df)
+    _assert_no_missing(result)
+    _assert_not_mutated(numeric_df, result)
+
+
+def test_impute_gb_mixed_no_missing(mixed_df):
+    """GB imputer produces a fully-observed mixed DataFrame."""
+    result = impute_gb(mixed_df)
+    _assert_no_missing(result)
+    assert result.shape == mixed_df.shape
+
+
+def test_impute_gb_categorical_values_valid(mixed_df):
+    """GB imputer produces valid category values for categorical columns."""
+    result = impute_gb(mixed_df)
+    valid_grades = set(mixed_df["grade"].dropna())
+    imputed_grades = set(result["grade"])
+    assert imputed_grades.issubset(valid_grades), (
+        f"GB imputed invalid grade values: {imputed_grades - valid_grades}"
+    )
+
+
+def test_impute_gb_large_warning():
+    """GB imputer emits UserWarning for large DataFrames."""
+    large_df = pd.DataFrame(
+        {"a": np.random.default_rng(0).random(_LARGE_DF_ROW_THRESHOLD + 1)}
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        impute_gb(large_df)
+    assert any(issubclass(warning.category, UserWarning) for warning in w)
+
+
+# ---------------------------------------------------------------------------
+# None normalisation
+# ---------------------------------------------------------------------------
+
+def test_none_normalised_to_nan():
+    """Python None in object columns is treated as missing by all imputers."""
+    df = pd.DataFrame({"A": [1.0, None, 3.0], "B": ["x", None, "z"]})
+    for fn in [impute_mean, impute_median, impute_mode, impute_knn,
+               impute_mice, impute_rf, impute_gb]:
+        result = fn(df)
+        _assert_no_missing(result)

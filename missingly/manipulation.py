@@ -224,14 +224,18 @@ def remove_empty(
     missing_values : list, optional
         Sentinel values treated as missing in addition to ``NaN``.
     thresh_row : float, optional
-        Fraction threshold (0–1).  Rows with a missing fraction
-        **greater than** ``thresh_row`` are dropped.  When ``None``
-        (default), only fully-empty rows are dropped (equivalent to
-        ``thresh_row=1.0``).
+        Fraction threshold in the range **(0, 1]**.  Rows with a missing
+        fraction **strictly greater than** ``thresh_row`` are dropped.  When
+        ``None`` (default), only fully-empty rows are dropped.
+
+        .. note::
+           A value of ``0`` would drop every row (even rows with no missing
+           data), which is almost never the desired behaviour.  Pass ``None``
+           to drop only fully-empty rows.
     thresh_col : float, optional
-        Fraction threshold (0–1).  Columns with a missing fraction
-        **greater than** ``thresh_col`` are dropped.  When ``None``
-        (default), only fully-empty columns are dropped.
+        Fraction threshold in the range **(0, 1]**.  Columns with a missing
+        fraction **strictly greater than** ``thresh_col`` are dropped.  When
+        ``None`` (default), only fully-empty columns are dropped.
 
     Returns
     -------
@@ -244,7 +248,7 @@ def remove_empty(
     ValueError
         If *axis* is not one of the recognised values.
     ValueError
-        If *thresh_row* or *thresh_col* is not in [0, 1].
+        If *thresh_row* or *thresh_col* is not in (0, 1].
 
     Example
     -------
@@ -255,7 +259,7 @@ def remove_empty(
     ...     'B': [np.nan, np.nan, np.nan],
     ...     'C': [1, np.nan, 3],
     ... })
-    >>> remove_empty(df)  # drops column B and no rows
+    >>> remove_empty(df)  # drops column B only
          A    C
     0  1.0  1.0
     1  NaN  NaN
@@ -267,8 +271,11 @@ def remove_empty(
             f"axis must be one of {valid_axes!r}; got {axis!r}"
         )
     for name, thresh in (("thresh_row", thresh_row), ("thresh_col", thresh_col)):
-        if thresh is not None and not (0.0 <= thresh <= 1.0):
-            raise ValueError(f"{name} must be in [0, 1]; got {thresh!r}")
+        if thresh is not None and not (0.0 < thresh <= 1.0):
+            raise ValueError(
+                f"{name} must be in the range (0, 1]; got {thresh!r}. "
+                f"Pass None to drop only fully-empty rows/columns."
+            )
 
     def _is_missing(frame: pd.DataFrame) -> pd.DataFrame:
         """Boolean mask of missing cells, including sentinels."""
@@ -283,21 +290,19 @@ def remove_empty(
     drop_cols = axis in ("cols", "both", 1)
 
     if drop_cols and n_cols > 0:
-        col_thresh = 1.0 if thresh_col is None else thresh_col
         miss_frac_col = _is_missing(result).mean(axis=0)
-        cols_to_drop = miss_frac_col[miss_frac_col >= col_thresh].index.tolist()
-        # Only drop fully-empty when thresh_col is None (strict equality).
         if thresh_col is None:
             cols_to_drop = miss_frac_col[miss_frac_col == 1.0].index.tolist()
+        else:
+            cols_to_drop = miss_frac_col[miss_frac_col > thresh_col].index.tolist()
         result = result.drop(columns=cols_to_drop)
 
     if drop_rows and result.shape[0] > 0:
-        row_thresh = 1.0 if thresh_row is None else thresh_row
         miss_frac_row = _is_missing(result).mean(axis=1)
         if thresh_row is None:
             rows_to_drop = miss_frac_row[miss_frac_row == 1.0].index.tolist()
         else:
-            rows_to_drop = miss_frac_row[miss_frac_row >= row_thresh].index.tolist()
+            rows_to_drop = miss_frac_row[miss_frac_row > thresh_row].index.tolist()
         result = result.drop(index=rows_to_drop)
 
     return result
@@ -442,7 +447,6 @@ def miss_as_feature(
             raise KeyError(f"Columns not found in DataFrame: {missing_cols}")
         target_cols = columns
     else:
-        # Auto-select columns that have at least one missing value.
         null_mask = df.isnull()
         if missing_values:
             null_mask = null_mask | df.isin(missing_values)
