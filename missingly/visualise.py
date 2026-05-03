@@ -719,10 +719,6 @@ def heatmap(
     and produce ``NaN`` correlations.  These cells are rendered as blank
     (masked) rather than raising an error.
 
-    For dataframes with many columns, consider filtering to only the
-    columns that have at least one missing value before calling this
-    function.
-
     Example
     -------
     >>> import pandas as pd, numpy as np
@@ -736,7 +732,6 @@ def heatmap(
 
     nullity_matrix = _nullity(df, missing_values).astype(float)
 
-    # Columns with zero variance produce NaN correlations; mask them.
     corr = nullity_matrix.corr()
     mask = np.isnan(corr.values)
 
@@ -806,12 +801,6 @@ def vis_miss(
     matplotlib.axes.Axes
         The Axes containing the plot.
 
-    Notes
-    -----
-    When *cluster* is ``True``, the row order in the plot no longer
-    corresponds to the original DataFrame index.  The y-axis labels are
-    suppressed in that case to avoid confusion.
-
     Example
     -------
     >>> import pandas as pd, numpy as np
@@ -825,7 +814,6 @@ def vis_miss(
     null_df = _nullity(df, missing_values).astype(float)
 
     if cluster and null_df.shape[0] > 1:
-        # Cluster rows by missingness pattern using Hamming distance.
         from scipy.spatial.distance import pdist
         row_dist = pdist(null_df.values, metric="hamming")
         row_linkage = linkage(row_dist, method="ward")
@@ -906,7 +894,7 @@ def miss_var_pct(
     pct = _nullity(df, missing_values).mean() * 100
 
     if sort:
-        pct = pct.sort_values(ascending=True)  # ascending so top bar = highest %
+        pct = pct.sort_values(ascending=True)
 
     color = kwargs.pop("color", "steelblue")
     ax.barh(pct.index.astype(str), pct.values, color=color, **kwargs)
@@ -914,7 +902,6 @@ def miss_var_pct(
     ax.set_xlim(0, 100)
     ax.axvline(x=0, color="black", linewidth=0.8)
 
-    # Annotate each bar with the exact percentage.
     for i, (val, label) in enumerate(zip(pct.values, pct.index)):
         ax.text(
             val + 0.5, i, f"{val:.1f}%",
@@ -987,7 +974,6 @@ def miss_cluster(
 
     null_df = _nullity(df, missing_values).astype(float)
 
-    # Cluster rows; fall back to original order if all rows are identical.
     if null_df.shape[0] > 1:
         from scipy.spatial.distance import pdist
         row_dist = pdist(null_df.values, metric="hamming")
@@ -1027,11 +1013,9 @@ def miss_which(
 ):
     """Binary tile plot showing which variables contain missing values.
 
-    Each column is represented by a single tile per row of the
-    *summary* (one row per variable).  The tile is filled (dark) if the
-    variable has **any** missing values, and empty (light) if it is
-    fully observed.  This is a quick "at-a-glance" complement to
-    :func:`miss_var_pct`.
+    Each column is represented by a single tile.  The tile is filled
+    (dark) if the variable has **any** missing values, and empty (light)
+    if it is fully observed.
 
     Inspired by ``naniar::miss_which`` and ``naniar::vis_miss``.
 
@@ -1053,9 +1037,11 @@ def miss_which(
 
     Notes
     -----
-    Unlike :func:`matrix` which shows *every* cell, this function shows
-    only one row per variable, making it useful when you have many
-    columns and want a rapid overview of which ones need attention.
+    The underlying heatmap data is a (1 x n_columns) numeric DataFrame
+    with dtype ``float64``.  Annotation labels ("Missing" / "Complete")
+    are stored in a separate object-dtype array passed via the ``annot``
+    parameter to avoid the pandas FutureWarning about incompatible dtype
+    assignment.
 
     Example
     -------
@@ -1068,6 +1054,7 @@ def miss_which(
         fig, ax = plt.subplots(figsize=(max(6, df.shape[1] * 0.8), 2.5))
 
     null_df = _nullity(df, missing_values)
+    # 1-row numeric DataFrame: 1.0 = has missing, 0.0 = fully observed.
     has_missing = null_df.any().astype(float).to_frame(name="has_missing").T
     pct = null_df.mean() * 100
 
@@ -1075,20 +1062,23 @@ def miss_which(
         f"{col}\n({pct[col]:.1f}%)" for col in df.columns
     ]
 
+    # Build annotation array as object dtype to avoid dtype-incompatibility
+    # FutureWarning when mixing strings into a float DataFrame.
+    annot_arr = np.where(
+        has_missing.values.astype(bool),
+        "Missing",
+        "Complete",
+    )
+
     cmap = kwargs.pop("cmap", ["#f0f0f0", "#d62728"])
     cbar = kwargs.pop("cbar", False)
-    annot_data = has_missing.copy()
-    annot_labels = has_missing.copy()
-    annot_labels.loc["has_missing"] = [
-        "Missing" if v else "Complete" for v in has_missing.iloc[0]
-    ]
 
     sns.heatmap(
         has_missing,
         ax=ax,
         cmap=cmap,
         cbar=cbar,
-        annot=annot_labels,
+        annot=annot_arr,
         fmt="",
         xticklabels=col_labels,
         yticklabels=False,

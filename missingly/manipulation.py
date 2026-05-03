@@ -121,8 +121,10 @@ def clean_names(
         ``"lower"`` (included for R-janitor familiarity).
         Default is ``"lower"``.
     sep : str, optional
-        Separator character used to replace non-word characters and
-        collapse runs.  Default is ``"_"``.
+        Separator character inserted between words.  Must be non-empty
+        and must not consist solely of alphanumeric characters (letters
+        or digits).  ``"_"``, ``"-"``, ``"."`` are all valid.
+        Default is ``"_"``.
     strip_accents : bool, optional
         If ``True``, decompose Unicode characters (NFD normalisation)
         and remove combining accent marks (category ``Mn``) before
@@ -143,17 +145,20 @@ def clean_names(
     ValueError
         If *case* is not one of ``"lower"``, ``"upper"``, ``"snake"``.
     ValueError
-        If *sep* is empty or contains a word character (``\\w``), which
-        would make collapsing ambiguous.
+        If *sep* is empty or consists solely of alphanumeric characters,
+        which would make it indistinguishable from regular word content.
 
     Notes
     -----
     The function intentionally preserves Persian, Arabic, and CJK
     letters because ``\\w`` in Python's ``re`` module matches all
-    Unicode word characters when the ``re.UNICODE`` flag is active
-    (which is the default for ``str`` patterns).  If you want pure
-    ASCII column names, combine ``strip_accents=True`` with a manual
+    Unicode word characters.  If you want pure ASCII column names,
+    combine ``strip_accents=True`` with a manual
     ``encode('ascii', 'ignore')`` on the column names beforehand.
+
+    ``"_"`` is a valid separator even though it is technically a
+    ``\\w`` character — it is the conventional snake_case separator and
+    is treated as a special case in the validation logic.
 
     Example
     -------
@@ -172,9 +177,12 @@ def clean_names(
         raise ValueError(
             f"case must be one of {valid_cases!r}; got {case!r}"
         )
-    if not sep or re.search(r"\w", sep):
+    # sep must be non-empty and must not be purely alphanumeric.
+    # '_' is explicitly allowed as the canonical snake_case separator.
+    if not sep or (re.fullmatch(r"[A-Za-z0-9]+", sep) is not None):
         raise ValueError(
-            f"sep must be a non-empty non-word character string; got {sep!r}"
+            f"sep must be a non-empty, non-alphanumeric string "
+            f"(e.g. '_', '-', '.'); got {sep!r}"
         )
 
     def _clean_one(name: str) -> str:
@@ -190,19 +198,24 @@ def clean_names(
         elif case == "upper":
             s = s.upper()
 
+        # Replace every non-word character with sep.
+        # \W matches anything that is not [a-zA-Z0-9_] (Unicode-aware).
         s = re.sub(r"\W+", sep, s, flags=re.UNICODE)
 
+        # Collapse consecutive seps and strip edge seps.
         escaped = re.escape(sep)
         s = re.sub(escaped + "+", sep, s)
         s = s.strip(sep)
 
+        # Python identifier safety: names starting with a digit.
         if s and s[0].isdigit():
             s = sep + s
 
-        return s or sep
+        return s or sep  # fallback for names that become empty
 
     raw_names = [_clean_one(col) for col in df.columns]
 
+    # Resolve duplicates: second occurrence → name_2, third → name_3, …
     seen: dict[str, int] = {}
     clean: list[str] = []
     for name in raw_names:

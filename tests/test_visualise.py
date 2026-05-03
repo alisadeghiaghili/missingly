@@ -87,9 +87,7 @@ def no_missing_df():
 
 def test_dendrogram_importable_from_top_level():
     """dendrogram must be accessible via ``missingly.dendrogram``."""
-    assert callable(missingly.dendrogram), (
-        "missingly.dendrogram is not callable — check __init__.py imports"
-    )
+    assert callable(missingly.dendrogram)
 
 
 def test_new_functions_importable_from_top_level():
@@ -301,7 +299,6 @@ def test_vis_miss_persian(persian_df):
     plt.close('all')
     ax = visualise.vis_miss(persian_df)
     assert isinstance(ax, plt.Axes)
-    # Title must still be in English per API contract.
     assert ax.get_title() == 'Missing Data Overview'
 
 
@@ -355,11 +352,9 @@ def test_miss_var_pct_values(nan_df):
     """miss_var_pct() bars should reflect correct percentages.
 
     X and Y each have 50 % missing; Z has 0 %.
-    The function must produce bars whose lengths match these values.
     """
     plt.close('all')
     ax = visualise.miss_var_pct(nan_df, sort=False)
-    # barh containers: one patch per variable
     widths = [patch.get_width() for patch in ax.patches]
     assert any(abs(w - 50.0) < 0.1 for w in widths), (
         f"Expected a 50 % bar; got widths={widths}"
@@ -483,18 +478,20 @@ def test_miss_which_persian(persian_df):
 
 
 def test_miss_which_content(nan_df):
-    """miss_which() tile for fully-observed column must differ from missing column.
+    """miss_which() tile values: missing columns = 1.0, complete = 0.0.
 
-    In nan_df, Z has no missing values.  The heatmap data for Z must be
-    0.0, while X and Y (which have missing values) must be 1.0.
+    nan_df columns: X (50% missing), Y (50% missing), Z (0% missing).
+    The heatmap is a (1 x 3) grid; get_array() returns a flat array
+    of length 3 in column order.
     """
     plt.close('all')
     ax = visualise.miss_which(nan_df)
-    # The heatmap collection stores the underlying data matrix.
-    data = ax.collections[0].get_array()
-    # data is flattened row-major: columns are X, Y, Z in order.
-    col_names = list(nan_df.columns)          # ['X', 'Y', 'Z']
-    z_idx = col_names.index('Z')
+    # QuadMesh.get_array() returns a 1-D array of length n_cols
+    # after seaborn renders a (1 x n_cols) heatmap.
+    raw = ax.collections[0].get_array()
+    data = np.asarray(raw).ravel()
+    col_names = list(nan_df.columns)  # ['X', 'Y', 'Z']
     x_idx = col_names.index('X')
-    assert data[x_idx] == pytest.approx(1.0), "X should be flagged as missing"
-    assert data[z_idx] == pytest.approx(0.0), "Z should not be flagged as missing"
+    z_idx = col_names.index('Z')
+    assert float(data[x_idx]) == pytest.approx(1.0), "X should be flagged as missing"
+    assert float(data[z_idx]) == pytest.approx(0.0), "Z should not be flagged as missing"
