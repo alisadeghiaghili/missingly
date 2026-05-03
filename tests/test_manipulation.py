@@ -224,7 +224,6 @@ def test_remove_empty_thresh_row():
         'C': [3.0, np.nan],
         'D': [4.0, 4.0],
     })
-    # row 1 has 75 % missing — should be dropped at thresh 0.5
     result = remove_empty(df, axis='rows', thresh_row=0.5)
     assert len(result) == 1
 
@@ -306,13 +305,14 @@ def test_coalesce_missing_col_raises():
 def test_coalesce_does_not_mutate():
     """coalesce_columns must not mutate the original DataFrame.
 
-    Uses pd.array_equiv for comparison because ``nan != nan`` in Python,
-    which causes a plain list equality check to fail spuriously.
+    ``nan != nan`` in Python (IEEE 754), so plain list/array equality
+    fails spuriously.  Use ``np.testing.assert_array_equal`` with
+    ``equal_nan=True`` instead.
     """
     df = pd.DataFrame({'a': [1.0, np.nan], 'b': [np.nan, 2.0]})
-    original_a = df['a'].copy()
+    original_a = df['a'].to_numpy(copy=True)
     coalesce_columns(df, 'a', 'b')
-    assert pd.array_equiv(df['a'].values, original_a.values)
+    np.testing.assert_array_equal(df['a'].to_numpy(), original_a, strict=False)
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ def test_miss_as_feature_columns_created():
     df = pd.DataFrame({'A': [1.0, np.nan], 'B': [1.0, 2.0]})
     result = miss_as_feature(df)
     assert 'A_NA' in result.columns
-    assert 'B_NA' not in result.columns  # B has no missing
+    assert 'B_NA' not in result.columns
 
 
 def test_miss_as_feature_values():
