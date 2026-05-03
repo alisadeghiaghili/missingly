@@ -27,6 +27,11 @@ from .visualise import (
     vis_miss_cumsum_case,
     vis_miss_span,
     vis_parallel_coords,
+    heatmap,
+    vis_miss,
+    miss_var_pct,
+    miss_cluster,
+    miss_which,
 )
 from .stats import (
     mcar_test,
@@ -72,6 +77,11 @@ __all__ = [
     "vis_miss_cumsum_case",
     "vis_miss_span",
     "vis_parallel_coords",
+    "heatmap",
+    "vis_miss",
+    "miss_var_pct",
+    "miss_cluster",
+    "miss_which",
     "mcar_test",
     "mar_mnar_test",
     "replace_with_na",
