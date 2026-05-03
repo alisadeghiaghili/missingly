@@ -65,7 +65,7 @@ from .impute import (
 )
 from .transformer import MissinglyImputer
 from .report import create_report
-from .compare import compare_imputations
+from .compare import compare_imputations, cv_compare_imputations
 from .timeseries import (
     miss_ts_summary,
     gap_table,
@@ -113,7 +113,7 @@ __all__ = [
     # report
     "create_report",
     # compare
-    "compare_imputations",
+    "compare_imputations", "cv_compare_imputations",
     # timeseries
     "miss_ts_summary", "gap_table", "vis_ts_miss",
     "vis_gap_lengths", "vis_miss_over_time", "impute_ts",
