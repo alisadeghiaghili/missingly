@@ -41,6 +41,9 @@ from .manipulation import (
     replace_with_na,
     replace_with_na_all,
     clean_names,
+    remove_empty,
+    coalesce_columns,
+    miss_as_feature,
 )
 from .impute import (
     impute_mean,
@@ -88,6 +91,9 @@ __all__ = [
     "replace_with_na",
     "replace_with_na_all",
     "clean_names",
+    "remove_empty",
+    "coalesce_columns",
+    "miss_as_feature",
     "impute_mean",
     "impute_median",
     "impute_mode",
