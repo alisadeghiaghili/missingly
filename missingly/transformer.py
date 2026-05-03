@@ -22,6 +22,13 @@ Design decisions
 * ``fit_transform`` is inherited from ``TransformerMixin`` and calls
   ``fit`` then ``transform``, so it is equivalent to calling both
   separately.
+* Fitted state is tracked via ``_is_fitted`` (a bool set to ``True``
+  at the end of ``fit``). ``check_is_fitted`` inspects this attribute,
+  avoiding the false-positive that occurs when mutable defaults such as
+  ``[]`` are set in ``__init__``.
+* ``GradientBoostingRegressor`` and ``GradientBoostingClassifier`` do not
+  accept NaN in feature matrices.  Before fitting or predicting with GB,
+  ``_fill_nan_with_col_means`` is applied to feature arrays.
 
 Example
 -------
@@ -57,6 +64,8 @@ from sklearn.ensemble import (
     GradientBoostingClassifier,
 )
 from sklearn.preprocessing import OrdinalEncoder
+
+from .impute import _fill_nan_with_col_means
 
 
 _VALID_STRATEGIES = frozenset(
@@ -108,8 +117,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     n_neighbors : int
     max_iter : int
     random_state : int
-    feature_names_in_ : list[str]
-        Column names seen during ``fit``.
+    feature_names_in_ : list[str] or None
+        Column names seen during ``fit``.  ``None`` before fitting.
     numeric_cols_ : list[str]
         Numeric column names seen during ``fit``.
     cat_cols_ : list[str]
@@ -161,8 +170,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.random_state = random_state
         self.estimator_kwargs = estimator_kwargs
 
-        # Fitted state — populated by fit()
-        self.feature_names_in_: List[str] = []
+        # Fitted state — None until fit() is called.
+        # IMPORTANT: do NOT use mutable defaults like [] here; sklearn's
+        # check_is_fitted looks for attributes ending in '_' and treats any
+        # truthy value as "fitted", so [] would pass the check even before fit.
+        self._is_fitted: bool = False
+        self.feature_names_in_: Optional[List[str]] = None
         self.numeric_cols_: List[str] = []
         self.cat_cols_: List[str] = []
         self.imputer_ = None
@@ -172,6 +185,19 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.rf_reg_models_: Dict[str, object] = {}
         self.rf_clf_models_: Dict[str, object] = {}
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
+
+    # ------------------------------------------------------------------
+    # sklearn fitted-state contract
+    # ------------------------------------------------------------------
+
+    def __sklearn_is_fitted__(self) -> bool:
+        """Return whether this estimator has been fitted.
+
+        sklearn calls this method (when present) in ``check_is_fitted``
+        instead of inspecting attributes.  Returning ``False`` before
+        ``fit`` guarantees a ``NotFittedError`` is raised on ``transform``.
+        """
+        return self._is_fitted
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -202,8 +228,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         if not self.cat_cols_ or self.encoder_ is None:
             return df
         result = df.copy()
-        result[self.cat_cols_] = np.round(result[self.cat_cols_]).clip(0)
-        decoded = self.encoder_.inverse_transform(result[self.cat_cols_])
+        rounded = np.round(result[self.cat_cols_].to_numpy()).clip(0).copy()
+        decoded = self.encoder_.inverse_transform(rounded)
         for i, col in enumerate(self.cat_cols_):
             result[col] = decoded[:, i]
             try:
@@ -268,6 +294,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
 
+        self._is_fitted = True
         return self
 
     def _fit_simple(self, X: pd.DataFrame, num_strategy: str) -> None:
@@ -312,11 +339,17 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.imputer_.fit(X_enc)
 
     def _fit_tree(self, X: pd.DataFrame) -> None:
-        """Fit per-column regressor/classifier for rf and gb strategies."""
+        """Fit per-column regressor/classifier for rf and gb strategies.
+
+        For GB, any NaN remaining in the feature matrix is filled with
+        column means (``_fill_nan_with_col_means``) because
+        ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` do
+        not natively support NaN features.
+        """
         is_rf = self.strategy == "rf"
+        is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
 
-        # Shared ordinal encoder for feature matrices
         if self.cat_cols_:
             self.encoder_ = OrdinalEncoder(
                 handle_unknown="use_encoded_value",
@@ -325,7 +358,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
             self.encoder_.fit(X[self.cat_cols_])
 
-        X_enc = self._encode_cats(X).values  # float ndarray for all features
+        X_enc = self._encode_cats(X).values
         col_index = {col: i for i, col in enumerate(X.columns)}
 
         for col in X.columns:
@@ -336,6 +369,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
             feature_idx = [col_index[c] for c in X.columns if c != col]
             X_train = X_enc[np.ix_(np.where(train_mask)[0], feature_idx)]
+
+            if is_gb:
+                X_train = _fill_nan_with_col_means(X_train)
 
             if col in cat_set:
                 enc_y = OrdinalEncoder(
@@ -402,7 +438,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             If *X* has columns that differ from those seen during ``fit``.
         """
         from sklearn.utils.validation import check_is_fitted
-        check_is_fitted(self, "feature_names_in_")
+        check_is_fitted(self)
 
         if not isinstance(X, pd.DataFrame):
             raise TypeError(
@@ -446,7 +482,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         return result[self.feature_names_in_]
 
     def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply fitted per-column tree models to impute missing values."""
+        """Apply fitted per-column tree models to impute missing values.
+
+        For GB models, NaN in the feature matrix is filled with column
+        means before calling ``predict``.
+        """
+        is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
         X_enc = self._encode_cats(X).values
         col_index = {col: i for i, col in enumerate(X.columns)}
@@ -459,6 +500,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
             feature_idx = [col_index[c] for c in X.columns if c != col]
             X_pred = X_enc[np.ix_(np.where(missing_mask)[0], feature_idx)]
+
+            if is_gb:
+                X_pred = _fill_nan_with_col_means(X_pred)
 
             if col in cat_set and col in self.rf_clf_models_:
                 clf = self.rf_clf_models_[col]

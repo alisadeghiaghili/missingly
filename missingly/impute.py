@@ -19,6 +19,11 @@ Key design decisions
 * ``impute_mean``, ``impute_median``, ``impute_mode`` remain unchanged:
   they rely on ``SimpleImputer`` which handles categoricals via
   ``most_frequent`` strategy.
+* ``GradientBoostingRegressor`` and ``GradientBoostingClassifier`` do not
+  accept NaN in feature matrices.  Before fitting or predicting with GB
+  models, any remaining NaN in the feature matrix is filled with column
+  means computed from the training rows.  This is a lightweight internal
+  imputation only for the feature side; the target column is not affected.
 
 Large-data warnings
 -------------------
@@ -149,7 +154,12 @@ def _split_encode(df: pd.DataFrame):
     return df_work, cat_cols, num_cols, encoder, cat_dtypes
 
 
-def _decode(df_imputed: pd.DataFrame, cat_cols: list, encoder, cat_dtypes: dict) -> pd.DataFrame:
+def _decode(
+    df_imputed: pd.DataFrame,
+    cat_cols: list,
+    encoder,
+    cat_dtypes: dict,
+) -> pd.DataFrame:
     """Inverse-transform ordinal-encoded columns back to original categories.
 
     Parameters
@@ -174,13 +184,18 @@ def _decode(df_imputed: pd.DataFrame, cat_cols: list, encoder, cat_dtypes: dict)
     Encoded values are rounded and clipped to ``[0, n_categories - 1]``
     before inverse-transforming to handle any floating-point drift
     introduced by ML-based imputers.
+
+    The slice ``result[cat_cols]`` is explicitly copied via ``.to_numpy()
+    .copy()`` before being passed to ``inverse_transform`` to avoid a
+    ``ValueError: assignment destination is read-only`` that arises when
+    sklearn tries to write into a pandas-backed read-only numpy view.
     """
     if not cat_cols or encoder is None:
         return df_imputed
 
     result = df_imputed.copy()
-    result[cat_cols] = np.round(result[cat_cols]).clip(0)
-    decoded = encoder.inverse_transform(result[cat_cols])
+    rounded = np.round(result[cat_cols].to_numpy()).clip(0).copy()
+    decoded = encoder.inverse_transform(rounded)
     for i, col in enumerate(cat_cols):
         result[col] = decoded[:, i]
         try:
@@ -190,12 +205,43 @@ def _decode(df_imputed: pd.DataFrame, cat_cols: list, encoder, cat_dtypes: dict)
     return result
 
 
+def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
+    """Fill NaN values in a 2-D float array with column means.
+
+    Used internally to make feature matrices safe for
+    ``GradientBoostingRegressor`` / ``GradientBoostingClassifier``, which
+    do not natively accept NaN in feature matrices (unlike
+    ``HistGradientBoosting*`` variants).
+
+    The column mean is computed only from non-NaN values.  If an entire
+    column is NaN, those cells are filled with 0 to prevent downstream
+    errors.
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (n_samples, n_features)
+        Writable float array potentially containing NaN values.
+
+    Returns
+    -------
+    np.ndarray
+        A copy of *X* with NaN replaced by column means.
+    """
+    X_out = X.copy()
+    col_means = np.nanmean(X_out, axis=0)
+    col_means = np.where(np.isnan(col_means), 0.0, col_means)
+    nan_mask = np.isnan(X_out)
+    X_out[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
+    return X_out
+
+
 def _impute_column_by_column(
     df: pd.DataFrame,
     regressor,
     classifier,
     random_state: int = 0,
     max_iter: int = 1,
+    fill_feature_nan: bool = False,
 ) -> pd.DataFrame:
     """Impute each column using a regressor (numeric) or classifier (categorical).
 
@@ -229,6 +275,11 @@ def _impute_column_by_column(
         Number of full passes over all columns with missing values.
         Default is 1 (single pass).  Higher values give iterative refinement
         similar to MICE but without the BayesianRidge assumption.
+    fill_feature_nan : bool, optional
+        When ``True``, any remaining NaN in the *feature* matrix is filled
+        with column means before fitting or predicting.  Required for
+        estimators that do not natively support NaN (e.g.
+        ``GradientBoostingRegressor``).  Default is ``False``.
 
     Returns
     -------
@@ -240,7 +291,6 @@ def _impute_column_by_column(
     Columns that are entirely missing cannot be imputed and will remain NaN.
     """
     cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
-    num_cols = set(df.select_dtypes(include=[np.number]).columns)
 
     # Build a float-encoded working copy for feature matrices.
     _, _, _, encoder, cat_dtypes = _split_encode(df)
@@ -263,14 +313,16 @@ def _impute_column_by_column(
 
             train_mask = ~missing_mask
             if train_mask.sum() < 2:
-                # Not enough data to train — skip
                 continue
 
             X_train = X[train_mask]
             X_pred = X[missing_mask]
 
+            if fill_feature_nan:
+                X_train = _fill_nan_with_col_means(X_train)
+                X_pred = _fill_nan_with_col_means(X_pred)
+
             if col in cat_cols:
-                # Encode target for classification
                 enc_y = OrdinalEncoder(
                     handle_unknown="use_encoded_value",
                     unknown_value=-1,
@@ -515,6 +567,7 @@ def impute_rf(
     return _impute_column_by_column(
         df, regressor=regressor, classifier=classifier,
         random_state=random_state, max_iter=max_iter,
+        fill_feature_nan=False,  # RF handles NaN natively
     )
 
 
@@ -530,6 +583,13 @@ def impute_gb(
     categorical columns are imputed with ``GradientBoostingClassifier``.
     This column-by-column approach ensures that nominal categories are
     never treated as continuous values.
+
+    ``GradientBoostingRegressor`` and ``GradientBoostingClassifier`` do
+    not accept NaN in the feature matrix.  Before fitting and predicting,
+    any remaining NaN in the feature side is filled with column means
+    (``_fill_nan_with_col_means``).  This lightweight fill only affects
+    the *features* used to predict the target column; the target column
+    itself is never altered by this step.
 
     Parameters
     ----------
@@ -561,4 +621,5 @@ def impute_gb(
     return _impute_column_by_column(
         df, regressor=regressor, classifier=classifier,
         random_state=random_state, max_iter=max_iter,
+        fill_feature_nan=True,  # GB does NOT handle NaN natively
     )
