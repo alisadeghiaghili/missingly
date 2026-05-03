@@ -60,6 +60,8 @@ from .impute import (
     impute_mice,
     impute_rf,
     impute_gb,
+    FittedImputer,
+    make_imputer,
 )
 from .transformer import MissinglyImputer
 from .report import create_report
@@ -101,9 +103,11 @@ __all__ = [
     # manipulation
     "replace_with_na", "replace_with_na_all", "clean_names",
     "remove_empty", "coalesce_columns", "miss_as_feature",
-    # impute
+    # impute — stateless
     "impute_mean", "impute_median", "impute_mode",
     "impute_knn", "impute_mice", "impute_rf", "impute_gb",
+    # impute — stateful
+    "FittedImputer", "make_imputer",
     # transformer
     "MissinglyImputer",
     # report
