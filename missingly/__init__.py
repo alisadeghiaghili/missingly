@@ -32,7 +32,6 @@ from .visualise import (
     miss_var_pct,
     miss_cluster,
     miss_which,
-    # new
     miss_patterns,
     miss_cooccurrence,
     miss_row_profile,
@@ -43,6 +42,7 @@ from .visualise import (
 from .stats import (
     mcar_test,
     mar_mnar_test,
+    diagnose_missing,
 )
 from .manipulation import (
     replace_with_na,
@@ -97,7 +97,7 @@ __all__ = [
     "scatter_miss", "vis_miss_cumsum_var", "vis_miss_cumsum_case",
     "vis_miss_span", "vis_parallel_coords",
     # stats
-    "mcar_test", "mar_mnar_test",
+    "mcar_test", "mar_mnar_test", "diagnose_missing",
     # manipulation
     "replace_with_na", "replace_with_na_all", "clean_names",
     "remove_empty", "coalesce_columns", "miss_as_feature",
