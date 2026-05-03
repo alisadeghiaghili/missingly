@@ -1,115 +1,207 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Missing Data Analysis Report</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        h2 {
-            color: #444;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-        }
-        .summary-table {
-            width: 100%;
-            margin: 20px 0;
-        }
-        .summary-table table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
-        .summary-table th, .summary-table td {
-            border: 1px solid #ddd;
-            padding: 12px;
-            text-align: left;
-        }
-        .summary-table th {
-            background-color: #007acc;
-            color: white;
-        }
-        .summary-table tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        .plot-container {
-            text-align: center;
-            margin: 30px 0;
-        }
-        .plot-container img {
-            max-width: 100%;
-            height: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .plot-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #333;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            color: #666;
-            font-size: 14px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 24px;
+      color: #222;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.10);
+      padding: 40px 48px;
+    }
+    h1 { color: #1a1a2e; text-align: center; font-size: 1.9rem; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #666; margin-bottom: 36px; font-size: .95rem; }
+    h2 { color: #1a1a2e; border-left: 4px solid #4361ee; padding-left: 12px;
+         font-size: 1.2rem; margin-top: 40px; margin-bottom: 14px; }
+    /* Overview cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: #f7f9ff;
+      border: 1px solid #dde3f7;
+      border-radius: 8px;
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .card .label { font-size: .78rem; color: #666; text-transform: uppercase;
+                   letter-spacing: .06em; margin-bottom: 6px; }
+    .card .value { font-size: 1.55rem; font-weight: 700; color: #4361ee; }
+    /* Tables */
+    .summary-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: .88rem; }
+    .summary-table th {
+      background: #4361ee; color: #fff; padding: 10px 14px; text-align: left; }
+    .summary-table td { padding: 9px 14px; border-bottom: 1px solid #eef0f7; }
+    .summary-table tr:hover td { background: #f7f9ff; }
+    /* MCAR */
+    .mcar-box {
+      background: #f7f9ff;
+      border: 1px solid #dde3f7;
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .mcar-box .mcar-stat { display: inline-block; margin-right: 28px; }
+    .mcar-box .mcar-stat .k { font-size: .8rem; color: #888; text-transform: uppercase; }
+    .mcar-box .mcar-stat .v { font-size: 1.2rem; font-weight: 600; color: #1a1a2e; }
+    .mechanism-tag {
+      display: inline-block;
+      background: #4361ee;
+      color: #fff;
+      border-radius: 20px;
+      padding: 3px 14px;
+      font-size: .83rem;
+      font-weight: 600;
+      margin: 10px 0 8px;
+    }
+    .detail-text { color: #444; font-size: .9rem; line-height: 1.6; margin: 8px 0 0; }
+    /* Recommendation */
+    .rec-box {
+      background: #eefbf3;
+      border-left: 4px solid #06d6a0;
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+    }
+    .rec-box .rec-title { font-weight: 700; color: #065f46; font-size: 1rem; margin-bottom: 6px; }
+    .rec-box .rec-detail { color: #1e4035; font-size: .9rem; line-height: 1.6; }
+    /* Plots */
+    .plot-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    @media (max-width: 700px) { .plot-grid { grid-template-columns: 1fr; } }
+    .plot-card {
+      border: 1px solid #eef0f7;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .plot-card .plot-title {
+      background: #f7f9ff;
+      padding: 10px 16px;
+      font-size: .85rem;
+      font-weight: 600;
+      color: #444;
+      border-bottom: 1px solid #eef0f7;
+    }
+    .plot-card img { width: 100%; display: block; }
+    .footer {
+      text-align: center;
+      margin-top: 48px;
+      padding-top: 20px;
+      border-top: 1px solid #eef0f7;
+      color: #aaa;
+      font-size: .82rem;
+    }
+    .no-missing {
+      background: #eefbf3;
+      border: 1px solid #06d6a0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      color: #065f46;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Missing Data Analysis Report</h1>
-        
-        <h2>Summary Statistics</h2>
-        <div class="summary-table">
-            {{ summary_table|safe }}
-        </div>
-        
-        <h2>Visualizations</h2>
-        
-        <div class="plot-container">
-            <div class="plot-title">Missing Data Matrix</div>
-            <img src="data:image/png;base64,{{ matrix_plot }}" alt="Missing Data Matrix">
-        </div>
-        
-        <div class="plot-container">
-            <div class="plot-title">Missing Values per Column</div>
-            <img src="data:image/png;base64,{{ bar_plot }}" alt="Missing Values Bar Plot">
-        </div>
-        
-        <div class="plot-container">
-            <div class="plot-title">Missing Value Combinations</div>
-            <img src="data:image/png;base64,{{ upset_plot }}" alt="Upset Plot">
-        </div>
-        
-        <div class="plot-container">
-            <div class="plot-title">Variable Clustering by Missing Data Patterns</div>
-            <img src="data:image/png;base64,{{ dendrogram_plot }}" alt="Dendrogram Plot">
-        </div>
-        
-        <div class="footer">
-            Generated by missingly - A Python package for missing data analysis
-        </div>
+<div class="container">
+
+  <h1>{{ title }}</h1>
+  <p class="subtitle">Generated by <strong>missingly</strong></p>
+
+  <!-- 1. Overview cards -->
+  <h2>Dataset Overview</h2>
+  <div class="cards">
+    <div class="card"><div class="label">Rows</div><div class="value">{{ overview.rows }}</div></div>
+    <div class="card"><div class="label">Columns</div><div class="value">{{ overview.cols }}</div></div>
+    <div class="card"><div class="label">Total Cells</div><div class="value">{{ overview.total_cells }}</div></div>
+    <div class="card"><div class="label">Missing Cells</div><div class="value">{{ overview.total_missing }}</div></div>
+    <div class="card"><div class="label">% Missing</div><div class="value">{{ overview.overall_pct_missing }}</div></div>
+  </div>
+
+  {% if overview.total_missing == 0 %}
+  <div class="no-missing">&#10003; No missing values detected in this DataFrame.</div>
+  {% endif %}
+
+  <!-- 2. Per-variable summary -->
+  <h2>Missing Values by Variable</h2>
+  {{ var_summary | safe }}
+
+  <!-- 3. Per-case summary -->
+  <h2>Top 10 Rows by Missingness</h2>
+  {{ case_summary | safe }}
+
+  <!-- 4. MCAR test -->
+  {% if mcar_result and mcar_info %}
+  <h2>MCAR Test (Little's Test)</h2>
+  <div class="mcar-box">
+    <span class="mcar-stat"><div class="k">Chi-square</div><div class="v">{{ "%.4f" | format(mcar_result.chi_square) }}</div></span>
+    <span class="mcar-stat"><div class="k">Degrees of Freedom</div><div class="v">{{ mcar_result.df }}</div></span>
+    <span class="mcar-stat"><div class="k">p-value</div><div class="v">{{ "%.4f" | format(mcar_result.p_value) }}</div></span>
+    <span class="mcar-stat"><div class="k">Missing Patterns</div><div class="v">{{ mcar_result.missing_patterns }}</div></span>
+    <div><span class="mechanism-tag">{{ mcar_info.mechanism }}</span></div>
+    <p class="detail-text">{{ mcar_info.mechanism_detail }}</p>
+  </div>
+
+  <h2>Imputation Recommendation</h2>
+  <div class="rec-box">
+    <div class="rec-title">&#128161; {{ mcar_info.recommendation }}</div>
+    <div class="rec-detail">{{ mcar_info.recommendation_detail }}</div>
+  </div>
+  {% endif %}
+
+  <!-- 5. Visualisations -->
+  <h2>Visualisations</h2>
+  <div class="plot-grid">
+    {% if matrix_plot %}
+    <div class="plot-card">
+      <div class="plot-title">Missingness Matrix</div>
+      <img src="data:image/png;base64,{{ matrix_plot }}" alt="Matrix">
     </div>
+    {% endif %}
+    {% if bar_plot %}
+    <div class="plot-card">
+      <div class="plot-title">Missing Values per Column</div>
+      <img src="data:image/png;base64,{{ bar_plot }}" alt="Bar Chart">
+    </div>
+    {% endif %}
+    {% if heatmap_plot %}
+    <div class="plot-card">
+      <div class="plot-title">Missingness Correlation Heatmap</div>
+      <img src="data:image/png;base64,{{ heatmap_plot }}" alt="Heatmap">
+    </div>
+    {% endif %}
+    {% if vismiss_plot %}
+    <div class="plot-card">
+      <div class="plot-title">Missing Pattern Overview</div>
+      <img src="data:image/png;base64,{{ vismiss_plot }}" alt="vis_miss">
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="footer">
+    missingly &mdash; Missing data analysis for Python
+  </div>
+
+</div>
 </body>
 </html>

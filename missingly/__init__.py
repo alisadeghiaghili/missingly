@@ -54,6 +54,7 @@ from .impute import (
     impute_rf,
     impute_gb,
 )
+from .transformer import MissinglyImputer
 from .report import (
     create_report,
 )
@@ -103,6 +104,7 @@ __all__ = [
     "impute_mice",
     "impute_rf",
     "impute_gb",
+    "MissinglyImputer",
     "create_report",
     "compare_imputations",
     "accessor",
