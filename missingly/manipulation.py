@@ -3,14 +3,22 @@
 This module provides helpers for replacing sentinel values with ``NaN``
 and for cleaning DataFrame column names so that downstream code can use
 consistent, predictable identifiers.
+
+Compatibility
+-------------
+Compatible with Python 3.9+.  Uses ``from __future__ import annotations``
+for lazy annotation evaluation and ``typing`` generics instead of the
+``X | Y`` union syntax introduced in Python 3.10.
 """
+
+from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 import numpy as np
-from typing import Union, List, Dict, Callable
 
 
 def replace_with_na(
@@ -115,50 +123,24 @@ def clean_names(
     ----------
     df : pd.DataFrame
         The dataframe whose column names should be cleaned.
-        The dataframe itself is not modified; a renamed copy is returned.
     case : {"lower", "upper", "snake"}, optional
-        Case transformation to apply.  ``"snake"`` is an alias for
-        ``"lower"`` (included for R-janitor familiarity).
-        Default is ``"lower"``.
+        Case transformation to apply.  Default is ``"lower"``.
     sep : str, optional
-        Separator character inserted between words.  Must be non-empty
-        and must not consist solely of alphanumeric characters (letters
-        or digits).  ``"_"``, ``"-"``, ``"."`` are all valid.
+        Separator character.  Must be non-empty and not purely alphanumeric.
         Default is ``"_"``.
     strip_accents : bool, optional
-        If ``True``, decompose Unicode characters (NFD normalisation)
-        and remove combining accent marks (category ``Mn``) before
-        processing.  Useful for Latin-script names with diacritics
-        (e.g. ``"résumé"`` → ``"resume"``).
-        Persian/Arabic letters are *not* decomposed by NFD, so setting
-        this to ``True`` is safe for mixed Persian-Latin column names.
+        Strip combining accent marks via NFD decomposition.
         Default is ``False``.
 
     Returns
     -------
     pd.DataFrame
-        A shallow copy of *df* with cleaned column names.  The data is
-        not copied.
+        A shallow copy of *df* with cleaned column names.
 
     Raises
     ------
     ValueError
-        If *case* is not one of ``"lower"``, ``"upper"``, ``"snake"``.
-    ValueError
-        If *sep* is empty or consists solely of alphanumeric characters,
-        which would make it indistinguishable from regular word content.
-
-    Notes
-    -----
-    The function intentionally preserves Persian, Arabic, and CJK
-    letters because ``\\w`` in Python's ``re`` module matches all
-    Unicode word characters.  If you want pure ASCII column names,
-    combine ``strip_accents=True`` with a manual
-    ``encode('ascii', 'ignore')`` on the column names beforehand.
-
-    ``"_"`` is a valid separator even though it is technically a
-    ``\\w`` character — it is the conventional snake_case separator and
-    is treated as a special case in the validation logic.
+        If *case* is invalid or *sep* is empty / purely alphanumeric.
 
     Example
     -------
@@ -177,8 +159,6 @@ def clean_names(
         raise ValueError(
             f"case must be one of {valid_cases!r}; got {case!r}"
         )
-    # sep must be non-empty and must not be purely alphanumeric.
-    # '_' is explicitly allowed as the canonical snake_case separator.
     if not sep or (re.fullmatch(r"[A-Za-z0-9]+", sep) is not None):
         raise ValueError(
             f"sep must be a non-empty, non-alphanumeric string "
@@ -198,26 +178,21 @@ def clean_names(
         elif case == "upper":
             s = s.upper()
 
-        # Replace every non-word character with sep.
-        # \W matches anything that is not [a-zA-Z0-9_] (Unicode-aware).
         s = re.sub(r"\W+", sep, s, flags=re.UNICODE)
 
-        # Collapse consecutive seps and strip edge seps.
         escaped = re.escape(sep)
         s = re.sub(escaped + "+", sep, s)
         s = s.strip(sep)
 
-        # Python identifier safety: names starting with a digit.
         if s and s[0].isdigit():
             s = sep + s
 
-        return s or sep  # fallback for names that become empty
+        return s or sep
 
     raw_names = [_clean_one(col) for col in df.columns]
 
-    # Resolve duplicates: second occurrence → name_2, third → name_3, …
-    seen: dict[str, int] = {}
-    clean: list[str] = []
+    seen: Dict[str, int] = {}
+    clean: List[str] = []
     for name in raw_names:
         if name not in seen:
             seen[name] = 1

@@ -14,11 +14,18 @@ Persian / right-to-left labels
 -------------------------------
 All functions use matplotlib's default Unicode text renderer, which
 supports Persian (Farsi) and Arabic column/index labels out of the box.
-No special configuration is required; however, for correct RTL glyph
-ordering you may want to install a font that supports the required
-script (e.g. ``DejaVu Sans``, ``Vazir``) and register it with
-``matplotlib.font_manager`` before calling these functions.
+No special configuration is required.
+
+Compatibility
+-------------
+Compatible with Python 3.9+.  Uses ``from __future__ import annotations``
+for lazy annotation evaluation and ``typing`` generics instead of the
+``X | Y`` union syntax introduced in Python 3.10.
 """
+
+from __future__ import annotations
+
+from typing import Dict, List, Optional
 
 import pandas as pd
 import numpy as np
@@ -33,7 +40,7 @@ from scipy.spatial.distance import squareform
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _nullity(df: pd.DataFrame, missing_values: list | None) -> pd.DataFrame:
+def _nullity(df: pd.DataFrame, missing_values: Optional[List] = None) -> pd.DataFrame:
     """Return a boolean DataFrame indicating missing positions.
 
     Parameters
@@ -59,11 +66,8 @@ def _nullity(df: pd.DataFrame, missing_values: list | None) -> pd.DataFrame:
 # Existing visualisations
 # ---------------------------------------------------------------------------
 
-def matrix(df: pd.DataFrame, ax=None, missing_values: list = None, **kwargs):
+def matrix(df: pd.DataFrame, ax=None, missing_values: Optional[List] = None, **kwargs):
     """A matrix plot to visualize the location of missing data.
-
-    Creates a heatmap where each cell is coloured by whether the
-    corresponding value is missing.
 
     Parameters
     ----------
@@ -104,7 +108,7 @@ def matrix(df: pd.DataFrame, ax=None, missing_values: list = None, **kwargs):
     return ax
 
 
-def bar(df: pd.DataFrame, ax=None, missing_values: list = None, **kwargs):
+def bar(df: pd.DataFrame, ax=None, missing_values: Optional[List] = None, **kwargs):
     """A bar plot to visualize the number of missing values per column.
 
     Parameters
@@ -137,20 +141,8 @@ def bar(df: pd.DataFrame, ax=None, missing_values: list = None, **kwargs):
     return ax
 
 
-def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
+def upset(df: pd.DataFrame, missing_values: Optional[List] = None, **kwargs):
     """An UpSet plot to visualize combinations of missing values.
-
-    Renders three panels in a single figure:
-
-    * **top** — bar chart of intersection sizes, sorted by cardinality
-      (descending).
-    * **middle** — dot-and-line matrix showing which columns participate
-      in each intersection.
-    * **left** — horizontal bar chart of per-column missing totals.
-
-    This is a pure-matplotlib implementation that carries no dependency on
-    the ``upsetplot`` package, which has an unfixed bug under
-    pandas >= 3.0 / Python 3.11+.
 
     Parameters
     ----------
@@ -159,24 +151,13 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
     missing_values : list, optional
         A list of values to treat as missing in addition to ``NaN``.
     **kwargs
-        Ignored.  Present for API compatibility with the previous
-        ``upsetplot``-based signature.
+        Ignored.  Present for API compatibility.
 
     Returns
     -------
     dict
         A dictionary with keys ``'intersections'``, ``'matrix'``, and
-        ``'totals'``, each mapping to the corresponding
-        ``matplotlib.axes.Axes``.
-
-    Example
-    -------
-    >>> import pandas as pd
-    >>> from missingly import visualise
-    >>> df = pd.DataFrame({'A': [None, 1, None], 'B': [None, None, 1]})
-    >>> axes = visualise.upset(df)
-    >>> isinstance(axes, dict)
-    True
+        ``'totals'``, each mapping to the corresponding Axes.
     """
     nullity_matrix = _nullity(df, missing_values)
 
@@ -188,7 +169,7 @@ def upset(df: pd.DataFrame, missing_values: list = None, **kwargs):
     nullity_matrix = nullity_matrix[missing_cols].astype(bool)
     n_cols = len(missing_cols)
 
-    combos: dict = {}
+    combos: Dict = {}
     for row in nullity_matrix.itertuples(index=False):
         key = tuple(row)
         combos[key] = combos.get(key, 0) + 1
@@ -277,14 +258,10 @@ def scatter_miss(
     x: str,
     y: str,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """A scatter plot that highlights missing values.
-
-    Missing values in either axis variable are imputed slightly below
-    the observed minimum so they remain visible on the plot, and are
-    coloured differently via the ``hue`` parameter.
 
     Parameters
     ----------
@@ -345,7 +322,7 @@ def scatter_miss(
     return ax
 
 
-def miss_case(df: pd.DataFrame, ax=None, missing_values: list = None, **kwargs):
+def miss_case(df: pd.DataFrame, ax=None, missing_values: Optional[List] = None, **kwargs):
     """A bar plot to visualize the number of missing values per case (row).
 
     Parameters
@@ -418,7 +395,7 @@ def vis_miss_fct(
     df: pd.DataFrame,
     fct: str,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """Visualize missingness by a factor (categorical) variable.
@@ -463,7 +440,7 @@ def vis_miss_fct(
 def vis_miss_cumsum_var(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """Visualize the cumulative sum of missing values per variable.
@@ -500,7 +477,7 @@ def vis_miss_cumsum_var(
 def vis_miss_cumsum_case(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """Visualize the cumulative sum of missing values per case (row).
@@ -539,7 +516,7 @@ def vis_miss_span(
     column: str,
     span: int,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """Visualize the number of missings in a rolling span for a single variable.
@@ -577,7 +554,7 @@ def vis_miss_span(
     return ax
 
 
-def vis_parallel_coords(df: pd.DataFrame, missing_values: list = None, **kwargs):
+def vis_parallel_coords(df: pd.DataFrame, missing_values: Optional[List] = None, **kwargs):
     """A parallel coordinates plot to visualize missingness patterns.
 
     Parameters
@@ -608,15 +585,11 @@ def vis_parallel_coords(df: pd.DataFrame, missing_values: list = None, **kwargs)
 def dendrogram(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     method: str = 'ward',
     **kwargs,
 ):
     """A dendrogram to cluster variables by their nullity correlation.
-
-    Builds a hierarchical clustering of the DataFrame columns based on
-    how similarly they are missing across rows.  Columns that tend to be
-    missing together will appear close in the dendrogram.
 
     Parameters
     ----------
@@ -685,17 +658,10 @@ def dendrogram(
 def heatmap(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """Nullity correlation heatmap between columns.
-
-    Shows the Pearson correlation of the binary missingness indicators
-    for each pair of columns.  A value of +1 means the two columns are
-    always missing together; -1 means they are never missing at the same
-    time; 0 means missingness is independent.
-
-    Inspired by ``missingno.heatmap``.
 
     Parameters
     ----------
@@ -712,19 +678,6 @@ def heatmap(
     -------
     matplotlib.axes.Axes
         The Axes containing the heatmap.
-
-    Notes
-    -----
-    Columns that are never missing or always missing have zero variance
-    and produce ``NaN`` correlations.  These cells are rendered as blank
-    (masked) rather than raising an error.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly import visualise
-    >>> df = pd.DataFrame({'A': [np.nan, 1, np.nan], 'B': [np.nan, np.nan, 1]})
-    >>> ax = visualise.heatmap(df)
     """
     if ax is None:
         n = df.shape[1]
@@ -764,35 +717,27 @@ def heatmap(
 def vis_miss(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     show_pct: bool = True,
     cluster: bool = False,
     **kwargs,
 ):
     """Annotated missingness matrix with per-column percentage labels.
 
-    An enhanced version of :func:`matrix` that annotates each column
-    header with its missingness percentage, making it easy to read
-    both location and magnitude of missing data at a glance.
-
-    Inspired by ``naniar::vis_miss``.
-
     Parameters
     ----------
     df : pd.DataFrame
-        The dataframe to visualize.  Column and index labels may contain
-        Unicode characters (including Persian / Arabic).
+        The dataframe to visualize.
     ax : matplotlib.axes.Axes, optional
         Axes to draw into.  Created automatically if omitted.
     missing_values : list, optional
         Sentinel values treated as missing in addition to ``NaN``.
     show_pct : bool, optional
-        If ``True`` (default), append the missingness percentage to each
-        column tick label, e.g. ``"salary (12.5%)"``.
+        Append missingness percentage to each column tick label.
+        Default is ``True``.
     cluster : bool, optional
-        If ``True``, reorder rows using hierarchical clustering on the
-        missingness pattern so that rows with similar missing profiles
-        are adjacent.  Default is ``False``.
+        Reorder rows by hierarchical clustering on missingness pattern.
+        Default is ``False``.
     **kwargs
         Additional keyword arguments forwarded to ``seaborn.heatmap``.
 
@@ -800,13 +745,6 @@ def vis_miss(
     -------
     matplotlib.axes.Axes
         The Axes containing the plot.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly import visualise
-    >>> df = pd.DataFrame({'نام': ['علی', None, 'رضا'], 'سن': [25, 30, None]})
-    >>> ax = visualise.vis_miss(df)
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(max(8, df.shape[1] * 1.2), 6))
@@ -849,17 +787,11 @@ def vis_miss(
 def miss_var_pct(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     sort: bool = True,
     **kwargs,
 ):
     """Horizontal bar chart of missingness percentage per variable.
-
-    Each bar shows what percentage of that variable's values are
-    missing.  Variables are sorted by missingness percentage (descending)
-    by default.
-
-    Inspired by ``naniar::miss_var_plot``.
 
     Parameters
     ----------
@@ -870,8 +802,8 @@ def miss_var_pct(
     missing_values : list, optional
         Sentinel values treated as missing in addition to ``NaN``.
     sort : bool, optional
-        If ``True`` (default), sort variables by descending missingness
-        percentage before plotting.
+        Sort variables by descending missingness percentage.
+        Default is ``True``.
     **kwargs
         Additional keyword arguments forwarded to
         ``matplotlib.axes.Axes.barh``.
@@ -880,13 +812,6 @@ def miss_var_pct(
     -------
     matplotlib.axes.Axes
         The Axes containing the plot.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly import visualise
-    >>> df = pd.DataFrame({'درآمد': [None, 2, None, 4], 'سن': [1, None, 3, 4]})
-    >>> ax = visualise.miss_var_pct(df)
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, max(4, df.shape[1] * 0.5)))
@@ -918,17 +843,11 @@ def miss_var_pct(
 def miss_cluster(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     method: str = "ward",
     **kwargs,
 ):
     """Heatmap with rows reordered by hierarchical clustering on missingness.
-
-    Groups rows with similar missingness patterns together, making it
-    easy to spot systematic missing data structures (e.g. an entire
-    survey section skipped by one cohort).
-
-    Inspired by ``missingno`` sorted matrix and ``naniar`` clustering.
 
     Parameters
     ----------
@@ -948,26 +867,6 @@ def miss_cluster(
     -------
     matplotlib.axes.Axes
         The Axes containing the heatmap.
-
-    Notes
-    -----
-    Rows that are identical in their missingness pattern will be placed
-    adjacent to each other.  The y-axis shows the *original* row index
-    only when the DataFrame has fewer than 50 rows; otherwise it is
-    suppressed for readability.
-
-    When all rows have identical missingness patterns (zero variance in
-    the Hamming distance), clustering is skipped and rows are shown in
-    original order.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly import visualise
-    >>> rng = np.random.default_rng(0)
-    >>> df = pd.DataFrame(rng.choice([1.0, np.nan], size=(20, 4)),
-    ...                   columns=list('ABCD'))
-    >>> ax = visualise.miss_cluster(df)
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(max(8, df.shape[1] * 1.2), 6))
@@ -1008,16 +907,10 @@ def miss_cluster(
 def miss_which(
     df: pd.DataFrame,
     ax=None,
-    missing_values: list = None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
     """Binary tile plot showing which variables contain missing values.
-
-    Each column is represented by a single tile.  The tile is filled
-    (dark) if the variable has **any** missing values, and empty (light)
-    if it is fully observed.
-
-    Inspired by ``naniar::miss_which`` and ``naniar::vis_miss``.
 
     Parameters
     ----------
@@ -1034,27 +927,11 @@ def miss_which(
     -------
     matplotlib.axes.Axes
         The Axes containing the plot.
-
-    Notes
-    -----
-    The underlying heatmap data is a (1 x n_columns) numeric DataFrame
-    with dtype ``float64``.  Annotation labels ("Missing" / "Complete")
-    are stored in a separate object-dtype array passed via the ``annot``
-    parameter to avoid the pandas FutureWarning about incompatible dtype
-    assignment.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly import visualise
-    >>> df = pd.DataFrame({'A': [1, None], 'B': [1, 1], 'ستون': [None, None]})
-    >>> ax = visualise.miss_which(df)
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(max(6, df.shape[1] * 0.8), 2.5))
 
     null_df = _nullity(df, missing_values)
-    # 1-row numeric DataFrame: 1.0 = has missing, 0.0 = fully observed.
     has_missing = null_df.any().astype(float).to_frame(name="has_missing").T
     pct = null_df.mean() * 100
 
@@ -1062,8 +939,6 @@ def miss_which(
         f"{col}\n({pct[col]:.1f}%)" for col in df.columns
     ]
 
-    # Build annotation array as object dtype to avoid dtype-incompatibility
-    # FutureWarning when mixing strings into a float DataFrame.
     annot_arr = np.where(
         has_missing.values.astype(bool),
         "Missing",
