@@ -60,6 +60,8 @@ from .report import (
 from .compare import (
     compare_imputations,
 )
+# Register the df.miss accessor
+from . import accessor  # noqa: F401
 
 __all__ = [
     "bind_shadow",
@@ -103,4 +105,5 @@ __all__ = [
     "impute_gb",
     "create_report",
     "compare_imputations",
+    "accessor",
 ]
