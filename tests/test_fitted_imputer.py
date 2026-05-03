@@ -93,7 +93,7 @@ def test_is_fitted_after_fit(train_df):
 def test_transform_raises_before_fit(test_df):
     """transform() must raise RuntimeError if called before fit()."""
     imp = make_imputer('mean')
-    with pytest.raises(RuntimeError, match="fit\(\)"):
+    with pytest.raises(RuntimeError, match=r"fit\(\)"):
         imp.transform(test_df)
 
 

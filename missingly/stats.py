@@ -316,12 +316,14 @@ def diagnose_missing(
     num_df = num_df.loc[:, num_df.isnull().any()]  # keep only cols with missing
 
     # --- nullity correlation ---
+    # Use .to_numpy().copy() to obtain a writable array; pandas may return
+    # a read-only view which causes ValueError in np.fill_diagonal on
+    # NumPy >= 2.0 / Python 3.14+.
     max_corr: Optional[float] = None
     if num_df.shape[1] >= 2:
-        null_corr = num_df.isnull().astype(float).corr().abs()
-        # zero out diagonal
-        np.fill_diagonal(null_corr.values, 0.0)
-        max_corr = float(null_corr.values.max())
+        corr_arr = num_df.isnull().astype(float).corr().abs().to_numpy().copy()
+        np.fill_diagonal(corr_arr, 0.0)
+        max_corr = float(corr_arr.max())
 
     # --- run Little's test if possible ---
     test_result: Dict = {
@@ -358,7 +360,7 @@ def diagnose_missing(
     elif p_val >= significance:
         mechanism = "MCAR"
         recommendation = (
-            f"Little's test p={p_val:.3f} ≥ {significance}: data are consistent "
+            f"Little's test p={p_val:.3f} \u2265 {significance}: data are consistent "
             f"with Missing Completely At Random (MCAR). "
             f"Simple imputers (mean, median, mode) introduce minimal bias. "
             + (
@@ -379,7 +381,7 @@ def diagnose_missing(
             f"columns. Use model-based imputers that exploit inter-column structure."
             + (
                 f" Caution: {len(high_miss_cols)} column(s) have >40% missingness "
-                f"({high_miss_cols}) — even good imputers will introduce bias here."
+                f"({high_miss_cols}) \u2014 even good imputers will introduce bias here."
                 if high_miss_cols
                 else ""
             )
@@ -397,7 +399,7 @@ def diagnose_missing(
             f"Little's test p={p_val:.3f} < {significance}: evidence against MCAR. "
             f"Maximum nullity correlation is "
             + (
-                f"{max_corr:.2f} ≤ 0.30" if max_corr is not None else "unavailable"
+                f"{max_corr:.2f} \u2264 0.30" if max_corr is not None else "unavailable"
             )
             + ", so missingness does not strongly correlate with other observed "
             f"columns. This is consistent with Missing Not At Random (MNAR): "
@@ -436,9 +438,7 @@ def _logistic_log_likelihood(model, X, y):
     ----------
     model : fitted LogisticRegression
     X : np.ndarray
-        Feature matrix.
     y : np.ndarray
-        Binary target.
 
     Returns
     -------
@@ -456,23 +456,11 @@ def mar_mnar_test(
 ) -> List:
     """Likelihood-ratio test distinguishing MAR from MNAR per feature.
 
-    Compares two logistic models for each feature with missing values:
-
-    * MAR model  : ``missingness_indicator ~ other_features``
-    * MNAR model : ``missingness_indicator ~ other_features + Y``
-
-    A significant LRT statistic (small p-value) means including *Y*
-    improves the fit, i.e. missingness in that feature is related to the
-    outcome — evidence for MNAR.
-
     Parameters
     ----------
     X : pd.DataFrame
-        Covariate matrix with missing values.
     Y : array-like
-        Outcome vector (binary or continuous).
     missing_values : list, optional
-        Extra sentinel values treated as missing.
 
     Returns
     -------
