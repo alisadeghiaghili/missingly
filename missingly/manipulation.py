@@ -1,24 +1,50 @@
+"""Data manipulation utilities for missing data workflows.
+
+This module provides helpers for replacing sentinel values with ``NaN``
+and for cleaning DataFrame column names so that downstream code can use
+consistent, predictable identifiers.
+"""
+
+import re
+import unicodedata
+
 import pandas as pd
 import numpy as np
 from typing import Union, List, Dict, Callable
 
-def replace_with_na(df: pd.DataFrame, replace: Dict[str, Union[List, object, Callable]]) -> pd.DataFrame:
-    """Replaces specified values in a dataframe with NA.
+
+def replace_with_na(
+    df: pd.DataFrame,
+    replace: Dict[str, Union[List, object, Callable]],
+) -> pd.DataFrame:
+    """Replace specified values in a DataFrame with ``NaN``.
 
     Parameters
     ----------
     df : pd.DataFrame
         The dataframe to modify.
     replace : dict
-        A dictionary where the keys are column names and the values
-        are the values to replace with NA in that column. The values
-        can be a single value, a list of values, or a function that
-        returns a boolean.
+        A dictionary whose keys are column names and whose values
+        describe which entries to replace.  Each value may be:
+
+        * a single scalar — replace that exact value;
+        * a list of scalars — replace any value in the list;
+        * a callable — replace where ``callable(cell)`` returns ``True``.
 
     Returns
     -------
     pd.DataFrame
-        A new dataframe with the specified values replaced with NA.
+        A new dataframe with the specified values replaced with ``NaN``.
+        The original dataframe is not modified.
+
+    Example
+    -------
+    >>> df = pd.DataFrame({'A': [1, -99, 3], 'B': ['x', 'N/A', 'y']})
+    >>> replace_with_na(df, {'A': -99, 'B': 'N/A'})
+         A    B
+    0  1.0    x
+    1  NaN  NaN
+    2  3.0    y
     """
     df_copy = df.copy()
     for col, condition in replace.items():
@@ -32,18 +58,159 @@ def replace_with_na(df: pd.DataFrame, replace: Dict[str, Union[List, object, Cal
 
 
 def replace_with_na_all(df: pd.DataFrame, condition: Callable) -> pd.DataFrame:
-    """Replaces all values in a dataframe with NA if they meet a condition.
+    """Replace all values in a DataFrame with ``NaN`` if they meet a condition.
 
     Parameters
     ----------
     df : pd.DataFrame
         The dataframe to modify.
     condition : callable
-        A function that returns a boolean.
+        A function that accepts a single cell value and returns ``True``
+        if that value should be replaced with ``NaN``.
 
     Returns
     -------
     pd.DataFrame
-        A new dataframe with the specified values replaced with NA.
+        A new dataframe with matching values replaced with ``NaN``.
+        The original dataframe is not modified.
+
+    Example
+    -------
+    >>> df = pd.DataFrame({'A': [1, -99], 'B': ['ok', 'N/A']})
+    >>> replace_with_na_all(df, lambda x: x in (-99, 'N/A'))
+         A     B
+    0  1.0    ok
+    1  NaN  NaN
     """
     return df.map(lambda x: np.nan if condition(x) else x)
+
+
+def clean_names(
+    df: pd.DataFrame,
+    *,
+    case: str = "lower",
+    sep: str = "_",
+    strip_accents: bool = False,
+) -> pd.DataFrame:
+    """Normalise DataFrame column names to clean, consistent identifiers.
+
+    Inspired by ``janitor::clean_names`` from R.
+
+    The transformation pipeline applied to each column name:
+
+    1. Convert to string (handles non-string column labels).
+    2. Optionally decompose and strip Unicode accent marks
+       (``strip_accents=True``).
+    3. Apply case transformation (``lower``, ``upper``, or ``snake``).
+    4. Replace any character that is *not* a Unicode word character
+       (``\\w``, i.e. letters, digits, underscore — including Persian,
+       Arabic, CJK, etc.) with the separator character.
+    5. Collapse consecutive separators into one.
+    6. Strip leading/trailing separators.
+    7. If the name starts with a digit, prepend the separator so the
+       result is a valid Python identifier.
+    8. Resolve duplicate names by appending ``_2``, ``_3``, … suffixes.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The dataframe whose column names should be cleaned.
+        The dataframe itself is not modified; a renamed copy is returned.
+    case : {"lower", "upper", "snake"}, optional
+        Case transformation to apply.  ``"snake"`` is an alias for
+        ``"lower"`` (included for R-janitor familiarity).
+        Default is ``"lower"``.
+    sep : str, optional
+        Separator character used to replace non-word characters and
+        collapse runs.  Default is ``"_"``.
+    strip_accents : bool, optional
+        If ``True``, decompose Unicode characters (NFD normalisation)
+        and remove combining accent marks (category ``Mn``) before
+        processing.  Useful for Latin-script names with diacritics
+        (e.g. ``"résumé"`` → ``"resume"``).
+        Persian/Arabic letters are *not* decomposed by NFD, so setting
+        this to ``True`` is safe for mixed Persian-Latin column names.
+        Default is ``False``.
+
+    Returns
+    -------
+    pd.DataFrame
+        A shallow copy of *df* with cleaned column names.  The data is
+        not copied.
+
+    Raises
+    ------
+    ValueError
+        If *case* is not one of ``"lower"``, ``"upper"``, ``"snake"``.
+    ValueError
+        If *sep* is empty or contains a word character (``\\w``), which
+        would make collapsing ambiguous.
+
+    Notes
+    -----
+    The function intentionally preserves Persian, Arabic, and CJK
+    letters because ``\\w`` in Python's ``re`` module matches all
+    Unicode word characters when the ``re.UNICODE`` flag is active
+    (which is the default for ``str`` patterns).  If you want pure
+    ASCII column names, combine ``strip_accents=True`` with a manual
+    ``encode('ascii', 'ignore')`` on the column names beforehand.
+
+    Example
+    -------
+    >>> import pandas as pd
+    >>> from missingly.manipulation import clean_names
+    >>> df = pd.DataFrame(columns=['First Name', 'Last  Name!', 'Age#'])
+    >>> clean_names(df).columns.tolist()
+    ['first_name', 'last_name', 'age']
+
+    >>> df2 = pd.DataFrame(columns=['درآمد ماهانه', 'سن (Year)'])
+    >>> clean_names(df2).columns.tolist()
+    ['درآمد_ماهانه', 'سن_year']
+    """
+    valid_cases = {"lower", "upper", "snake"}
+    if case not in valid_cases:
+        raise ValueError(
+            f"case must be one of {valid_cases!r}; got {case!r}"
+        )
+    if not sep or re.search(r"\w", sep):
+        raise ValueError(
+            f"sep must be a non-empty non-word character string; got {sep!r}"
+        )
+
+    def _clean_one(name: str) -> str:
+        """Apply the full normalisation pipeline to a single name string."""
+        s = str(name)
+
+        if strip_accents:
+            s = unicodedata.normalize("NFD", s)
+            s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+        if case in ("lower", "snake"):
+            s = s.lower()
+        elif case == "upper":
+            s = s.upper()
+
+        s = re.sub(r"\W+", sep, s, flags=re.UNICODE)
+
+        escaped = re.escape(sep)
+        s = re.sub(escaped + "+", sep, s)
+        s = s.strip(sep)
+
+        if s and s[0].isdigit():
+            s = sep + s
+
+        return s or sep
+
+    raw_names = [_clean_one(col) for col in df.columns]
+
+    seen: dict[str, int] = {}
+    clean: list[str] = []
+    for name in raw_names:
+        if name not in seen:
+            seen[name] = 1
+            clean.append(name)
+        else:
+            seen[name] += 1
+            clean.append(f"{name}{sep}{seen[name]}")
+
+    return df.rename(columns=dict(zip(df.columns, clean)))

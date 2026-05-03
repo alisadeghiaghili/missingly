@@ -40,6 +40,7 @@ from .stats import (
 from .manipulation import (
     replace_with_na,
     replace_with_na_all,
+    clean_names,
 )
 from .impute import (
     impute_mean,
@@ -86,6 +87,7 @@ __all__ = [
     "mar_mnar_test",
     "replace_with_na",
     "replace_with_na_all",
+    "clean_names",
     "impute_mean",
     "impute_median",
     "impute_mode",
