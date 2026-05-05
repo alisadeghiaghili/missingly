@@ -19,10 +19,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pandas chaining accessor** (`df.miss.*`) — every public missingly
   function exposed as a method; manipulation/imputation methods return
   `DataFrame` for fluent pipelines; registered automatically on `import missingly`
+- **`diagnose_missing()`** (`stats.py`) — opinionated wrapper around
+  `mcar_test()` that inspects nullity correlations and returns a plain-English
+  `recommendation`, a `strategy_hint` (maps directly to imputation functions),
+  the inferred `mechanism` (`MCAR` / `MAR` / `possible_MNAR` /
+  `insufficient_data`), and a list of high-missingness columns (>40%).
+- **`FittedImputer`** and **`make_imputer()`** (`impute.py`) — stateful,
+  sklearn-compatible fit/transform wrapper around all seven imputation
+  functions.  Prevents data leakage by storing training-fold statistics;
+  supports `fit()`, `transform()`, `fit_transform()`, and `__repr__`.
+- **`cv_compare_imputations()`** (`compare.py`) — production-quality benchmark
+  that selects the best imputer via cross-validated downstream model score
+  (no data leakage).  Accepts DataFrames with real missing values; supports
+  classifiers (StratifiedKFold) and regressors (KFold); returns `mean_score`
+  and `std_score` per strategy.
+- **Time-series missing data module** (`timeseries.py`) —
+  `miss_ts_summary()`, `gap_table()`, `vis_ts_miss()`, `vis_gap_lengths()`,
+  `vis_miss_over_time()`, `impute_ts()` (ffill / bfill / linear / time /
+  spline strategies with gap-length limits).
+- Additional visualization functions: `miss_patterns()`, `miss_cooccurrence()`,
+  `miss_row_profile()`, `shadow_scatter()`, `vis_miss_by_group()`,
+  `miss_impute_compare()`, `vis_miss_cumsum_var()`, `vis_miss_cumsum_case()`,
+  `vis_miss_span()`, `vis_parallel_coords()`, `miss_cluster()`, `miss_which()`.
 
 ### Fixed
 - `test_coalesce_does_not_mutate` — replaced broken `list.__eq__` NaN
   comparison with `np.testing.assert_array_equal` (IEEE 754: `nan != nan`)
+- `diagnose_missing()` — `np.fill_diagonal(null_corr.values, …)` raised
+  `ValueError: underlying array is read-only` on NumPy ≥ 2.0 / Python 3.14+.
+  Fixed by using `.to_numpy().copy()` to obtain a writable array.
+- `tests/test_fitted_imputer.py` — `match="fit\(\)"` was an invalid escape
+  sequence (SyntaxWarning on Python 3.12+); changed to `match=r"fit\(\)"`.
 
 ### Changed
 - **Minimum pandas version bumped to 2.0** (was 1.0).  The `DataFrame.map()`
@@ -111,7 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned for 0.2.0
 - [ ] Interactive visualizations with plotly
-- [ ] Time series missing data analysis
+- [x] Time series missing data analysis
 - [ ] Missing data simulation utilities
 - [ ] Performance optimizations for large datasets
 - [ ] Additional statistical tests for missing data mechanisms
