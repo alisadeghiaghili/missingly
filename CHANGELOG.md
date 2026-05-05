@@ -41,6 +41,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `miss_row_profile()`, `shadow_scatter()`, `vis_miss_by_group()`,
   `miss_impute_compare()`, `vis_miss_cumsum_var()`, `vis_miss_cumsum_case()`,
   `vis_miss_span()`, `vis_parallel_coords()`, `miss_cluster()`, `miss_which()`.
+- **Interactive mode — Phase 1** (`interactive=True` parameter):
+  - `vis_miss` — annotated missingness matrix via Plotly Heatmap
+  - `heatmap` — nullity-correlation heatmap via Plotly Heatmap
+  - `matrix` — raw missingness matrix via Plotly Heatmap
+  - `miss_var_pct` — % missing per variable via Plotly horizontal Bar
+  - `miss_cooccurrence` — co-occurrence heatmap via Plotly Heatmap
+  - Optional dependency: `plotly >= 5.0` (`pip install missingly[interactive]`)
+  - `_require_plotly()` helper raises `ImportError` with install hint when plotly is absent
+- **Interactive mode — Phase 2** (`interactive=True` parameter):
+  - `miss_patterns` — top-N missingness-pattern bar chart via Plotly
+  - `miss_cluster` — hierarchically-clustered missingness heatmap via Plotly
+  - `miss_row_profile` — per-row missing-count histogram via Plotly with mean vline
+  - `dendrogram` — variable-clustering dendrogram via `plotly.figure_factory.create_dendrogram`
+  - All four functions remain fully backward-compatible: omitting `interactive` or
+    passing `interactive=False` continues to return `matplotlib.axes.Axes`
 
 ### Fixed
 - `test_coalesce_does_not_mutate` — replaced broken `list.__eq__` NaN
@@ -137,8 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Future Releases
 
 ### Planned for 0.2.0
-- [ ] Interactive visualizations with plotly
-- [x] Time series missing data analysis
 - [ ] Missing data simulation utilities
 - [ ] Performance optimizations for large datasets
 - [ ] Additional statistical tests for missing data mechanisms
+- [x] Interactive visualizations with plotly (Phase 1 + Phase 2 complete)
+- [x] Time series missing data analysis
