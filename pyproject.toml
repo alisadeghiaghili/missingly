@@ -48,6 +48,9 @@ docs = [
 test = [
     "pytest>=7.0.0"
 ]
+interactive = [
+    "plotly>=5.0.0",
+]
 
 [tool.setuptools]
 packages = ["missingly"]

@@ -6,8 +6,11 @@ Every public function follows the same conventions:
   can embed plots inside existing figures.
 * Accepts an optional ``missing_values`` list to treat arbitrary sentinel
   values (e.g. ``-99``, ``"N/A"``) as missing.
+* Accepts an optional ``interactive`` boolean (default ``False``). When
+  ``True``, returns a :class:`plotly.graph_objects.Figure` instead of a
+  matplotlib Axes — the ``ax`` parameter is ignored in that case.
 * Returns the Axes object (or a dict of Axes for multi-panel plots) so
-  callers can further customise the output.
+  callers can further customise the static output.
 * Titles, axis labels, and annotations all pass through
   :func:`_rtl_safe` which wraps any string containing Arabic/Persian
   characters in a Unicode RLM marker so matplotlib renders them
@@ -40,16 +43,31 @@ Miscellaneous
   scatter_miss, vis_miss_cumsum_var, vis_miss_cumsum_case,
   vis_miss_span, vis_miss_fct, vis_parallel_coords
 
+Interactive mode (Phase 1)
+--------------------------
+The following five functions support ``interactive=True`` via Plotly:
+
+* :func:`vis_miss`
+* :func:`heatmap`
+* :func:`matrix`
+* :func:`miss_var_pct`
+* :func:`miss_cooccurrence`
+
+Pass ``interactive=True`` to receive a :class:`plotly.graph_objects.Figure`
+that can be rendered in Jupyter notebooks with ``.show()`` or saved as HTML
+with ``.write_html(path)``.
+
 Compatibility
 -------------
 Requires Python 3.9+, pandas >= 1.5, matplotlib >= 3.6, seaborn >= 0.12.
+Interactive mode additionally requires plotly >= 5.0.
 Uses ``from __future__ import annotations`` for lazy evaluation.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -162,11 +180,305 @@ def _pct_labels(
     return [_rtl_safe(f"{col} ({pct[col]:.1f}%)") for col in df.columns]
 
 
+def _require_plotly():
+    """Import and return plotly.graph_objects, raising ImportError with a
+    helpful message if plotly is not installed.
+
+    Returns
+    -------
+    module
+        ``plotly.graph_objects``
+
+    Raises
+    ------
+    ImportError
+        If plotly is not installed.
+    """
+    try:
+        import plotly.graph_objects as go
+        return go
+    except ImportError as exc:
+        raise ImportError(
+            "Interactive mode requires plotly >= 5.0. "
+            "Install it with: pip install plotly"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Interactive backends (Phase 1)
+# ---------------------------------------------------------------------------
+
+def _vis_miss_plotly(
+    df: pd.DataFrame,
+    missing_values: Optional[List] = None,
+    show_pct: bool = True,
+    cluster: bool = False,
+) -> "go.Figure":  # type: ignore[name-defined]
+    """Plotly backend for :func:`vis_miss`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    missing_values : list, optional
+    show_pct : bool
+    cluster : bool
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    go = _require_plotly()
+    null_df = _nullity(df, missing_values).astype(float)
+
+    if cluster and null_df.shape[0] > 1:
+        row_dist = pdist(null_df.values, metric="hamming")
+        row_order = leaves_list(linkage(row_dist, method="ward"))
+        null_df = null_df.iloc[row_order]
+
+    col_labels = _pct_labels(df, missing_values) if show_pct else _safe_labels(df.columns)
+    pct = _nullity(df, missing_values).mean() * 100
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=null_df.values,
+            x=col_labels,
+            y=[str(i) for i in null_df.index],
+            colorscale=[[0, "#f0f0f0"], [1, "#d62728"]],
+            showscale=False,
+            hovertemplate="Row: %{y}<br>Column: %{x}<br>Missing: %{z:.0f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Missing Data Overview",
+        xaxis=dict(tickangle=-45, side="bottom"),
+        yaxis=dict(autorange="reversed", showticklabels=null_df.shape[0] < 50),
+        template="plotly_white",
+        margin=dict(l=80, r=40, t=60, b=120),
+    )
+    return fig
+
+
+def _heatmap_plotly(
+    df: pd.DataFrame,
+    missing_values: Optional[List] = None,
+    method: str = "pearson",
+    mask_insignificant: bool = False,
+    significance: float = 0.05,
+) -> "go.Figure":  # type: ignore[name-defined]
+    """Plotly backend for :func:`heatmap`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    missing_values : list, optional
+    method : {'pearson', 'phi'}
+    mask_insignificant : bool
+    significance : float
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    go = _require_plotly()
+    null_mat = _nullity(df, missing_values).astype(float)
+    corr = null_mat.corr(method="pearson")  # phi == pearson on binary
+
+    nan_mask = np.isnan(corr.values)
+    sig_mask = np.zeros_like(nan_mask)
+
+    if mask_insignificant:
+        from scipy import stats
+        n_obs = len(null_mat)
+        for i in range(corr.shape[0]):
+            for j in range(corr.shape[1]):
+                if i == j or nan_mask[i, j]:
+                    continue
+                r = corr.values[i, j]
+                if abs(r) < 1.0:
+                    t_stat = r * np.sqrt(n_obs - 2) / np.sqrt(1 - r ** 2)
+                    p = 2 * stats.t.sf(abs(t_stat), df=n_obs - 2)
+                    if p > significance:
+                        sig_mask[i, j] = True
+
+    z = corr.values.copy()
+    z[nan_mask | sig_mask] = None  # masked cells shown as blank
+    labels = _safe_labels(corr.columns)
+    method_label = "Phi" if method == "phi" else "Pearson"
+
+    text = np.where(
+        np.isnan(z),
+        "",
+        np.vectorize(lambda v: f"{v:.2f}")(np.nan_to_num(z)),
+    )
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z,
+            x=labels,
+            y=labels,
+            colorscale="RdBu",
+            zmin=-1, zmax=1,
+            text=text,
+            texttemplate="%{text}",
+            hovertemplate="%{y} × %{x}: %{z:.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=f"Nullity Correlation Heatmap ({method_label})",
+        xaxis=dict(tickangle=-45),
+        yaxis=dict(autorange="reversed"),
+        template="plotly_white",
+        margin=dict(l=100, r=40, t=60, b=120),
+    )
+    return fig
+
+
+def _matrix_plotly(
+    df: pd.DataFrame,
+    missing_values: Optional[List] = None,
+) -> "go.Figure":  # type: ignore[name-defined]
+    """Plotly backend for :func:`matrix`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    missing_values : list, optional
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    go = _require_plotly()
+    null_mat = _nullity(df, missing_values).astype(float)
+    labels = _safe_labels(df.columns)
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=null_mat.values,
+            x=labels,
+            y=[str(i) for i in df.index],
+            colorscale=[[0, "#f0f0f0"], [1, "#d62728"]],
+            showscale=False,
+            hovertemplate="Row: %{y}<br>Column: %{x}<br>Missing: %{z:.0f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Missing Data Matrix",
+        xaxis=dict(tickangle=-45, side="bottom"),
+        yaxis=dict(autorange="reversed", showticklabels=df.shape[0] < 50),
+        template="plotly_white",
+        margin=dict(l=80, r=40, t=60, b=120),
+    )
+    return fig
+
+
+def _miss_var_pct_plotly(
+    df: pd.DataFrame,
+    missing_values: Optional[List] = None,
+    sort: bool = True,
+) -> "go.Figure":  # type: ignore[name-defined]
+    """Plotly backend for :func:`miss_var_pct`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    missing_values : list, optional
+    sort : bool
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    go = _require_plotly()
+    pct = _nullity(df, missing_values).mean() * 100
+    if sort:
+        pct = pct.sort_values(ascending=True)
+
+    labels = _safe_labels(pct.index)
+    fig = go.Figure(
+        data=go.Bar(
+            x=pct.values,
+            y=labels,
+            orientation="h",
+            marker_color="steelblue",
+            text=[f"{v:.1f}%" for v in pct.values],
+            textposition="outside",
+            hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Missing Values per Variable (%)",
+        xaxis=dict(title="% Missing", range=[0, 110]),
+        yaxis=dict(title=""),
+        template="plotly_white",
+        margin=dict(l=120, r=60, t=60, b=60),
+    )
+    return fig
+
+
+def _miss_cooccurrence_plotly(
+    df: pd.DataFrame,
+    missing_values: Optional[List] = None,
+    normalize: bool = True,
+) -> "go.Figure":  # type: ignore[name-defined]
+    """Plotly backend for :func:`miss_cooccurrence`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    missing_values : list, optional
+    normalize : bool
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    go = _require_plotly()
+    null_mat = _nullity(df, missing_values).astype(int)
+    cooc = null_mat.T.dot(null_mat)
+    if normalize:
+        cooc = cooc / len(df)
+        fmt_fn = lambda v: f"{v:.2f}"
+        title = "Missingness Co-occurrence (fraction)"
+    else:
+        fmt_fn = lambda v: f"{int(v)}"
+        title = "Missingness Co-occurrence (count)"
+
+    labels = _safe_labels(cooc.columns)
+    text = np.vectorize(fmt_fn)(cooc.values)
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=cooc.values,
+            x=labels,
+            y=labels,
+            colorscale="Blues",
+            text=text,
+            texttemplate="%{text}",
+            hovertemplate="%{y} × %{x}: %{z}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=title,
+        xaxis=dict(tickangle=-45),
+        yaxis=dict(autorange="reversed"),
+        template="plotly_white",
+        margin=dict(l=100, r=40, t=60, b=120),
+    )
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # Basic visualisations
 # ---------------------------------------------------------------------------
 
-def matrix(df: pd.DataFrame, ax=None, missing_values: Optional[List] = None, **kwargs):
+def matrix(
+    df: pd.DataFrame,
+    ax=None,
+    missing_values: Optional[List] = None,
+    interactive: bool = False,
+    **kwargs,
+):
     """A matrix plot to visualize the location of missing data.
 
     Parameters
@@ -175,15 +487,26 @@ def matrix(df: pd.DataFrame, ax=None, missing_values: Optional[List] = None, **k
         The dataframe to visualize.
     ax : matplotlib.axes.Axes, optional
         A matplotlib Axes object.  Created automatically if omitted.
+        Ignored when ``interactive=True``.
     missing_values : list, optional
         Sentinel values treated as missing in addition to ``NaN``.
+    interactive : bool, optional
+        If ``True``, return a :class:`plotly.graph_objects.Figure`
+        instead of a matplotlib Axes.  Default ``False``.
     **kwargs
-        Additional keyword arguments forwarded to ``seaborn.heatmap``.
+        Additional keyword arguments forwarded to ``seaborn.heatmap``
+        (static mode only).
 
     Returns
     -------
     matplotlib.axes.Axes
+        When ``interactive=False`` (default).
+    plotly.graph_objects.Figure
+        When ``interactive=True``.
     """
+    if interactive:
+        return _matrix_plotly(df, missing_values)
+
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -266,6 +589,7 @@ def miss_var_pct(
     ax=None,
     missing_values: Optional[List] = None,
     sort: bool = True,
+    interactive: bool = False,
     **kwargs,
 ):
     """Horizontal bar chart of missingness percentage per variable.
@@ -274,16 +598,26 @@ def miss_var_pct(
     ----------
     df : pd.DataFrame
     ax : matplotlib.axes.Axes, optional
+        Ignored when ``interactive=True``.
     missing_values : list, optional
     sort : bool
         Sort by descending missingness.  Default ``True``.
+    interactive : bool, optional
+        If ``True``, return a :class:`plotly.graph_objects.Figure`.
+        Default ``False``.
     **kwargs
-        Forwarded to ``ax.barh``.
+        Forwarded to ``ax.barh`` (static mode only).
 
     Returns
     -------
     matplotlib.axes.Axes
+        When ``interactive=False`` (default).
+    plotly.graph_objects.Figure
+        When ``interactive=True``.
     """
+    if interactive:
+        return _miss_var_pct_plotly(df, missing_values, sort)
+
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, max(4, df.shape[1] * 0.5)))
 
@@ -314,6 +648,7 @@ def vis_miss(
     missing_values: Optional[List] = None,
     show_pct: bool = True,
     cluster: bool = False,
+    interactive: bool = False,
     **kwargs,
 ):
     """Annotated missingness matrix with per-column percentage labels.
@@ -322,18 +657,28 @@ def vis_miss(
     ----------
     df : pd.DataFrame
     ax : matplotlib.axes.Axes, optional
+        Ignored when ``interactive=True``.
     missing_values : list, optional
     show_pct : bool
         Append missingness % to column tick labels.  Default ``True``.
     cluster : bool
         Reorder rows by hierarchical clustering.  Default ``False``.
+    interactive : bool, optional
+        If ``True``, return a :class:`plotly.graph_objects.Figure`.
+        Default ``False``.
     **kwargs
-        Forwarded to ``seaborn.heatmap``.
+        Forwarded to ``seaborn.heatmap`` (static mode only).
 
     Returns
     -------
     matplotlib.axes.Axes
+        When ``interactive=False`` (default).
+    plotly.graph_objects.Figure
+        When ``interactive=True``.
     """
+    if interactive:
+        return _vis_miss_plotly(df, missing_values, show_pct, cluster)
+
     if ax is None:
         fig, ax = plt.subplots(figsize=(max(8, df.shape[1] * 1.2), 6))
 
@@ -416,15 +761,6 @@ def upset(
 ):
     """Enhanced UpSet plot for missing value pattern analysis.
 
-    Improvements over the original implementation:
-
-    * Percentage labels on intersection bars.
-    * Limits to the *max_patterns* most common combinations so the plot
-      stays readable for wide DataFrames.
-    * Color-coded dots: active (missing) dots are coloured, inactive are
-      light grey; a connecting line links all active dots in a combo.
-    * x-axis label shows the pattern rank and count.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -455,7 +791,6 @@ def upset(
     n_rows_total = len(df)
     n_cols = len(missing_cols)
 
-    # Count combinations
     combos: Dict = {}
     for row in null_mat.itertuples(index=False):
         key = tuple(row)
@@ -552,10 +887,6 @@ def miss_patterns(
 ):
     """Horizontal bar chart of the most frequent missingness patterns.
 
-    A "pattern" is the unique combination of which columns are missing
-    in a row (e.g. "A + C missing").  This plot answers: "What are the
-    most common missing data patterns and how frequent are they?"
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -610,6 +941,7 @@ def miss_cooccurrence(
     normalize: bool = True,
     cmap: str = "Blues",
     annot: bool = True,
+    interactive: bool = False,
     **kwargs,
 ):
     """Co-occurrence heatmap: how often do pairs of columns miss together?
@@ -618,13 +950,11 @@ def miss_cooccurrence(
     column *i* and column *j* missing simultaneously.  The diagonal
     shows each column's own missingness count/rate.
 
-    This is the correct tool for diagnosing structural missingness
-    patterns — if two sensors always fail together, this will show it.
-
     Parameters
     ----------
     df : pd.DataFrame
     ax : matplotlib.axes.Axes, optional
+        Ignored when ``interactive=True``.
     missing_values : list, optional
     normalize : bool
         If ``True`` (default), values are fractions of total rows.
@@ -633,13 +963,22 @@ def miss_cooccurrence(
         Seaborn/matplotlib colormap name.  Default ``"Blues"``.
     annot : bool
         Annotate each cell.  Default ``True``.
+    interactive : bool, optional
+        If ``True``, return a :class:`plotly.graph_objects.Figure`.
+        Default ``False``.
     **kwargs
-        Forwarded to ``seaborn.heatmap``.
+        Forwarded to ``seaborn.heatmap`` (static mode only).
 
     Returns
     -------
     matplotlib.axes.Axes
+        When ``interactive=False`` (default).
+    plotly.graph_objects.Figure
+        When ``interactive=True``.
     """
+    if interactive:
+        return _miss_cooccurrence_plotly(df, missing_values, normalize)
+
     null_mat = _nullity(df, missing_values).astype(int)
 
     if ax is None:
@@ -682,6 +1021,7 @@ def heatmap(
     method: str = "pearson",
     mask_insignificant: bool = False,
     significance: float = 0.05,
+    interactive: bool = False,
     **kwargs,
 ):
     """Nullity correlation heatmap between columns.
@@ -690,25 +1030,31 @@ def heatmap(
     ----------
     df : pd.DataFrame
     ax : matplotlib.axes.Axes, optional
+        Ignored when ``interactive=True``.
     missing_values : list, optional
     method : {'pearson', 'phi'}
         Correlation method.  ``'phi'`` computes the Matthews/phi
-        coefficient for binary variables, which is more appropriate
-        than Pearson for 0/1 missingness indicators.  Default
-        ``'pearson'``.
+        coefficient for binary variables.  Default ``'pearson'``.
     mask_insignificant : bool
-        If ``True``, cells whose p-value exceeds *significance* are
-        masked (shown in grey).  Requires ``scipy``.  Default ``False``.
+        Mask cells whose p-value exceeds *significance*.  Default ``False``.
     significance : float
-        p-value threshold used when *mask_insignificant* is ``True``.
-        Default ``0.05``.
+        p-value threshold for masking.  Default ``0.05``.
+    interactive : bool, optional
+        If ``True``, return a :class:`plotly.graph_objects.Figure`.
+        Default ``False``.
     **kwargs
-        Forwarded to ``seaborn.heatmap``.
+        Forwarded to ``seaborn.heatmap`` (static mode only).
 
     Returns
     -------
     matplotlib.axes.Axes
+        When ``interactive=False`` (default).
+    plotly.graph_objects.Figure
+        When ``interactive=True``.
     """
+    if interactive:
+        return _heatmap_plotly(df, missing_values, method, mask_insignificant, significance)
+
     if ax is None:
         n = df.shape[1]
         fig, ax = plt.subplots(figsize=(max(6, n), max(5, n - 1)))
@@ -716,7 +1062,6 @@ def heatmap(
     null_mat = _nullity(df, missing_values).astype(float)
 
     if method == "phi":
-        # phi coefficient = Pearson on binary variables (identical formula)
         corr = null_mat.corr(method="pearson")
     else:
         corr = null_mat.corr()
@@ -879,10 +1224,6 @@ def miss_row_profile(
 ):
     """Distribution of per-row missing value counts.
 
-    Shows the histogram of how many columns are missing in each row.
-    The vertical dashed line marks the mean.  Useful for spotting
-    rows that are systematically incomplete vs. randomly affected.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -937,12 +1278,6 @@ def shadow_scatter(
 ):
     """Scatter plot coloured by whether a third variable is missing.
 
-    This is the primary visual tool for diagnosing Missing At Random
-    (MAR) patterns.  If the distribution of *x* vs *y* differs
-    systematically between the two coloured groups, missingness in
-    *shadow_col* is likely MAR (dependent on the observed variables)
-    rather than MCAR.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -956,7 +1291,6 @@ def shadow_scatter(
     missing_values : list, optional
     palette : dict, optional
         Mapping ``{True: color, False: color}`` for the hue.
-        Defaults to ``{True: "#d62728", False: "#1f77b4"}``.
     **kwargs
         Forwarded to ``seaborn.scatterplot``.
 
@@ -969,7 +1303,6 @@ def shadow_scatter(
 
     null_col = _nullity(df[[shadow_col]], missing_values)[shadow_col]
     plot_df = df[[x, y]].copy()
-    # Replace sentinel/NaN in x,y with column median for plotting
     for col in [x, y]:
         mask = _nullity(plot_df[[col]], missing_values)[col]
         plot_df[col] = pd.to_numeric(plot_df[col], errors="coerce")
@@ -1055,10 +1388,6 @@ def vis_miss_by_group(
 ):
     """Per-group missingness heatmap.
 
-    Unlike ``vis_miss_fct`` (which stacks bars), this shows a heatmap
-    where each row is a group level and each column is a variable,
-    making it easy to compare missingness profiles across groups.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -1089,7 +1418,6 @@ def vis_miss_by_group(
     if ax is None:
         fig, ax = plt.subplots(figsize=(max(6, n_vars * 0.8), max(4, n_groups * 0.6)))
 
-    # Apply RTL-safe labels
     miss_pct.columns = pd.Index(_safe_labels(miss_pct.columns))
     miss_pct.index = pd.Index(_safe_labels(miss_pct.index))
 
@@ -1161,10 +1489,6 @@ def miss_impute_compare(
 ):
     """Multi-column grid comparing original and imputed distributions.
 
-    Plots one KDE panel per column, overlaying the full imputed
-    distribution against the observed (non-missing) original values.
-    Only columns that had missing values are shown.
-
     Parameters
     ----------
     original_df : pd.DataFrame
@@ -1206,7 +1530,6 @@ def miss_impute_compare(
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
 
-    # Hide empty subplots
     for j in range(n, nrows * ncols):
         axes[j // ncols][j % ncols].set_visible(False)
 
