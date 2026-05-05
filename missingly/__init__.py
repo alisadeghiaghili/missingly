@@ -74,6 +74,22 @@ from .timeseries import (
     vis_miss_over_time,
     impute_ts,
 )
+from .simulate import (
+    simulate_mcar,
+    simulate_mar,
+    simulate_mnar,
+    simulate_mixed,
+)
+from .performance import (
+    chunk_apply,
+    memory_usage_mb,
+    optimize_dtypes,
+)
+from .stats_extra import (
+    test_hotelling,
+    test_pattern_monotone,
+    missing_correlation_matrix,
+)
 # Register the df.miss accessor
 from . import accessor  # noqa: F401
 
@@ -100,6 +116,8 @@ __all__ = [
     "vis_miss_span", "vis_parallel_coords",
     # stats
     "mcar_test", "mar_mnar_test", "diagnose_missing",
+    # stats_extra
+    "test_hotelling", "test_pattern_monotone", "missing_correlation_matrix",
     # manipulation
     "replace_with_na", "replace_with_na_all", "clean_names",
     "remove_empty", "coalesce_columns", "miss_as_feature",
@@ -117,6 +135,10 @@ __all__ = [
     # timeseries
     "miss_ts_summary", "gap_table", "vis_ts_miss",
     "vis_gap_lengths", "vis_miss_over_time", "impute_ts",
+    # simulate
+    "simulate_mcar", "simulate_mar", "simulate_mnar", "simulate_mixed",
+    # performance
+    "chunk_apply", "memory_usage_mb", "optimize_dtypes",
     # accessor
     "accessor",
 ]
