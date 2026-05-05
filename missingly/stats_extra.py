@@ -139,6 +139,10 @@ def hotelling_test(
     }
 
 
+# Tell pytest explicitly: these are NOT test functions.
+hotelling_test.__test__ = False  # type: ignore[attr-defined]
+
+
 def pattern_monotone_test(
     frame: pd.DataFrame,
     missing_values: Optional[list] = None,
@@ -185,6 +189,10 @@ def pattern_monotone_test(
         "sorted_columns": sorted_cols,
         "monotone_pct": float((n_rows - n_violating) / n_rows) if n_rows > 0 else 1.0,
     }
+
+
+# Tell pytest explicitly: these are NOT test functions.
+pattern_monotone_test.__test__ = False  # type: ignore[attr-defined]
 
 
 def missing_correlation_matrix(
