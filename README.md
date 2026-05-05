@@ -20,6 +20,7 @@
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Interactive Mode](#interactive-mode)
 - [Pandas Chaining API](#pandas-chaining-api)
 - [Comprehensive Feature Overview](#comprehensive-feature-overview)
 - [Advanced Usage Examples](#advanced-usage-examples)
@@ -40,6 +41,7 @@ Missing data is ubiquitous in real-world datasets and handling it poorly can lea
 
 - **Comprehensive Analysis**: Statistical tests to understand missing data mechanisms (MCAR, MAR, MNAR)
 - **Rich Visualizations**: Over 10 specialized plots to explore missing data patterns
+- **Interactive Plots**: Plotly-powered interactive versions of key visualizations for Jupyter and dashboards
 - **Multiple Imputation Methods**: From simple mean imputation to advanced machine learning approaches — all supporting mixed numeric/categorical DataFrames
 - **Automated Reporting**: Generate publication-ready HTML reports
 - **Pandas Integration**: Seamless workflow via both functional API and the `df.miss.*` chaining accessor
@@ -59,6 +61,10 @@ Missing data is ubiquitous in real-world datasets and handling it poorly can lea
 - **Dendrograms**: Hierarchical clustering of variables by missingness patterns
 - **Scatter plots**: Relationship visualization with missing value highlighting
 - **Distribution comparisons**: Before/after imputation analysis
+
+### ⚡ **Interactive Visualizations (Phase 1)**
+Five core plots now support `interactive=True` for Plotly output:
+- `vis_miss`, `heatmap`, `matrix`, `miss_var_pct`, `miss_cooccurrence`
 
 ### 🔧 **Advanced Imputation Methods**
 - **Simple methods**: Mean, median, mode — all categorical-aware
@@ -84,7 +90,15 @@ Install `missingly` via pip:
 pip install missingly
 ```
 
+For interactive Plotly visualizations:
+
+```bash
+pip install missingly[interactive]
+```
+
 **Requirements**: Python 3.9+, pandas ≥ 2.0, numpy ≥ 1.24, and standard data-science stack (matplotlib, seaborn, scipy, scikit-learn, statsmodels, jinja2).
+
+**Interactive mode** additionally requires: `plotly >= 5.0`.
 
 ## Quick Start
 
@@ -107,8 +121,8 @@ print(f"Missing values: {mi.n_miss(df)} ({mi.pct_miss(df):.1f}%)")
 print(mi.miss_var_summary(df))
 
 # Visualize missing patterns
-mi.vis_miss(df)
-mi.upset(df)
+mi.vis_miss(df)              # static (matplotlib)
+mi.vis_miss(df, interactive=True)  # interactive (plotly)
 
 # Test missing data mechanisms
 result = mi.mcar_test(df)
@@ -120,6 +134,39 @@ df_imputed = mi.impute_knn(df, n_neighbors=3)
 # Report
 mi.create_report(df, "missing_data_analysis.html")
 ```
+
+## Interactive Mode
+
+Five high-value visualizations support an `interactive=True` parameter that returns a
+[Plotly](https://plotly.com/python/) `Figure` instead of a matplotlib `Axes`.
+
+```python
+import missingly as mi
+
+# All five Phase-1 interactive functions
+fig = mi.vis_miss(df, interactive=True)         # annotated missingness matrix
+fig = mi.heatmap(df, interactive=True)          # nullity correlation heatmap
+fig = mi.matrix(df, interactive=True)           # raw missingness matrix
+fig = mi.miss_var_pct(df, interactive=True)     # % missing per variable
+fig = mi.miss_cooccurrence(df, interactive=True) # co-occurrence heatmap
+
+# Render in Jupyter
+fig.show()
+
+# Save as standalone HTML
+fig.write_html("missingness_overview.html")
+```
+
+> **Backward compatibility**: All functions continue to return `matplotlib.axes.Axes` by
+> default (`interactive=False`). No existing code requires changes.
+
+| Function | `interactive=False` (default) | `interactive=True` |
+|---|---|---|
+| `vis_miss` | `matplotlib.axes.Axes` | `plotly.graph_objects.Figure` |
+| `heatmap` | `matplotlib.axes.Axes` | `plotly.graph_objects.Figure` |
+| `matrix` | `matplotlib.axes.Axes` | `plotly.graph_objects.Figure` |
+| `miss_var_pct` | `matplotlib.axes.Axes` | `plotly.graph_objects.Figure` |
+| `miss_cooccurrence` | `matplotlib.axes.Axes` | `plotly.graph_objects.Figure` |
 
 ## Pandas Chaining API
 
@@ -145,8 +192,9 @@ df.miss.pct_miss()                   # → float
 df.miss.miss_var_summary()           # → DataFrame
 df.miss.bind_shadow()                # → DataFrame (doubled columns)
 
-# Visualisation — returns Axes
+# Visualisation — returns Axes (or Figure when interactive=True)
 df.miss.vis_miss()
+df.miss.vis_miss(interactive=True)
 df.miss.heatmap()
 df.miss.miss_var_pct()
 ```
@@ -159,7 +207,7 @@ df.miss.miss_var_pct()
 | Imputation | `impute_mean`, `impute_median`, `impute_mode`, `impute_knn`, `impute_mice`, `impute_rf`, `impute_gb` | `DataFrame` (chainable) |
 | Summary | `n_miss`, `n_complete`, `pct_miss`, `pct_complete`, `miss_var_summary`, `miss_case_summary`, `bind_shadow` | scalar / `DataFrame` |
 | Stats | `mcar_test`, `mar_mnar_test` | dict / `DataFrame` |
-| Visualisation | `matrix`, `bar`, `upset`, `heatmap`, `vis_miss`, `miss_var_pct`, `miss_cluster`, `miss_which`, `scatter_miss`, `miss_case`, `vis_impute_dist`, `vis_miss_fct`, `vis_miss_cumsum_var`, `vis_miss_cumsum_case`, `vis_miss_span`, `vis_parallel_coords`, `dendrogram` | `Axes` |
+| Visualisation | `matrix`, `bar`, `upset`, `heatmap`, `vis_miss`, `miss_var_pct`, `miss_cluster`, `miss_which`, `scatter_miss`, `miss_case`, `vis_impute_dist`, `vis_miss_fct`, `vis_miss_cumsum_var`, `vis_miss_cumsum_case`, `vis_miss_span`, `vis_parallel_coords`, `dendrogram` | `Axes` (or `Figure` when `interactive=True`) |
 
 ## Comprehensive Feature Overview
 
@@ -176,20 +224,21 @@ df.miss.miss_var_pct()
 
 ### Visualization Functions
 
-| Function | Description | Best For |
-|----------|-------------|----------|
-| `vis_miss()` | Annotated missingness overview | Default first look |
-| `matrix()` | Heatmap of missing patterns | Overall pattern visualization |
-| `bar()` | Bar chart of missing counts per variable | Variable comparison |
-| `miss_case()` | Bar chart of missing counts per row | Case-wise analysis |
-| `dendrogram()` | Hierarchical clustering of variables | Variable grouping by missingness |
-| `upset()` | Intersection plot of missing combinations | Complex pattern analysis |
-| `scatter_miss()` | Scatterplot highlighting missing values | Bivariate relationships |
-| `vis_impute_dist()` | Distribution comparison (before/after) | Imputation quality assessment |
-| `heatmap()` | Nullity-correlation heatmap | Correlation of missingness |
-| `miss_var_pct()` | % missing per variable (horizontal bar) | Quick variable ranking |
-| `miss_cluster()` | Clustered missingness heatmap | Pattern grouping |
-| `miss_which()` | Binary tile plot per column | Which columns have any missing |
+| Function | Description | Interactive |
+|----------|-------------|:-----------:|
+| `vis_miss()` | Annotated missingness overview | ✅ |
+| `matrix()` | Heatmap of missing patterns | ✅ |
+| `heatmap()` | Nullity-correlation heatmap | ✅ |
+| `miss_var_pct()` | % missing per variable (horizontal bar) | ✅ |
+| `miss_cooccurrence()` | Co-occurrence heatmap of missing pairs | ✅ |
+| `bar()` | Bar chart of missing counts per variable | — |
+| `miss_case()` | Bar chart of missing counts per row | — |
+| `dendrogram()` | Hierarchical clustering of variables | — |
+| `upset()` | Intersection plot of missing combinations | — |
+| `scatter_miss()` | Scatterplot highlighting missing values | — |
+| `vis_impute_dist()` | Distribution comparison (before/after) | — |
+| `miss_cluster()` | Clustered missingness heatmap | — |
+| `miss_which()` | Binary tile plot per column | — |
 
 ### Data Manipulation Functions
 
@@ -224,6 +273,22 @@ All imputation methods support mixed numeric/categorical DataFrames. Categorical
 # Specify them directly in functions
 summary = mi.miss_var_summary(df, missing_values=[999, -99, 'unknown'])
 mi.matrix(df, missing_values=[999, -99])
+```
+
+### Interactive Plots in Jupyter
+
+```python
+# Hover-enabled missingness matrix
+fig = mi.vis_miss(df, interactive=True)
+fig.show()
+
+# Interactive correlation heatmap with Phi coefficient
+fig = mi.heatmap(df, method='phi', interactive=True)
+fig.write_html('nullity_correlation.html')
+
+# Sorted missing-rate bar chart
+fig = mi.miss_var_pct(df, sort=True, interactive=True)
+fig.show()
 ```
 
 ### Missing Data Mechanism Testing
@@ -301,6 +366,13 @@ plt.show()
 - `impute_rf(df, max_iter=10, random_state=0, **rf_kwargs)` → DataFrame
 - `impute_gb(df, max_iter=10, random_state=0, **gb_kwargs)` → DataFrame
 
+### Visualization (Phase-1 Interactive)
+- `vis_miss(df, ..., interactive=False)` → `Axes` | `Figure`
+- `heatmap(df, ..., interactive=False)` → `Axes` | `Figure`
+- `matrix(df, ..., interactive=False)` → `Axes` | `Figure`
+- `miss_var_pct(df, ..., interactive=False)` → `Axes` | `Figure`
+- `miss_cooccurrence(df, ..., interactive=False)` → `Axes` | `Figure`
+
 ### Utilities
 - `compare_imputations(df, methods=None)` → DataFrame
 - `create_report(df, output_path='missing_data_report.html')` → None
@@ -331,6 +403,10 @@ See our [Contributing Guidelines](CONTRIBUTING.md) for detailed information.
 git clone https://github.com/alisadeghiaghili/missingly.git
 cd missingly
 pip install -e .[test]
+pytest tests/ -v
+
+# With interactive support
+pip install -e .[test,interactive]
 pytest tests/ -v
 ```
 
