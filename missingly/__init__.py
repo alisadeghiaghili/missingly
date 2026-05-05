@@ -1,7 +1,7 @@
-# missingly - A Python library for missing data analysis
-#
-# Author: Ali Sadeghi Aghili <alisadeghiaghili@gmail.com>
-# Inspired by the R package naniar
+"""missingly - A Python library for missing data analysis.
+
+Inspired by the R package naniar.
+"""
 
 __version__ = "0.1.0"
 
@@ -87,11 +87,15 @@ from .performance import (
 )
 from .stats_extra import (
     hotelling_test,
-    test_hotelling,          # backward-compat alias
     pattern_monotone_test,
-    test_pattern_monotone,   # backward-compat alias
     missing_correlation_matrix,
 )
+
+# Backward-compat aliases (defined here, NOT in stats_extra, to avoid
+# pytest collecting stats_extra.py as a test module)
+test_hotelling = hotelling_test
+test_pattern_monotone = pattern_monotone_test
+
 # Register the df.miss accessor
 from . import accessor  # noqa: F401
 

@@ -42,21 +42,6 @@ def hotelling_test(
 ) -> Dict:
     """Hotelling's T² test: complete cases vs. incomplete cases.
 
-    Computes Hotelling's two-sample T² statistic between:
-
-    * **Complete cases** — rows with no missing values in *any* numeric column.
-    * **Incomplete cases** — rows with at least one missing numeric value.
-
-    A small p-value (< 0.05) indicates that the two groups have
-    significantly different means on the observed variables — evidence
-    against MCAR and potentially for MAR or MNAR.
-
-    .. note::
-        For the test to be valid, the incomplete-case group must have at
-        least ``d + 2`` rows, where ``d`` is the number of numeric
-        columns.  If this condition is not met, ``p_value`` is ``None``
-        and ``sufficient_data`` is ``False``.
-
     Parameters
     ----------
     frame : pd.DataFrame
@@ -67,28 +52,13 @@ def hotelling_test(
     Returns
     -------
     dict
-        Keys:
-
-        * ``t2`` : float — Hotelling T² statistic.
-        * ``f_statistic`` : float — F-approximation of T².
-        * ``df1``, ``df2`` : int — numerator / denominator degrees of freedom.
-        * ``p_value`` : float or None.
-        * ``n_complete`` : int — number of complete-case rows.
-        * ``n_incomplete`` : int — number of incomplete-case rows.
-        * ``sufficient_data`` : bool.
+        Keys: ``t2``, ``f_statistic``, ``df1``, ``df2``, ``p_value``,
+        ``n_complete``, ``n_incomplete``, ``sufficient_data``.
 
     Raises
     ------
     ValueError
         If *frame* has fewer than 2 numeric columns.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> rng = np.random.default_rng(0)
-    >>> frame = pd.DataFrame({'a': rng.normal(size=200), 'b': rng.normal(size=200)})
-    >>> frame.loc[:20, 'a'] = np.nan
-    >>> hotelling_test(frame)
     """
     if missing_values is not None:
         frame = frame.replace(missing_values, np.nan)
@@ -119,7 +89,6 @@ def hotelling_test(
             "sufficient_data": False,
         }
 
-    # Use only columns fully observed in the incomplete group
     complete_cols = np.where(num_df[~complete_mask].notna().all(axis=0))[0]
     if len(complete_cols) < 2:
         return {
@@ -145,7 +114,7 @@ def hotelling_test(
     S1 = np.cov(X1, rowvar=False) if n1_eff > 1 else np.eye(d_eff)
     S2 = np.cov(X2, rowvar=False) if n2_eff > 1 else np.eye(d_eff)
     S_pool = ((n1_eff - 1) * S1 + (n2_eff - 1) * S2) / (n1_eff + n2_eff - 2)
-    S_pool += np.eye(d_eff) * 1e-8  # ridge for numerical stability
+    S_pool += np.eye(d_eff) * 1e-8
 
     S_inv = np.linalg.inv(S_pool)
     T2 = (n1_eff * n2_eff / (n1_eff + n2_eff)) * float(
@@ -170,26 +139,11 @@ def hotelling_test(
     }
 
 
-# Backward-compat alias
-test_hotelling = hotelling_test
-
-
 def pattern_monotone_test(
     frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
     """Test whether the missing data pattern is monotone.
-
-    A missing data pattern is **monotone** if the columns can be ordered
-    such that: whenever row *i* has a missing value in column *j*, it
-    also has missing values in all columns *k > j*.  Equivalently, the
-    binary missingness indicator matrix (sorted by number of missing
-    values per row) has no "isolated" missing cells.
-
-    Monotone patterns arise naturally in longitudinal studies where
-    dropout is the only cause of missingness (once a participant drops
-    out, all subsequent measurements are missing).  They permit simpler
-    sequential imputation strategies.
 
     Parameters
     ----------
@@ -201,26 +155,8 @@ def pattern_monotone_test(
     Returns
     -------
     dict
-        Keys:
-
-        * ``is_monotone`` : bool — True if the pattern is monotone.
-        * ``n_violating_rows`` : int — rows that violate monotonicity
-          (0 if monotone).
-        * ``sorted_columns`` : list[str] — columns sorted by ascending
-          missingness rate (the ordering under which monotonicity is
-          assessed).
-        * ``monotone_pct`` : float — fraction of rows that *are*
-          consistent with monotonicity.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> frame = pd.DataFrame({
-    ...     'a': [1.0, np.nan, np.nan],
-    ...     'b': [2.0, 2.0,   np.nan],
-    ... })
-    >>> pattern_monotone_test(frame)
-    {'is_monotone': True, 'n_violating_rows': 0, ...}
+        Keys: ``is_monotone``, ``n_violating_rows``, ``sorted_columns``,
+        ``monotone_pct``.
     """
     if missing_values is not None:
         frame = frame.replace(missing_values, np.nan)
@@ -251,22 +187,12 @@ def pattern_monotone_test(
     }
 
 
-# Backward-compat alias
-test_pattern_monotone = pattern_monotone_test
-
-
 def missing_correlation_matrix(
     frame: pd.DataFrame,
     method: str = "pearson",
     missing_values: Optional[list] = None,
 ) -> pd.DataFrame:
     """Compute the pairwise nullity correlation matrix.
-
-    Converts each column into a binary indicator (1 = missing, 0 =
-    observed) and computes the pairwise correlation between indicators.
-    Only columns that actually have at least one missing value are
-    included; if no column has missing values an empty DataFrame is
-    returned.
 
     Parameters
     ----------
@@ -280,15 +206,13 @@ def missing_correlation_matrix(
     Returns
     -------
     pd.DataFrame
-        Square DataFrame of shape (n_cols_with_missing, n_cols_with_missing)
-        with correlation values on [-1, 1].  Diagonal is 1.0.
+        Square correlation matrix over columns that have missing values.
         Empty DataFrame (shape 0×0) when no column has missing values.
 
     Raises
     ------
     ValueError
-        If *method* is not one of ``'pearson'``, ``'kendall'``,
-        ``'spearman'``.
+        If *method* is not one of the supported options.
     """
     valid_methods = {"pearson", "kendall", "spearman"}
     if method not in valid_methods:
@@ -300,7 +224,6 @@ def missing_correlation_matrix(
         frame = frame.replace(missing_values, np.nan)
 
     indicator = frame.isnull().astype(float)
-    # Keep only columns that have at least one missing value
     has_missing = indicator.any(axis=0)
     indicator = indicator.loc[:, has_missing]
 
@@ -308,7 +231,5 @@ def missing_correlation_matrix(
         return pd.DataFrame(dtype=float)
 
     corr = indicator.corr(method=method)
-    # Drop rows/cols that are all-NaN (happens when a column is constant,
-    # e.g. all-missing or all-observed after the has_missing filter)
     corr = corr.dropna(how="all", axis=0).dropna(how="all", axis=1)
     return corr
