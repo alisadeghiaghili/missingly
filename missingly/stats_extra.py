@@ -37,7 +37,7 @@ from scipy.stats import f as f_dist
 
 
 def hotelling_test(
-    df: pd.DataFrame,
+    frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
     """Hotelling's T² test: complete cases vs. incomplete cases.
@@ -59,7 +59,7 @@ def hotelling_test(
 
     Parameters
     ----------
-    df : pd.DataFrame
+    frame : pd.DataFrame
         Input DataFrame.  Non-numeric columns are ignored.
     missing_values : list, optional
         Extra sentinel values to treat as missing.
@@ -80,20 +80,20 @@ def hotelling_test(
     Raises
     ------
     ValueError
-        If *df* has fewer than 2 numeric columns.
+        If *frame* has fewer than 2 numeric columns.
 
     Example
     -------
     >>> import pandas as pd, numpy as np
     >>> rng = np.random.default_rng(0)
-    >>> df = pd.DataFrame({'a': rng.normal(size=200), 'b': rng.normal(size=200)})
-    >>> df.loc[:20, 'a'] = np.nan
-    >>> hotelling_test(df)
+    >>> frame = pd.DataFrame({'a': rng.normal(size=200), 'b': rng.normal(size=200)})
+    >>> frame.loc[:20, 'a'] = np.nan
+    >>> hotelling_test(frame)
     """
     if missing_values is not None:
-        df = df.replace(missing_values, np.nan)
+        frame = frame.replace(missing_values, np.nan)
 
-    num_df = df.select_dtypes(include=[np.number])
+    num_df = frame.select_dtypes(include=[np.number])
     if num_df.shape[1] < 2:
         raise ValueError(
             "hotelling_test requires at least 2 numeric columns; "
@@ -170,13 +170,12 @@ def hotelling_test(
     }
 
 
-# Alias kept for backward compatibility with any code written against the
-# previous name.  Will be removed in a future major version.
+# Backward-compat alias
 test_hotelling = hotelling_test
 
 
 def pattern_monotone_test(
-    df: pd.DataFrame,
+    frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
     """Test whether the missing data pattern is monotone.
@@ -194,7 +193,7 @@ def pattern_monotone_test(
 
     Parameters
     ----------
-    df : pd.DataFrame
+    frame : pd.DataFrame
         Input DataFrame.
     missing_values : list, optional
         Extra sentinel values to treat as missing.
@@ -216,19 +215,19 @@ def pattern_monotone_test(
     Example
     -------
     >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({
+    >>> frame = pd.DataFrame({
     ...     'a': [1.0, np.nan, np.nan],
     ...     'b': [2.0, 2.0,   np.nan],
     ... })
-    >>> pattern_monotone_test(df)
+    >>> pattern_monotone_test(frame)
     {'is_monotone': True, 'n_violating_rows': 0, ...}
     """
     if missing_values is not None:
-        df = df.replace(missing_values, np.nan)
+        frame = frame.replace(missing_values, np.nan)
 
-    miss_rate = df.isnull().mean().sort_values()
+    miss_rate = frame.isnull().mean().sort_values()
     sorted_cols = miss_rate.index.tolist()
-    indicator = df[sorted_cols].isnull().to_numpy(dtype=int)
+    indicator = frame[sorted_cols].isnull().to_numpy(dtype=int)
 
     n_rows = len(indicator)
     n_violating = 0
@@ -252,12 +251,12 @@ def pattern_monotone_test(
     }
 
 
-# Alias kept for backward compatibility.
+# Backward-compat alias
 test_pattern_monotone = pattern_monotone_test
 
 
 def missing_correlation_matrix(
-    df: pd.DataFrame,
+    frame: pd.DataFrame,
     method: str = "pearson",
     missing_values: Optional[list] = None,
 ) -> pd.DataFrame:
@@ -265,13 +264,13 @@ def missing_correlation_matrix(
 
     Converts each column into a binary indicator (1 = missing, 0 =
     observed) and computes the pairwise correlation between indicators.
-    The result can be passed directly to visualisation functions (e.g.
-    ``seaborn.heatmap``) or used to identify columns whose missingness
-    is structurally linked.
+    Only columns that actually have at least one missing value are
+    included; if no column has missing values an empty DataFrame is
+    returned.
 
     Parameters
     ----------
-    df : pd.DataFrame
+    frame : pd.DataFrame
         Input DataFrame.
     method : {'pearson', 'kendall', 'spearman'}, optional
         Correlation method.  Default ``'pearson'``.
@@ -283,21 +282,13 @@ def missing_correlation_matrix(
     pd.DataFrame
         Square DataFrame of shape (n_cols_with_missing, n_cols_with_missing)
         with correlation values on [-1, 1].  Diagonal is 1.0.
-        Columns/rows are the original column names of *df*.
+        Empty DataFrame (shape 0×0) when no column has missing values.
 
     Raises
     ------
     ValueError
         If *method* is not one of ``'pearson'``, ``'kendall'``,
         ``'spearman'``.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> rng = np.random.default_rng(0)
-    >>> df = pd.DataFrame({'a': rng.normal(size=100), 'b': rng.normal(size=100)})
-    >>> df.loc[:10, 'a'] = np.nan
-    >>> missing_correlation_matrix(df)
     """
     valid_methods = {"pearson", "kendall", "spearman"}
     if method not in valid_methods:
@@ -306,13 +297,18 @@ def missing_correlation_matrix(
         )
 
     if missing_values is not None:
-        df = df.replace(missing_values, np.nan)
+        frame = frame.replace(missing_values, np.nan)
 
-    indicator = df.isnull().astype(float)
+    indicator = frame.isnull().astype(float)
+    # Keep only columns that have at least one missing value
     has_missing = indicator.any(axis=0)
     indicator = indicator.loc[:, has_missing]
 
     if indicator.shape[1] == 0:
-        return pd.DataFrame(index=df.columns, columns=df.columns, dtype=float)
+        return pd.DataFrame(dtype=float)
 
-    return indicator.corr(method=method)
+    corr = indicator.corr(method=method)
+    # Drop rows/cols that are all-NaN (happens when a column is constant,
+    # e.g. all-missing or all-observed after the has_missing filter)
+    corr = corr.dropna(how="all", axis=0).dropna(how="all", axis=1)
+    return corr
