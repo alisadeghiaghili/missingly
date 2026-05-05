@@ -7,7 +7,7 @@ Conventions
   Hotelling p-value than MCAR data on the same DataFrame).
 * Tests are kept fast: small DataFrames, no heavy simulation.
 * The canonical names are hotelling_test / pattern_monotone_test;
-  the test_* aliases are also verified to exist.
+  the test_* aliases live in missingly.__init__ and are verified here.
 """
 
 import numpy as np
@@ -16,11 +16,11 @@ import pytest
 
 from missingly.stats_extra import (
     hotelling_test,
-    test_hotelling,
     pattern_monotone_test,
-    test_pattern_monotone,
     missing_correlation_matrix,
 )
+# Aliases are defined in the top-level package, NOT in stats_extra
+from missingly import test_hotelling, test_pattern_monotone
 import missingly
 
 
@@ -104,7 +104,7 @@ def test_hotelling_sentinel(complete_df):
 
 
 def test_test_hotelling_alias(df_with_missing):
-    """test_hotelling is a backward-compat alias for hotelling_test."""
+    """test_hotelling (in missingly namespace) is an alias for hotelling_test."""
     assert test_hotelling is hotelling_test
 
 
@@ -163,7 +163,7 @@ def test_monotone_sorted_columns_contains_all(df_with_missing):
 
 
 def test_test_pattern_monotone_alias(df_with_missing):
-    """test_pattern_monotone is a backward-compat alias."""
+    """test_pattern_monotone (in missingly namespace) is an alias."""
     assert test_pattern_monotone is pattern_monotone_test
 
 
@@ -226,7 +226,7 @@ def test_corr_matrix_sentinel(complete_df):
 
 def test_stats_extra_importable_from_top_level():
     assert callable(missingly.hotelling_test)
-    assert callable(missingly.test_hotelling)        # alias
+    assert callable(missingly.test_hotelling)
     assert callable(missingly.pattern_monotone_test)
-    assert callable(missingly.test_pattern_monotone)  # alias
+    assert callable(missingly.test_pattern_monotone)
     assert callable(missingly.missing_correlation_matrix)
