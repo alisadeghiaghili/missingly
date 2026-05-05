@@ -6,6 +6,8 @@ Conventions
   the directional behaviour (e.g. MNAR data should give a lower
   Hotelling p-value than MCAR data on the same DataFrame).
 * Tests are kept fast: small DataFrames, no heavy simulation.
+* The canonical names are hotelling_test / pattern_monotone_test;
+  the test_* aliases are also verified to exist.
 """
 
 import numpy as np
@@ -13,7 +15,9 @@ import pandas as pd
 import pytest
 
 from missingly.stats_extra import (
+    hotelling_test,
     test_hotelling,
+    pattern_monotone_test,
     test_pattern_monotone,
     missing_correlation_matrix,
 )
@@ -33,7 +37,6 @@ def df_with_missing():
         'b': rng.normal(5, 2, 200),
         'c': rng.normal(-1, 1, 200),
     })
-    # MNAR: mask top-30 values of 'a'
     top30 = df['a'].nlargest(30).index
     df.loc[top30, 'a'] = np.nan
     return df
@@ -49,41 +52,40 @@ def complete_df():
 
 
 # ---------------------------------------------------------------------------
-# test_hotelling
+# hotelling_test
 # ---------------------------------------------------------------------------
 
 def test_hotelling_returns_dict(df_with_missing):
-    result = test_hotelling(df_with_missing)
+    result = hotelling_test(df_with_missing)
     assert isinstance(result, dict)
 
 
 def test_hotelling_required_keys(df_with_missing):
-    result = test_hotelling(df_with_missing)
+    result = hotelling_test(df_with_missing)
     for key in ('t2', 'f_statistic', 'df1', 'df2', 'p_value',
                 'n_complete', 'n_incomplete', 'sufficient_data'):
         assert key in result, f"Missing key: {key}"
 
 
 def test_hotelling_p_value_range(df_with_missing):
-    result = test_hotelling(df_with_missing)
+    result = hotelling_test(df_with_missing)
     if result['p_value'] is not None:
         assert 0.0 <= result['p_value'] <= 1.0
 
 
 def test_hotelling_n_counts_correct(df_with_missing):
-    result = test_hotelling(df_with_missing)
+    result = hotelling_test(df_with_missing)
     assert result['n_complete'] + result['n_incomplete'] == len(df_with_missing)
 
 
 def test_hotelling_t2_nonneg(df_with_missing):
-    result = test_hotelling(df_with_missing)
+    result = hotelling_test(df_with_missing)
     if result['t2'] is not None:
         assert result['t2'] >= 0
 
 
 def test_hotelling_insufficient_data_no_missing(complete_df):
-    """No incomplete rows → insufficient_data=True, p_value=None."""
-    result = test_hotelling(complete_df)
+    result = hotelling_test(complete_df)
     assert result['sufficient_data'] is False
     assert result['p_value'] is None
 
@@ -91,71 +93,78 @@ def test_hotelling_insufficient_data_no_missing(complete_df):
 def test_hotelling_raises_too_few_columns():
     df = pd.DataFrame({'a': [1.0, np.nan, 3.0]})
     with pytest.raises(ValueError, match="2 numeric columns"):
-        test_hotelling(df)
+        hotelling_test(df)
 
 
 def test_hotelling_sentinel(complete_df):
     df = complete_df.copy()
     df.loc[:20, 'x'] = -99
-    result = test_hotelling(df, missing_values=[-99])
+    result = hotelling_test(df, missing_values=[-99])
     assert isinstance(result, dict)
 
 
+def test_test_hotelling_alias(df_with_missing):
+    """test_hotelling is a backward-compat alias for hotelling_test."""
+    assert test_hotelling is hotelling_test
+
+
 # ---------------------------------------------------------------------------
-# test_pattern_monotone
+# pattern_monotone_test
 # ---------------------------------------------------------------------------
 
 def test_monotone_returns_dict(df_with_missing):
-    result = test_pattern_monotone(df_with_missing)
+    result = pattern_monotone_test(df_with_missing)
     assert isinstance(result, dict)
 
 
 def test_monotone_required_keys(df_with_missing):
-    result = test_pattern_monotone(df_with_missing)
+    result = pattern_monotone_test(df_with_missing)
     for key in ('is_monotone', 'n_violating_rows',
                 'sorted_columns', 'monotone_pct'):
         assert key in result
 
 
 def test_monotone_truly_monotone():
-    """A genuine monotone pattern must be detected correctly."""
     df = pd.DataFrame({
         'a': [1.0, np.nan, np.nan, np.nan],
         'b': [2.0, 2.0,   np.nan, np.nan],
         'c': [3.0, 3.0,   3.0,   np.nan],
     })
-    result = test_pattern_monotone(df)
+    result = pattern_monotone_test(df)
     assert result['is_monotone'] is True
     assert result['n_violating_rows'] == 0
     assert result['monotone_pct'] == 1.0
 
 
 def test_monotone_non_monotone():
-    """An isolated missing value should be flagged."""
     df = pd.DataFrame({
         'a': [1.0, np.nan, 3.0],
         'b': [2.0, 2.0,   np.nan],
     })
-    result = test_pattern_monotone(df)
+    result = pattern_monotone_test(df)
     assert result['is_monotone'] is False
     assert result['n_violating_rows'] > 0
 
 
 def test_monotone_no_missing(complete_df):
-    """Completely observed data is vacuously monotone."""
-    result = test_pattern_monotone(complete_df)
+    result = pattern_monotone_test(complete_df)
     assert result['is_monotone'] is True
     assert result['n_violating_rows'] == 0
 
 
 def test_monotone_pct_range(df_with_missing):
-    result = test_pattern_monotone(df_with_missing)
+    result = pattern_monotone_test(df_with_missing)
     assert 0.0 <= result['monotone_pct'] <= 1.0
 
 
 def test_monotone_sorted_columns_contains_all(df_with_missing):
-    result = test_pattern_monotone(df_with_missing)
+    result = pattern_monotone_test(df_with_missing)
     assert set(result['sorted_columns']) == set(df_with_missing.columns)
+
+
+def test_test_pattern_monotone_alias(df_with_missing):
+    """test_pattern_monotone is a backward-compat alias."""
+    assert test_pattern_monotone is pattern_monotone_test
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +199,7 @@ def test_corr_matrix_values_in_range(df_with_missing):
 
 def test_corr_matrix_no_missing_returns_empty(complete_df):
     result = missing_correlation_matrix(complete_df)
-    assert result.shape == (0, 0) or result.isnull().all().all() or len(result) == 0
+    assert result.shape == (0, 0) or len(result) == 0
 
 
 def test_corr_matrix_invalid_method_raises(df_with_missing):
@@ -216,6 +225,8 @@ def test_corr_matrix_sentinel(complete_df):
 # ---------------------------------------------------------------------------
 
 def test_stats_extra_importable_from_top_level():
-    assert callable(missingly.test_hotelling)
-    assert callable(missingly.test_pattern_monotone)
+    assert callable(missingly.hotelling_test)
+    assert callable(missingly.test_hotelling)        # alias
+    assert callable(missingly.pattern_monotone_test)
+    assert callable(missingly.test_pattern_monotone)  # alias
     assert callable(missingly.missing_correlation_matrix)

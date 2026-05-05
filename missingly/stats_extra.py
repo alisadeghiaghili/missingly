@@ -3,13 +3,13 @@
 This module extends :mod:`missingly.stats` with three additional tests
 that are commonly needed but absent from the core module:
 
-:func:`test_hotelling`
+:func:`hotelling_test`
     Hotelling's T² test between the complete cases and the cases with
     at least one missing value.  A significant result suggests that the
     two groups differ systematically in their observed values —
     evidence against MCAR.
 
-:func:`test_pattern_monotone`
+:func:`pattern_monotone_test`
     Tests whether the missing data pattern is monotone (i.e. if a row
     is missing column j, it is also missing all columns to the right).
     Monotone patterns have better theoretical properties and are easier
@@ -36,7 +36,7 @@ import pandas as pd
 from scipy.stats import f as f_dist
 
 
-def test_hotelling(
+def hotelling_test(
     df: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
@@ -88,7 +88,7 @@ def test_hotelling(
     >>> rng = np.random.default_rng(0)
     >>> df = pd.DataFrame({'a': rng.normal(size=200), 'b': rng.normal(size=200)})
     >>> df.loc[:20, 'a'] = np.nan
-    >>> test_hotelling(df)
+    >>> hotelling_test(df)
     """
     if missing_values is not None:
         df = df.replace(missing_values, np.nan)
@@ -96,20 +96,18 @@ def test_hotelling(
     num_df = df.select_dtypes(include=[np.number])
     if num_df.shape[1] < 2:
         raise ValueError(
-            "test_hotelling requires at least 2 numeric columns; "
+            "hotelling_test requires at least 2 numeric columns; "
             f"got {num_df.shape[1]}."
         )
 
     complete_mask = num_df.notna().all(axis=1)
     X_complete = num_df[complete_mask].to_numpy(dtype=float)
-    X_incomplete = num_df[~complete_mask].dropna(axis=1, how="all").to_numpy(dtype=float)
-
     n1, d = X_complete.shape
-    n2 = (~complete_mask).sum()
+    n2 = int((~complete_mask).sum())
 
     _sufficient = n2 >= (d + 2) and n1 >= 2
 
-    if not _sufficient or X_incomplete.shape[1] < d:
+    if not _sufficient:
         return {
             "t2": None,
             "f_statistic": None,
@@ -117,15 +115,13 @@ def test_hotelling(
             "df2": None,
             "p_value": None,
             "n_complete": int(n1),
-            "n_incomplete": int(n2),
+            "n_incomplete": n2,
             "sufficient_data": False,
         }
 
-    # Use only complete columns of incomplete rows for the test
-    # Fallback: compare means on columns that are *fully* observed in both groups
+    # Use only columns fully observed in the incomplete group
     complete_cols = np.where(num_df[~complete_mask].notna().all(axis=0))[0]
     if len(complete_cols) < 2:
-        # Not enough jointly observed columns
         return {
             "t2": None,
             "f_statistic": None,
@@ -133,7 +129,7 @@ def test_hotelling(
             "df2": None,
             "p_value": None,
             "n_complete": int(n1),
-            "n_incomplete": int(n2),
+            "n_incomplete": n2,
             "sufficient_data": False,
         }
 
@@ -146,7 +142,6 @@ def test_hotelling(
     mean2 = X2.mean(axis=0)
     mean_diff = mean1 - mean2
 
-    # Pooled covariance
     S1 = np.cov(X1, rowvar=False) if n1_eff > 1 else np.eye(d_eff)
     S2 = np.cov(X2, rowvar=False) if n2_eff > 1 else np.eye(d_eff)
     S_pool = ((n1_eff - 1) * S1 + (n2_eff - 1) * S2) / (n1_eff + n2_eff - 2)
@@ -170,12 +165,17 @@ def test_hotelling(
         "df2": df2,
         "p_value": p_value,
         "n_complete": int(n1),
-        "n_incomplete": int(n2),
+        "n_incomplete": n2,
         "sufficient_data": True,
     }
 
 
-def test_pattern_monotone(
+# Alias kept for backward compatibility with any code written against the
+# previous name.  Will be removed in a future major version.
+test_hotelling = hotelling_test
+
+
+def pattern_monotone_test(
     df: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
@@ -220,18 +220,16 @@ def test_pattern_monotone(
     ...     'a': [1.0, np.nan, np.nan],
     ...     'b': [2.0, 2.0,   np.nan],
     ... })
-    >>> test_pattern_monotone(df)
+    >>> pattern_monotone_test(df)
     {'is_monotone': True, 'n_violating_rows': 0, ...}
     """
     if missing_values is not None:
         df = df.replace(missing_values, np.nan)
 
-    # Sort columns by ascending missingness rate
     miss_rate = df.isnull().mean().sort_values()
     sorted_cols = miss_rate.index.tolist()
-    indicator = df[sorted_cols].isnull().to_numpy(dtype=int)  # 1 = missing
+    indicator = df[sorted_cols].isnull().to_numpy(dtype=int)
 
-    # A row is monotone if, once a 1 appears, all subsequent entries are 1
     n_rows = len(indicator)
     n_violating = 0
     for row in indicator:
@@ -252,6 +250,10 @@ def test_pattern_monotone(
         "sorted_columns": sorted_cols,
         "monotone_pct": float((n_rows - n_violating) / n_rows) if n_rows > 0 else 1.0,
     }
+
+
+# Alias kept for backward compatibility.
+test_pattern_monotone = pattern_monotone_test
 
 
 def missing_correlation_matrix(
@@ -279,9 +281,9 @@ def missing_correlation_matrix(
     Returns
     -------
     pd.DataFrame
-        Square DataFrame of shape (n_cols, n_cols) with correlation
-        values on [-1, 1].  Diagonal is 1.0.  Columns/rows are the
-        original column names of *df*.
+        Square DataFrame of shape (n_cols_with_missing, n_cols_with_missing)
+        with correlation values on [-1, 1].  Diagonal is 1.0.
+        Columns/rows are the original column names of *df*.
 
     Raises
     ------
@@ -307,8 +309,6 @@ def missing_correlation_matrix(
         df = df.replace(missing_values, np.nan)
 
     indicator = df.isnull().astype(float)
-
-    # Drop columns with no missingness (zero variance — correlation undefined)
     has_missing = indicator.any(axis=0)
     indicator = indicator.loc[:, has_missing]
 
