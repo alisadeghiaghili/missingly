@@ -33,6 +33,43 @@ import numpy as np
 import pandas as pd
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _is_string_like_dtype(dtype) -> bool:
+    """Return True for object, str (StringDtype), and ArrowDtype string columns.
+
+    pandas 2.0 introduced ``pd.StringDtype`` (reported as ``'string'`` or
+    ``'str'`` depending on the version).  Python 3.14 / pandas future versions
+    may default to ``pd.StringDtype`` for text columns instead of ``object``.
+    This helper centralises the check so that :func:`optimize_dtypes` handles
+    all variants correctly.
+
+    Parameters
+    ----------
+    dtype : numpy dtype or pandas ExtensionDtype
+
+    Returns
+    -------
+    bool
+    """
+    if dtype == object:
+        return True
+    dtype_str = str(dtype).lower()
+    # pandas StringDtype reports as 'string' or 'str'
+    if dtype_str in ("string", "str"):
+        return True
+    # ArrowDtype for strings
+    if "string" in dtype_str and "arrow" in dtype_str:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def memory_usage_mb(
     df: pd.DataFrame,
     deep: bool = True,
@@ -86,7 +123,7 @@ def optimize_dtypes(
     downcast_int: bool = True,
     downcast_float: bool = True,
 ) -> pd.DataFrame:
-    """Downcast numeric dtypes and optionally convert low-cardinality object columns.
+    """Downcast numeric dtypes and optionally convert low-cardinality string columns.
 
     This function reduces DataFrame memory usage without losing any
     information:
@@ -97,15 +134,17 @@ def optimize_dtypes(
     * Float columns are downcast from float64 to float32 where the
       precision loss is acceptable (i.e. no value changes after
       round-trip through float32).
-    * Object/string columns whose cardinality (unique / total) is
+    * String/object columns whose cardinality (unique / total) is
       below *categorical_threshold* are converted to ``pd.Categorical``.
+      Works with both legacy ``object`` dtype and the newer
+      ``pd.StringDtype`` introduced in pandas 2.0 / Python 3.14.
 
     Parameters
     ----------
     df : pd.DataFrame
         Input DataFrame.  Returned as a copy; never mutated.
     categorical_threshold : float or None, optional
-        Fraction of unique values below which an object column is
+        Fraction of unique values below which a string/object column is
         converted to Categorical (default 0.50, i.e. < 50% unique).
         Set to ``None`` to disable categorical conversion.
     downcast_int : bool, optional
@@ -147,7 +186,6 @@ def optimize_dtypes(
 
         elif downcast_float and col_dtype == np.float64:
             as_f32 = result[col].astype(np.float32)
-            # Only downcast if round-trip is lossless for non-null values
             mask = result[col].notna()
             if np.allclose(
                 result.loc[mask, col].to_numpy(),
@@ -158,7 +196,7 @@ def optimize_dtypes(
 
         elif (
             categorical_threshold is not None
-            and col_dtype == object
+            and _is_string_like_dtype(col_dtype)
             and len(result) > 0
         ):
             cardinality = result[col].nunique(dropna=True) / len(result)
@@ -187,7 +225,7 @@ def chunk_apply(
         `compare_imputations`) should **not** be used with
         `chunk_apply`; their results are not composable across chunks.
         Use `chunk_apply` only for row-wise transformations where each
-        row’s output depends only on that row’s input (or on per-chunk
+        row's output depends only on that row's input (or on per-chunk
         statistics, as in mean imputation — which will give slightly
         different fill values per chunk).
 

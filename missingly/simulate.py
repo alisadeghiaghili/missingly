@@ -22,7 +22,9 @@ a complete DataFrame under three well-defined statistical mechanisms:
 
 All functions
 -------------
-* Accept a **complete** DataFrame (no pre-existing NaNs).
+* Accept a **complete** DataFrame (no pre-existing NaNs) for standalone
+  calls.  :func:`simulate_mixed` relaxes this: only the *input* df must
+  be complete; intermediate results accumulate NaNs across steps.
 * Return a copy — the input is never mutated.
 * Are reproducible via ``random_state``.
 * Preserve dtypes of unmasked values.
@@ -133,6 +135,7 @@ def simulate_mcar(
     frac: float = 0.10,
     columns: Optional[List[str]] = None,
     random_state: Optional[int] = None,
+    _skip_complete_check: bool = False,
 ) -> pd.DataFrame:
     """Introduce Missing Completely At Random (MCAR) values.
 
@@ -151,6 +154,9 @@ def simulate_mcar(
         Columns to introduce missingness into.  Defaults to all columns.
     random_state : int or None, optional
         Random seed for reproducibility.
+    _skip_complete_check : bool, optional
+        Internal flag used by :func:`simulate_mixed` to bypass the
+        completeness check between pipeline steps.  Do not set manually.
 
     Returns
     -------
@@ -160,7 +166,7 @@ def simulate_mcar(
     Raises
     ------
     ValueError
-        If *df* has pre-existing missing values.
+        If *df* has pre-existing missing values (when check is not skipped).
     ValueError
         If *frac* is not in (0, 1].
 
@@ -174,7 +180,8 @@ def simulate_mcar(
     b    0.2
     dtype: float64
     """
-    _validate_complete(df, "simulate_mcar")
+    if not _skip_complete_check:
+        _validate_complete(df, "simulate_mcar")
     _validate_frac(frac, "frac")
     cols = _resolve_columns(df, columns)
 
@@ -201,6 +208,7 @@ def simulate_mar(
     frac: float = 0.10,
     tail: str = "upper",
     random_state: Optional[int] = None,
+    _skip_complete_check: bool = False,
 ) -> pd.DataFrame:
     """Introduce Missing At Random (MAR) values in one column.
 
@@ -228,6 +236,8 @@ def simulate_mar(
         Default ``'upper'``.
     random_state : int or None, optional
         Random seed for reproducibility.
+    _skip_complete_check : bool, optional
+        Internal flag used by :func:`simulate_mixed`.  Do not set manually.
 
     Returns
     -------
@@ -237,7 +247,7 @@ def simulate_mar(
     Raises
     ------
     ValueError
-        If *df* has pre-existing missing values.
+        If *df* has pre-existing missing values (when check is not skipped).
     ValueError
         If *frac* is not in (0, 1].
     ValueError
@@ -255,11 +265,11 @@ def simulate_mar(
     ...     'income': rng.normal(50000, 10000, 200),
     ...     'age':    rng.integers(20, 65, 200),
     ... })
-    >>> # Mask 'age' preferentially for high-income rows (MAR)
     >>> df_miss = simulate_mar(df, target_col='age',
     ...                        predictor_col='income', frac=0.15)
     """
-    _validate_complete(df, "simulate_mar")
+    if not _skip_complete_check:
+        _validate_complete(df, "simulate_mar")
     _validate_frac(frac, "frac")
     _resolve_columns(df, [target_col, predictor_col])
 
@@ -276,16 +286,22 @@ def simulate_mar(
     n = len(df)
     n_mask = max(1, int(round(n * frac)))
 
-    # Build weights: rows with high (or low) predictor values get higher weight
-    vals = df[predictor_col].to_numpy(dtype=float)
-    # Rank-based weights so the result is robust to outliers
-    ranks = pd.Series(vals).rank(method="average").to_numpy()
+    # Rank-based weights on the *observed* (non-NaN) values of predictor_col
+    predictor_vals = df[predictor_col]
+    observed_mask = predictor_vals.notna()
+    ranks = predictor_vals.rank(method="average", na_option="keep")
     if tail == "upper":
-        weights = ranks
+        weights = ranks.where(observed_mask, other=0.0).to_numpy(dtype=float)
     else:
-        weights = ranks.max() + 1 - ranks
+        max_rank = ranks[observed_mask].max()
+        weights = (max_rank + 1 - ranks).where(observed_mask, other=0.0).to_numpy(dtype=float)
 
-    weights = weights / weights.sum()
+    weights_sum = weights.sum()
+    if weights_sum == 0:
+        weights = np.where(observed_mask.to_numpy(), 1.0, 0.0)
+        weights_sum = weights.sum()
+    weights = weights / weights_sum
+
     chosen = rng.choice(df.index, size=n_mask, replace=False, p=weights)
     result.loc[chosen, target_col] = np.nan
 
@@ -302,6 +318,7 @@ def simulate_mnar(
     frac: float = 0.10,
     tail: str = "upper",
     random_state: Optional[int] = None,
+    _skip_complete_check: bool = False,
 ) -> pd.DataFrame:
     """Introduce Missing Not At Random (MNAR) values in one column.
 
@@ -331,6 +348,8 @@ def simulate_mnar(
         Default ``'upper'``.
     random_state : int or None, optional
         Random seed for reproducibility.
+    _skip_complete_check : bool, optional
+        Internal flag used by :func:`simulate_mixed`.  Do not set manually.
 
     Returns
     -------
@@ -340,7 +359,7 @@ def simulate_mnar(
     Raises
     ------
     ValueError
-        If *df* has pre-existing missing values.
+        If *df* has pre-existing missing values (when check is not skipped).
     ValueError
         If *frac* is not in (0, 1].
     ValueError
@@ -353,11 +372,11 @@ def simulate_mnar(
     >>> import pandas as pd, numpy as np
     >>> rng = np.random.default_rng(0)
     >>> df = pd.DataFrame({'income': rng.normal(50000, 10000, 200)})
-    >>> # High earners are less likely to report income
     >>> df_miss = simulate_mnar(df, target_col='income',
     ...                         frac=0.15, tail='upper')
     """
-    _validate_complete(df, "simulate_mnar")
+    if not _skip_complete_check:
+        _validate_complete(df, "simulate_mnar")
     _validate_frac(frac, "frac")
     _resolve_columns(df, [target_col])
 
@@ -374,14 +393,22 @@ def simulate_mnar(
     n = len(df)
     n_mask = max(1, int(round(n * frac)))
 
-    vals = df[target_col].to_numpy(dtype=float)
-    ranks = pd.Series(vals).rank(method="average").to_numpy()
+    # Only rank among currently non-NaN rows of target_col
+    target_vals = df[target_col]
+    observed_mask = target_vals.notna()
+    ranks = target_vals.rank(method="average", na_option="keep")
     if tail == "upper":
-        weights = ranks
+        weights = ranks.where(observed_mask, other=0.0).to_numpy(dtype=float)
     else:
-        weights = ranks.max() + 1 - ranks
+        max_rank = ranks[observed_mask].max()
+        weights = (max_rank + 1 - ranks).where(observed_mask, other=0.0).to_numpy(dtype=float)
 
-    weights = weights / weights.sum()
+    weights_sum = weights.sum()
+    if weights_sum == 0:
+        weights = np.where(observed_mask.to_numpy(), 1.0, 0.0)
+        weights_sum = weights.sum()
+    weights = weights / weights_sum
+
     chosen = rng.choice(df.index, size=n_mask, replace=False, p=weights)
     result.loc[chosen, target_col] = np.nan
 
@@ -402,6 +429,13 @@ def simulate_mixed(
     Sequentially applies MCAR, MAR, or MNAR simulation according to a
     list of specification dicts.  Each spec dict describes one
     missingness injection step.  Steps are applied in order.
+
+    .. note::
+        Only the *input* DataFrame must be complete.  Each step may
+        introduce NaNs that persist into subsequent steps — this is
+        intentional and realistic (e.g. a MAR step followed by an MNAR
+        step on a different column).  The completeness check is bypassed
+        for intermediate results.
 
     Parameters
     ----------
@@ -469,16 +503,26 @@ def simulate_mixed(
     rng = np.random.default_rng(random_state)
     result = df.copy()
 
-    for i, s in enumerate(spec):
+    for s in spec:
         step_seed = int(rng.integers(0, 2**31))
         s_kwargs = {k: v for k, v in s.items() if k != "mechanism"}
         mech = s["mechanism"]
 
+        # _skip_complete_check=True because intermediate results have NaNs
         if mech == "MCAR":
-            result = simulate_mcar(result, random_state=step_seed, **s_kwargs)
+            result = simulate_mcar(
+                result, random_state=step_seed,
+                _skip_complete_check=True, **s_kwargs
+            )
         elif mech == "MAR":
-            result = simulate_mar(result, random_state=step_seed, **s_kwargs)
+            result = simulate_mar(
+                result, random_state=step_seed,
+                _skip_complete_check=True, **s_kwargs
+            )
         else:  # MNAR
-            result = simulate_mnar(result, random_state=step_seed, **s_kwargs)
+            result = simulate_mnar(
+                result, random_state=step_seed,
+                _skip_complete_check=True, **s_kwargs
+            )
 
     return result

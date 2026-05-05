@@ -5,6 +5,9 @@ Conventions
 * Tests avoid timing assertions (CI machines vary wildly in speed).
 * We test the *contract*: return types, shapes, dtype changes, mutation
   safety, and error handling.
+* String dtype is normalised via pandas api rather than comparing raw
+  dtype strings, so tests pass on both Python <= 3.13 (object dtype)
+  and Python 3.14+ (str / StringDtype).
 """
 
 import numpy as np
@@ -103,26 +106,27 @@ def test_optimize_int_downcast():
 def test_optimize_float_downcast():
     df = pd.DataFrame({'x': np.array([1.0, 2.0, 3.0], dtype='float64')})
     result = optimize_dtypes(df)
-    # float32 round-trip should be lossless for simple integers-as-floats
     assert result['x'].dtype == np.float32
 
 
 def test_optimize_categorical_conversion():
+    """Low-cardinality string/object column should become Categorical."""
     df = pd.DataFrame({'city': ['Paris', 'Lyon', 'Paris', 'Nice', 'Lyon']})
     result = optimize_dtypes(df, categorical_threshold=0.80)
-    assert str(result['city'].dtype) == 'category'
+    assert isinstance(result['city'].dtype, pd.CategoricalDtype)
 
 
 def test_optimize_high_cardinality_not_converted():
+    """100%-unique column must NOT be converted to Categorical."""
     df = pd.DataFrame({'id': [f'id_{i}' for i in range(100)]})
     result = optimize_dtypes(df, categorical_threshold=0.50)
-    # 100% unique — should NOT be converted
-    assert str(result['id'].dtype) == 'object'
+    assert not isinstance(result['id'].dtype, pd.CategoricalDtype)
 
 
 def test_optimize_categorical_disabled(df_typed):
+    """When categorical_threshold=None, string columns must stay as-is."""
     result = optimize_dtypes(df_typed, categorical_threshold=None)
-    assert str(result['category'].dtype) == 'object'
+    assert not isinstance(result['category'].dtype, pd.CategoricalDtype)
 
 
 def test_optimize_preserves_values(df_typed):
@@ -156,7 +160,6 @@ def test_chunk_apply_same_shape(df_large):
 
 def test_chunk_apply_same_values(df_large):
     result = chunk_apply(df_large, lambda x: x, chunk_size=1000)
-    # Reset index for comparison since chunk_apply resets by default
     expected = df_large.reset_index(drop=True)
     pd.testing.assert_frame_equal(result, expected)
 
