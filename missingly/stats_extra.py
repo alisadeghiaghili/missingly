@@ -3,24 +3,9 @@
 This module extends :mod:`missingly.stats` with three additional tests
 that are commonly needed but absent from the core module:
 
-:func:`hotelling_test`
-    Hotelling's T² test between the complete cases and the cases with
-    at least one missing value.  A significant result suggests that the
-    two groups differ systematically in their observed values —
-    evidence against MCAR.
-
-:func:`pattern_monotone_test`
-    Tests whether the missing data pattern is monotone (i.e. if a row
-    is missing column j, it is also missing all columns to the right).
-    Monotone patterns have better theoretical properties and are easier
-    to handle with sequential imputation.
-
-:func:`missing_correlation_matrix`
-    Returns the full pairwise nullity correlation matrix (Pearson
-    correlation of the binary indicator columns ``1 = missing,
-    0 = observed``).  Unlike the scalar ``max_nullity_corr`` returned by
-    :func:`~missingly.stats.diagnose_missing`, this gives the full
-    picture and can be passed directly to visualisation functions.
+- hotelling_test (moved to data_quality_toolkit.statistics)
+- pattern_monotone_test
+- missing_correlation_matrix
 
 Compatibility
 -------------
@@ -33,114 +18,28 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-from scipy.stats import f as f_dist
 
 
 def hotelling_test(
     frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
-    """Hotelling's T² test: complete cases vs. incomplete cases.
+    """Deprecated shim for data_quality_toolkit.statistics.hotelling_test.
 
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        Input DataFrame.  Non-numeric columns are ignored.
-    missing_values : list, optional
-        Extra sentinel values to treat as missing.
-
-    Returns
-    -------
-    dict
-        Keys: ``t2``, ``f_statistic``, ``df1``, ``df2``, ``p_value``,
-        ``n_complete``, ``n_incomplete``, ``sufficient_data``.
-
-    Raises
-    ------
-    ValueError
-        If *frame* has fewer than 2 numeric columns.
+    This function was moved to :mod:`data_quality_toolkit.statistics` and
+    will be removed from ``missingly`` in a future release. Import and
+    use it from there instead.
     """
-    if missing_values is not None:
-        frame = frame.replace(missing_values, np.nan)
+    import warnings
 
-    num_df = frame.select_dtypes(include=[np.number])
-    if num_df.shape[1] < 2:
-        raise ValueError(
-            "hotelling_test requires at least 2 numeric columns; "
-            f"got {num_df.shape[1]}."
-        )
-
-    complete_mask = num_df.notna().all(axis=1)
-    X_complete = num_df[complete_mask].to_numpy(dtype=float)
-    n1, d = X_complete.shape
-    n2 = int((~complete_mask).sum())
-
-    _sufficient = n2 >= (d + 2) and n1 >= 2
-
-    if not _sufficient:
-        return {
-            "t2": None,
-            "f_statistic": None,
-            "df1": d,
-            "df2": None,
-            "p_value": None,
-            "n_complete": int(n1),
-            "n_incomplete": n2,
-            "sufficient_data": False,
-        }
-
-    complete_cols = np.where(num_df[~complete_mask].notna().all(axis=0))[0]
-    if len(complete_cols) < 2:
-        return {
-            "t2": None,
-            "f_statistic": None,
-            "df1": d,
-            "df2": None,
-            "p_value": None,
-            "n_complete": int(n1),
-            "n_incomplete": n2,
-            "sufficient_data": False,
-        }
-
-    X1 = X_complete[:, complete_cols]
-    X2 = num_df[~complete_mask].iloc[:, complete_cols].to_numpy(dtype=float)
-    d_eff = len(complete_cols)
-    n1_eff, n2_eff = len(X1), len(X2)
-
-    mean1 = X1.mean(axis=0)
-    mean2 = X2.mean(axis=0)
-    mean_diff = mean1 - mean2
-
-    S1 = np.cov(X1, rowvar=False) if n1_eff > 1 else np.eye(d_eff)
-    S2 = np.cov(X2, rowvar=False) if n2_eff > 1 else np.eye(d_eff)
-    S_pool = ((n1_eff - 1) * S1 + (n2_eff - 1) * S2) / (n1_eff + n2_eff - 2)
-    S_pool += np.eye(d_eff) * 1e-8
-
-    S_inv = np.linalg.inv(S_pool)
-    T2 = (n1_eff * n2_eff / (n1_eff + n2_eff)) * float(
-        mean_diff @ S_inv @ mean_diff
+    warnings.warn(
+        "hotelling_test moved to data_quality_toolkit.statistics and will "
+        "be removed from missingly in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-
-    df1 = d_eff
-    df2 = n1_eff + n2_eff - d_eff - 1
-    factor = (n1_eff + n2_eff - d_eff - 1) / ((n1_eff + n2_eff - 2) * d_eff)
-    F = T2 * factor
-    p_value = float(1 - f_dist.cdf(F, df1, df2)) if df2 > 0 else None
-
-    return {
-        "t2": float(T2),
-        "f_statistic": float(F),
-        "df1": df1,
-        "df2": df2,
-        "p_value": p_value,
-        "n_complete": int(n1),
-        "n_incomplete": n2,
-        "sufficient_data": True,
-    }
-
-
-# Tell pytest explicitly: these are NOT test functions.
-hotelling_test.__test__ = False  # type: ignore[attr-defined]
+    from data_quality_toolkit.statistics import hotelling_test as _hotelling
+    return _hotelling(frame=frame, missing_values=missing_values)
 
 
 def pattern_monotone_test(
@@ -191,7 +90,6 @@ def pattern_monotone_test(
     }
 
 
-# Tell pytest explicitly: these are NOT test functions.
 pattern_monotone_test.__test__ = False  # type: ignore[attr-defined]
 
 
@@ -216,11 +114,6 @@ def missing_correlation_matrix(
     pd.DataFrame
         Square correlation matrix over columns that have missing values.
         Empty DataFrame (shape 0×0) when no column has missing values.
-
-    Raises
-    ------
-    ValueError
-        If *method* is not one of the supported options.
     """
     valid_methods = {"pearson", "kendall", "spearman"}
     if method not in valid_methods:
