@@ -48,20 +48,6 @@ def simulate_mcar(
     -------
     pd.DataFrame
         Copy of *df* with NaN values injected at random positions.
-
-    Notes
-    -----
-    Under MCAR the probability of a value being missing is independent of
-    both observed and unobserved data.
-
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> import numpy as np
-    >>> df = pd.DataFrame({"a": range(10), "b": range(10)}, dtype=float)
-    >>> out = simulate_mcar(df, frac=0.2, random_state=0)
-    >>> out.isnull().any().any()
-    True
     """
     if not 0 < frac < 1:
         raise ValueError(f"frac must be in (0, 1); got {frac!r}.")
@@ -92,51 +78,21 @@ def simulate_mar(
     threshold: Optional[float] = None,
     random_state: Optional[int] = None,
 ) -> pd.DataFrame:
-    """Introduce MAR (Missing At Random) missingness.
-
-    Missingness in *target_col* is determined by values in *predictor_col*:
-    rows where *predictor_col* exceeds a threshold are more likely to be
-    missing in *target_col*.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame (should be complete in *target_col*).
-    frac : float, default 0.1
-        Approximate fraction of *target_col* to set missing.
-    target_col : str
-        Column in which to inject NaN values.
-    predictor_col : str
-        Observed column used to determine missingness probability.
-    threshold : float, optional
-        Values of *predictor_col* above this threshold have higher probability
-        of being missing. Defaults to the median of *predictor_col*.
-    random_state : int, optional
-        Seed for reproducibility.
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of *df* with MAR NaN values in *target_col*.
-
-    Notes
-    -----
-    Under MAR the probability of missingness depends on observed data
-    (here, *predictor_col*) but not on the missing values themselves.
-    """
+    """Introduce MAR (Missing At Random) missingness."""
     if not 0 < frac < 1:
         raise ValueError(f"frac must be in (0, 1); got {frac!r}.")
     if target_col not in df.columns:
         raise KeyError(f"target_col {target_col!r} not found in DataFrame.")
     if predictor_col not in df.columns:
         raise KeyError(f"predictor_col {predictor_col!r} not found in DataFrame.")
+    if not pd.api.types.is_numeric_dtype(df[predictor_col]):
+        raise TypeError(f"predictor_col {predictor_col!r} must be numeric.")
 
     rng = np.random.default_rng(random_state)
     result = df.copy()
-    predictor = df[predictor_col].fillna(df[predictor_col].median())
+    predictor = pd.to_numeric(df[predictor_col], errors="coerce")
     thresh = threshold if threshold is not None else float(predictor.median())
 
-    # Assign higher probability to rows above threshold
     prob = np.where(predictor > thresh, frac * 2, frac * 0.5)
     prob = np.clip(prob, 0, 1)
 
@@ -155,13 +111,10 @@ def simulate_mnar(
     *,
     target_col: str,
     threshold: Optional[float] = None,
-    above: bool = True,
+    tail: str = "upper",
     random_state: Optional[int] = None,
 ) -> pd.DataFrame:
     """Introduce MNAR (Missing Not At Random) missingness.
-
-    Rows where *target_col* itself exceeds *threshold* (or falls below, if
-    ``above=False``) have a higher probability of being missing.
 
     Parameters
     ----------
@@ -170,13 +123,12 @@ def simulate_mnar(
     frac : float, default 0.1
         Approximate fraction of *target_col* to set missing.
     target_col : str
-        Column in which to inject NaN values (missingness depends on its own
-        values).
+        Column in which to inject NaN values.
     threshold : float, optional
-        Decision boundary.  Defaults to the median of *target_col*.
-    above : bool, default True
-        If ``True``, values *above* the threshold are more likely to be
-        missing; if ``False``, values *below*.
+        Decision boundary. Defaults to the median of *target_col*.
+    tail : {"upper", "lower"}, default "upper"
+        ``"upper"`` makes values *above* threshold more likely missing;
+        ``"lower"`` makes values *below* threshold more likely missing.
     random_state : int, optional
         Seed for reproducibility.
 
@@ -184,24 +136,23 @@ def simulate_mnar(
     -------
     pd.DataFrame
         Copy of *df* with MNAR NaN values in *target_col*.
-
-    Notes
-    -----
-    Under MNAR the probability of missingness depends on the unobserved
-    (missing) values themselves — the hardest mechanism to handle in
-    practice.
     """
+    valid_tails = {"upper", "lower"}
+    if tail not in valid_tails:
+        raise ValueError(f"tail must be one of {sorted(valid_tails)}; got {tail!r}.")
     if not 0 < frac < 1:
         raise ValueError(f"frac must be in (0, 1); got {frac!r}.")
     if target_col not in df.columns:
         raise KeyError(f"target_col {target_col!r} not found in DataFrame.")
+    if not pd.api.types.is_numeric_dtype(df[target_col]):
+        raise TypeError(f"target_col {target_col!r} must be numeric for MNAR simulation.")
 
     rng = np.random.default_rng(random_state)
     result = df.copy()
-    col_vals = df[target_col].fillna(df[target_col].median())
+    col_vals = pd.to_numeric(df[target_col], errors="coerce")
     thresh = threshold if threshold is not None else float(col_vals.median())
 
-    if above:
+    if tail == "upper":
         prob = np.where(col_vals > thresh, frac * 2, frac * 0.25)
     else:
         prob = np.where(col_vals < thresh, frac * 2, frac * 0.25)
@@ -229,7 +180,7 @@ def simulate_mixed(
     df : pd.DataFrame
         Input DataFrame.
     mechanisms : list of dict
-        Each dict specifies one corruption step.  Required keys:
+        Each dict specifies one corruption step. Required keys:
 
         * ``"type"`` : ``"mcar"`` | ``"mar"`` | ``"mnar"``
         * ``"frac"`` : float
@@ -244,16 +195,12 @@ def simulate_mixed(
     pd.DataFrame
         Copy of *df* with the requested missingness patterns applied
         sequentially.
-
-    Examples
-    --------
-    >>> mechanisms = [
-    ...     {"type": "mcar", "frac": 0.05},
-    ...     {"type": "mnar", "frac": 0.10, "target_col": "income"},
-    ... ]
-    >>> out = simulate_mixed(df, mechanisms, random_state=42)
     """
-    import warnings as _warnings
+    if df.isnull().any().any():
+        raise ValueError(
+            "simulate_mixed expects a complete DataFrame (no existing missing values). "
+            "Fill or drop NaNs before calling this function."
+        )
 
     _sim_map = {
         "mcar": simulate_mcar.__wrapped__,
@@ -263,11 +210,13 @@ def simulate_mixed(
 
     result = df.copy()
     for i, spec in enumerate(mechanisms):
+        # Use a copy so we don't mutate the caller's dict
+        spec = dict(spec)
         mtype = spec.pop("type", None)
         if mtype not in _sim_map:
             raise ValueError(
                 f"Unknown mechanism type {mtype!r}. "
-                f"Choose from {list(_sim_map)}."
+                f"Choose from {sorted(_sim_map)}."
             )
         seed = (random_state + i) if random_state is not None else None
         result = _sim_map[mtype](result, random_state=seed, **spec)
