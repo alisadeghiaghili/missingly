@@ -65,6 +65,59 @@ mi.heatmap(df)           # nullity correlation heatmap
 mi.miss_cluster(df)      # hierarchical cluster heatmap
 ```
 
+### Interactive Plots
+
+Pass `interactive=True` to get a **Plotly figure** instead of a matplotlib
+Axes. Plotly figures render in Jupyter notebooks out of the box and can be
+saved as self-contained HTML files with `.write_html(path)`.
+
+**Requires:** `pip install plotly` (not installed by default).
+
+| Function | interactive=True supported |
+|---|---|
+| `vis_miss` | ✅ |
+| `matrix` | ✅ |
+| `heatmap` | ✅ |
+| `miss_var_pct` | ✅ |
+| `miss_cooccurrence` | ✅ |
+| `bar` | ✅ |
+| `miss_case` | ✅ |
+| `upset` | ✅ |
+| `miss_patterns` | ✅ |
+
+```python
+import missingly as mi
+import pandas as pd
+import numpy as np
+
+df = pd.DataFrame({
+    "age":    [25, np.nan, 30, np.nan, 45],
+    "income": [50000, 60000, np.nan, 80000, np.nan],
+    "score":  [7.2, 8.1, np.nan, 6.5, 9.0],
+})
+
+# Interactive missingness matrix
+fig = mi.vis_miss(df, interactive=True)
+fig.show()                         # in Jupyter
+fig.write_html("missing.html")     # save as HTML
+
+# Interactive UpSet plot
+fig = mi.upset(df, interactive=True)
+fig.show()
+
+# Interactive bar chart
+fig = mi.bar(df, interactive=True)
+fig.show()
+
+# Interactive per-row missing count
+fig = mi.miss_case(df, interactive=True)
+fig.show()
+
+# Interactive pattern frequency chart
+fig = mi.miss_patterns(df, top_n=5, interactive=True)
+fig.show()
+```
+
 ### `MissinglyImputer` inside a sklearn Pipeline
 
 ```python
@@ -111,17 +164,17 @@ temp = pd.Series(
 )
 df = temp.to_frame()
 
-# ── 2. Diagnose gaps ─────────────────────────────────────────────────────────
+# ── 2. Diagnose gaps ──────────────────────────────────────────────────────
 summary = mi.miss_ts_summary(df)
 print(summary)
 # variable   n_miss  pct_miss  n_gaps  mean_gap  max_gap  median_gap
 # temp_C          9      30.0       5       1.8        3         2.0
 
-# ── 3. Visualise missingness over time ───────────────────────────────────────
+# ── 3. Visualise missingness over time ─────────────────────────────────────
 mi.vis_ts_miss(df)           # tile heatmap — green = present, red = missing
 mi.vis_miss_over_time(df, window=6)  # rolling 6-hour missingness rate
 
-# ── 4. Impute with time-aware interpolation ──────────────────────────────────
+# ── 4. Impute with time-aware interpolation ──────────────────────────────
 df_clean = mi.impute_ts(df, method="time")   # weights by actual timestamp gap
 df_ffill  = mi.impute_ts(df, method="ffill", limit=2)  # fill at most 2 consecutive
 
