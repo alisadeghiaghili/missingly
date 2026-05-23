@@ -42,3 +42,41 @@ jobs:
       - name: Run pytest
         run: |
           pytest tests/ -v --tb=short
+
+  dqt-integration:
+    name: DQT integration (Python 3.11)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install data-quality-toolkit from GitHub main
+        run: |
+          python -m pip install --upgrade pip
+          pip install git+https://github.com/alisadeghiaghili/data-quality-toolkit.git@main
+
+      - name: Install missingly and test dependencies
+        run: |
+          pip install -e ".[test]"
+
+      - name: Verify DQT correlation_heatmap is importable
+        run: |
+          python - <<'EOF'
+          from data_quality_toolkit.visualization import correlation_heatmap
+          import inspect
+          sig = inspect.signature(correlation_heatmap)
+          required = {"corr"}
+          missing = required - set(sig.parameters)
+          assert not missing, f"Missing params in correlation_heatmap: {missing}"
+          print("OK: correlation_heatmap signature is stable:", list(sig.parameters))
+          EOF
+
+      - name: Run full test suite with DQT installed
+        run: |
+          pytest tests/ -v --tb=short

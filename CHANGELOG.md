@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks, `ImportError` checks via monkeypatching, and edge cases.
 - Updated `README.md` with a full `Interactive Plots` section listing all
   nine functions that accept `interactive=True`.
+- Pinned correlation heatmap implementation to
+  `data_quality_toolkit.visualization.correlation_heatmap` with test coverage
+  in DQT and a dedicated `dqt-integration` CI job that installs DQT from
+  `main` before running the full test suite.
 
 ## [0.1.0] - Initial release
 
