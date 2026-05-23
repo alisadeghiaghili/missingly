@@ -36,7 +36,7 @@ rows.
 from __future__ import annotations
 
 import warnings
-from typing import Optional
+from typing import List, Optional, Union
 
 import pandas as pd
 import numpy as np
@@ -382,8 +382,27 @@ def impute_mice(
     max_iter: int = 10,
     random_state: int = 0,
     estimator=None,
-) -> pd.DataFrame:
-    """Impute missing values using Multiple Imputation by Chained Equations.
+    n_imputations: int = 1,
+) -> Union[pd.DataFrame, List[pd.DataFrame]]:
+    """Impute missing values using single chained imputation (sklearn IterativeImputer).
+
+    .. note:: **Current implementation — single chained imputation only.**
+
+        Despite the name, this function currently performs **one** run of
+        ``sklearn.impute.IterativeImputer`` (MICE-style chained equations)
+        and returns a *single* completed DataFrame.  It does **not** yet
+        produce multiple independent datasets or pool results across chains,
+        which is required for statistically valid Multiple Imputation (MI).
+
+        When ``n_imputations > 1`` the function runs ``n_imputations``
+        independent chains (each seeded differently via
+        ``random_state + i``) and returns a **list** of completed
+        DataFrames.  No pooling (Rubin's Rules) is performed yet — that
+        is groundwork for a future release.  To obtain a single pooled
+        estimate from the list, average the numeric columns yourself::
+
+            dfs = impute_mice(df, n_imputations=5)
+            pooled = pd.concat(dfs).groupby(level=0).mean()
 
     .. warning::
         Fits and transforms the same DataFrame.  Use :func:`make_imputer`
@@ -392,33 +411,101 @@ def impute_mice(
     Parameters
     ----------
     df : pd.DataFrame
-    max_iter : int, optional
-        Default 10.
-    random_state : int, optional
-        Default 0.
+        DataFrame with missing values to impute.
+    max_iter : int, default 10
+        Maximum number of imputation rounds per chain (passed to
+        ``IterativeImputer``).
+    random_state : int, default 0
+        Base random seed.  When ``n_imputations > 1`` chain *i* uses
+        ``random_state + i`` so each chain explores a different region of
+        the posterior predictive distribution.
     estimator : sklearn estimator, optional
-        Defaults to ``BayesianRidge()``.
+        Regressor used by ``IterativeImputer``.  Defaults to
+        ``BayesianRidge()``.  Must support ``fit`` / ``predict``.
+    n_imputations : int, default 1
+        Number of independent imputed datasets to generate.
+
+        * ``1`` (default) — returns a single ``pd.DataFrame`` (backward
+          compatible with all previous callers).
+        * ``> 1`` — returns a ``List[pd.DataFrame]`` of length
+          ``n_imputations``.  Each DataFrame is produced by an independent
+          ``IterativeImputer`` chain with a distinct random seed.
+          **No pooling is performed**; this interface is designed as
+          groundwork for full MI support in a future release.
 
     Returns
     -------
     pd.DataFrame
+        When ``n_imputations == 1``: a single imputed copy of *df*.
+    List[pd.DataFrame]
+        When ``n_imputations > 1``: a list of ``n_imputations`` imputed
+        copies of *df*, one per independent chain.
+
+    Raises
+    ------
+    ValueError
+        If ``n_imputations < 1``.
+
+    Notes
+    -----
+    **Towards real Multiple Imputation**
+
+    Statistically valid MI requires:
+
+    1. Running *m* independent imputation chains (typically m ≥ 5).
+    2. Fitting the analysis model on each completed dataset separately.
+    3. Pooling the *m* sets of estimates using Rubin's Rules
+       (combined estimate = mean of estimates; combined variance accounts
+       for both within-imputation and between-imputation variance).
+
+    The ``n_imputations > 1`` path in this function covers step 1.
+    Steps 2–3 are left to the caller for now and will be implemented in
+    ``pool_imputations()`` in a future release.
+
+    Examples
+    --------
+    Single imputation (default, backward-compatible):
+
+    >>> import pandas as pd, numpy as np
+    >>> from missingly.impute import impute_mice
+    >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': [4.0, 5.0, np.nan]})
+    >>> result = impute_mice(df)
+    >>> isinstance(result, pd.DataFrame)
+    True
+
+    Multiple imputation (returns list of DataFrames, no pooling yet):
+
+    >>> dfs = impute_mice(df, n_imputations=5)
+    >>> len(dfs)
+    5
+    >>> all(isinstance(d, pd.DataFrame) for d in dfs)
+    True
     """
+    if n_imputations < 1:
+        raise ValueError(f"n_imputations must be >= 1; got {n_imputations}.")
+
     _warn_if_large(df, "impute_mice")
-    df = _normalize_missing(df)
-    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
+    df_norm = _normalize_missing(df)
 
-    if estimator is None:
-        estimator = BayesianRidge()
+    def _single_chain(seed: int) -> pd.DataFrame:
+        df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
+        est = BayesianRidge() if estimator is None else estimator
+        imputer = IterativeImputer(
+            estimator=est,
+            max_iter=max_iter,
+            random_state=seed,
+            imputation_order="roman",
+        )
+        imputed_array = imputer.fit_transform(df_work)
+        df_imputed = pd.DataFrame(
+            imputed_array, index=df_norm.index, columns=df_work.columns
+        )
+        return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
 
-    imputer = IterativeImputer(
-        estimator=estimator,
-        max_iter=max_iter,
-        random_state=random_state,
-        imputation_order="roman",
-    )
-    imputed_array = imputer.fit_transform(df_work)
-    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
-    return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
+    if n_imputations == 1:
+        return _single_chain(random_state)
+
+    return [_single_chain(random_state + i) for i in range(n_imputations)]
 
 
 def impute_rf(

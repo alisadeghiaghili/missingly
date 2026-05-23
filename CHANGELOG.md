@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FutureWarning` on every call to an experimental / legacy function.
 - `tests/test_public_api.py` — tests verifying that every v1 symbol exists
   and is callable, and that legacy functions emit `FutureWarning`.
+- `tests/test_impute_mice.py` — tests for `impute_mice` single-chain and
+  multi-imputation behaviour (edge cases included).
 
 ### Changed
 - Marked advanced utilities as experimental with `FutureWarning`:
@@ -22,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `optimize_dtypes`, `hotelling_test`, `pattern_monotone_test`,
   `missing_correlation_matrix`, `clean_names`, `remove_empty`,
   `coalesce_columns`, `miss_as_feature`, `gap_table`, `vis_gap_lengths`.
+- **`impute_mice`** now exposes an `n_imputations` parameter.
+  - `n_imputations=1` (default) — preserves existing behaviour, returns a
+    single `pd.DataFrame`. Fully backward-compatible.
+  - `n_imputations > 1` — runs `n_imputations` independent
+    `IterativeImputer` chains (each with a distinct random seed) and returns
+    a `List[pd.DataFrame]`. No pooling (Rubin's Rules) is performed yet;
+    this is groundwork for full Multiple Imputation support in a future
+    release.
+  - Docstring updated to clarify that the current implementation is a
+    *single chained imputation* using `sklearn.impute.IterativeImputer`,
+    not a statistically complete MI procedure, and to explain the path
+    towards real MI (independent chains → fit models → Rubin's Rules).
 
 ## [0.1.0] - 2025-01-01
 
