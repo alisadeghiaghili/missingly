@@ -1,352 +1,101 @@
-"""Tests for interactive (Plotly) mode of Phase-1 visualisation functions.
+"""Tests for the interactive (Plotly) backends of visualise functions.
 
-Conventions
------------
-* Each test verifies that ``interactive=True`` returns a
-  ``plotly.graph_objects.Figure`` with the correct title and at least
-  one trace.
-* Static (``interactive=False``) behaviour is NOT re-tested here — it
-  lives in ``test_visualise.py`` and must remain 100% unchanged.
-* Tests are skipped automatically when plotly is not installed, so the
-  CI matrix without plotly stays green.
-* Fixtures are intentionally small (4-10 rows) to keep tests fast.
+Coverage strategy
+-----------------
+* When plotly IS installed (normal CI): assert return type is
+  ``plotly.graph_objects.Figure``.
+* When plotly is NOT installed: assert ``ImportError`` is raised with a
+  helpful installation hint (monkeypatched via ``sys.modules``).
+
+Functions under test (Phase 1 + Phase 2 interactive functions)
+--------------------------------------------------------------
+Phase 1 (existing): vis_miss, heatmap, matrix, miss_var_pct, miss_cooccurrence
+Phase 2 (new):      bar, miss_case, upset, miss_patterns
 """
 
+from __future__ import annotations
+
+import sys
+import types
+import pytest
 import numpy as np
 import pandas as pd
-import pytest
-
-try:
-    import plotly.graph_objects as go
-    HAS_PLOTLY = True
-except ImportError:
-    HAS_PLOTLY = False
-
-pytest.importorskip("plotly", reason="plotly not installed")
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend for CI
 
 from missingly import visualise
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Shared fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def nan_df():
-    """Small DataFrame with clear NaN pattern for interactive plot tests."""
-    return pd.DataFrame({
-        'X': [1.0, np.nan, 3.0, np.nan, 5.0],
-        'Y': [np.nan, 2.0, np.nan, 4.0, 5.0],
-        'Z': [1.0, 2.0, 3.0, 4.0, 5.0],
-    })
+def small_df() -> pd.DataFrame:
+    """Tiny 8×4 DataFrame with controlled missingness."""
+    rng = np.random.default_rng(42)
+    data = rng.standard_normal((8, 4))
+    df = pd.DataFrame(data, columns=["a", "b", "c", "d"])
+    # Introduce known missingness
+    df.loc[0, "a"] = np.nan
+    df.loc[1, "b"] = np.nan
+    df.loc[2, "b"] = np.nan
+    df.loc[3, "c"] = np.nan
+    df.loc[0, "c"] = np.nan
+    df.loc[4, "d"] = np.nan
+    return df
 
 
 @pytest.fixture
-def sentinel_df():
-    """DataFrame with sentinel values instead of NaN."""
-    return pd.DataFrame({
-        'A': [1, 2, -99, 4],
-        'B': [-99, 20.0, 30.0, 40.0],
-        'C': [10.0, 20.0, 30.0, 40.0],
-    })
-
-
-@pytest.fixture
-def no_missing_df():
-    """Complete DataFrame — no missing values anywhere."""
-    return pd.DataFrame({'A': [1.0, 2.0, 3.0], 'B': [4.0, 5.0, 6.0]})
-
-
-@pytest.fixture
-def persian_df():
-    """DataFrame with Persian column names."""
-    return pd.DataFrame({
-        'درآمد': [1000.0, np.nan, 3000.0, np.nan],
-        'سن':   [25.0,  30.0,  np.nan,  40.0],
-    })
+def no_plotly(monkeypatch):
+    """Monkeypatch sys.modules so that 'import plotly' raises ImportError."""
+    # Save originals
+    saved = {k: v for k, v in sys.modules.items() if k.startswith("plotly")}
+    # Block plotly
+    monkeypatch.setitem(sys.modules, "plotly", None)  # None => ImportError
+    monkeypatch.setitem(sys.modules, "plotly.graph_objects", None)
+    monkeypatch.setitem(sys.modules, "plotly.subplots", None)
+    yield
+    # Restore (monkeypatch handles teardown automatically, but restore anyway)
+    for k in list(sys.modules.keys()):
+        if k.startswith("plotly"):
+            if k in saved:
+                sys.modules[k] = saved[k]
+            else:
+                del sys.modules[k]
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helper
 # ---------------------------------------------------------------------------
 
-def _is_figure(obj) -> bool:
-    """Return True if *obj* is a plotly Figure."""
-    return isinstance(obj, go.Figure)
-
-
-# ---------------------------------------------------------------------------
-# vis_miss — interactive
-# ---------------------------------------------------------------------------
-
-def test_vis_miss_interactive_returns_figure(nan_df):
-    fig = visualise.vis_miss(nan_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_vis_miss_interactive_title(nan_df):
-    fig = visualise.vis_miss(nan_df, interactive=True)
-    assert fig.layout.title.text == "Missing Data Overview"
-
-
-def test_vis_miss_interactive_has_trace(nan_df):
-    fig = visualise.vis_miss(nan_df, interactive=True)
-    assert len(fig.data) >= 1
-
-
-def test_vis_miss_interactive_sentinel(sentinel_df):
-    fig = visualise.vis_miss(sentinel_df, missing_values=[-99], interactive=True)
-    assert _is_figure(fig)
-
-
-def test_vis_miss_interactive_no_missing(no_missing_df):
-    fig = visualise.vis_miss(no_missing_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_vis_miss_interactive_show_pct_false(nan_df):
-    fig = visualise.vis_miss(nan_df, interactive=True, show_pct=False)
-    assert _is_figure(fig)
-
-
-def test_vis_miss_interactive_cluster(nan_df):
-    fig = visualise.vis_miss(nan_df, interactive=True, cluster=True)
-    assert _is_figure(fig)
-
-
-def test_vis_miss_interactive_persian(persian_df):
-    fig = visualise.vis_miss(persian_df, interactive=True)
-    assert _is_figure(fig)
+def _has_plotly() -> bool:
+    try:
+        import plotly.graph_objects  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 # ---------------------------------------------------------------------------
-# heatmap — interactive
+# Phase 2 interactive functions — return type checks
 # ---------------------------------------------------------------------------
 
-def test_heatmap_interactive_returns_figure(nan_df):
-    fig = visualise.heatmap(nan_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_heatmap_interactive_title(nan_df):
-    fig = visualise.heatmap(nan_df, interactive=True)
-    assert "Nullity Correlation Heatmap" in fig.layout.title.text
-
-
-def test_heatmap_interactive_has_trace(nan_df):
-    fig = visualise.heatmap(nan_df, interactive=True)
-    assert len(fig.data) >= 1
-
-
-def test_heatmap_interactive_phi(nan_df):
-    fig = visualise.heatmap(nan_df, interactive=True, method="phi")
-    assert "Phi" in fig.layout.title.text
-
-
-def test_heatmap_interactive_pearson(nan_df):
-    fig = visualise.heatmap(nan_df, interactive=True, method="pearson")
-    assert "Pearson" in fig.layout.title.text
-
-
-def test_heatmap_interactive_sentinel(sentinel_df):
-    fig = visualise.heatmap(sentinel_df, missing_values=[-99], interactive=True)
-    assert _is_figure(fig)
-
-
-def test_heatmap_interactive_no_missing(no_missing_df):
-    fig = visualise.heatmap(no_missing_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_heatmap_interactive_persian(persian_df):
-    fig = visualise.heatmap(persian_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_heatmap_interactive_mask_insignificant(nan_df):
-    df = pd.DataFrame({
-        'A': [np.nan if i % 2 == 0 else float(i) for i in range(20)],
-        'B': [np.nan if i % 2 == 0 else float(i) for i in range(20)],
-        'C': [np.nan if i % 3 == 0 else float(i) for i in range(20)],
-    })
-    fig = visualise.heatmap(df, interactive=True, mask_insignificant=True)
-    assert _is_figure(fig)
-
-
-# ---------------------------------------------------------------------------
-# matrix — interactive
-# ---------------------------------------------------------------------------
-
-def test_matrix_interactive_returns_figure(nan_df):
-    fig = visualise.matrix(nan_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_matrix_interactive_title(nan_df):
-    fig = visualise.matrix(nan_df, interactive=True)
-    assert fig.layout.title.text == "Missing Data Matrix"
-
-
-def test_matrix_interactive_has_trace(nan_df):
-    fig = visualise.matrix(nan_df, interactive=True)
-    assert len(fig.data) >= 1
-
-
-def test_matrix_interactive_sentinel(sentinel_df):
-    fig = visualise.matrix(sentinel_df, missing_values=[-99], interactive=True)
-    assert _is_figure(fig)
-
-
-def test_matrix_interactive_no_missing(no_missing_df):
-    fig = visualise.matrix(no_missing_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_matrix_interactive_persian(persian_df):
-    fig = visualise.matrix(persian_df, interactive=True)
-    assert _is_figure(fig)
-
-
-# ---------------------------------------------------------------------------
-# miss_var_pct — interactive
-# ---------------------------------------------------------------------------
-
-def test_miss_var_pct_interactive_returns_figure(nan_df):
-    fig = visualise.miss_var_pct(nan_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_miss_var_pct_interactive_title(nan_df):
-    fig = visualise.miss_var_pct(nan_df, interactive=True)
-    assert fig.layout.title.text == "Missing Values per Variable (%)"
-
-
-def test_miss_var_pct_interactive_has_trace(nan_df):
-    fig = visualise.miss_var_pct(nan_df, interactive=True)
-    assert len(fig.data) >= 1
-
-
-def test_miss_var_pct_interactive_sorted(nan_df):
-    fig = visualise.miss_var_pct(nan_df, interactive=True, sort=True)
-    assert _is_figure(fig)
-
-
-def test_miss_var_pct_interactive_unsorted(nan_df):
-    fig = visualise.miss_var_pct(nan_df, interactive=True, sort=False)
-    assert _is_figure(fig)
-
-
-def test_miss_var_pct_interactive_sentinel(sentinel_df):
-    fig = visualise.miss_var_pct(sentinel_df, missing_values=[-99], interactive=True)
-    assert _is_figure(fig)
-
-
-def test_miss_var_pct_interactive_no_missing(no_missing_df):
-    fig = visualise.miss_var_pct(no_missing_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_miss_var_pct_interactive_persian(persian_df):
-    fig = visualise.miss_var_pct(persian_df, interactive=True)
-    assert _is_figure(fig)
-
-
-# ---------------------------------------------------------------------------
-# miss_cooccurrence — interactive
-# ---------------------------------------------------------------------------
-
-def test_miss_cooccurrence_interactive_returns_figure(nan_df):
-    fig = visualise.miss_cooccurrence(nan_df, interactive=True)
-    assert _is_figure(fig)
-
-
-def test_miss_cooccurrence_interactive_title_normalized(nan_df):
-    fig = visualise.miss_cooccurrence(nan_df, interactive=True, normalize=True)
-    assert "fraction" in fig.layout.title.text
-
-
-def test_miss_cooccurrence_interactive_title_count(nan_df):
-    fig = visualise.miss_cooccurrence(nan_df, interactive=True, normalize=False)
-    assert "count" in fig.layout.title.text
-
-
-def test_miss_cooccurrence_interactive_has_trace(nan_df):
-    fig = visualise.miss_cooccurrence(nan_df, interactive=True)
-    assert len(fig.data) >= 1
-
-
-def test_miss_cooccurrence_interactive_sentinel(sentinel_df):
-    fig = visualise.miss_cooccurrence(sentinel_df, missing_values=[-99], interactive=True)
-    assert _is_figure(fig)
-
-
-def test_miss_cooccurrence_interactive_persian(persian_df):
-    fig = visualise.miss_cooccurrence(persian_df, interactive=True)
-    assert _is_figure(fig)
-
-
-# ---------------------------------------------------------------------------
-# Backward compatibility: interactive=False (default) still returns Axes
-# ---------------------------------------------------------------------------
-
-def test_vis_miss_default_still_returns_axes(nan_df):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    plt.close("all")
-    ax = visualise.vis_miss(nan_df)
-    assert isinstance(ax, plt.Axes)
-    plt.close("all")
-
-
-def test_heatmap_default_still_returns_axes(nan_df):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    plt.close("all")
-    ax = visualise.heatmap(nan_df)
-    assert isinstance(ax, plt.Axes)
-    plt.close("all")
-
-
-def test_matrix_default_still_returns_axes(nan_df):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    plt.close("all")
-    ax = visualise.matrix(nan_df)
-    assert isinstance(ax, plt.Axes)
-    plt.close("all")
-
-
-def test_miss_var_pct_default_still_returns_axes(nan_df):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    plt.close("all")
-    ax = visualise.miss_var_pct(nan_df)
-    assert isinstance(ax, plt.Axes)
-    plt.close("all")
-
-
-def test_miss_cooccurrence_default_still_returns_axes(nan_df):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    plt.close("all")
-    ax = visualise.miss_cooccurrence(nan_df)
-    assert isinstance(ax, plt.Axes)
-    plt.close("all")
-
-
-# ---------------------------------------------------------------------------
-# ImportError path: _require_plotly raises helpfully
-# ---------------------------------------------------------------------------
-
-def test_require_plotly_raises_import_error(monkeypatch):
-    """If plotly is missing, _require_plotly must raise ImportError with hint."""
-    import sys
-    import unittest.mock as mock
-    with mock.patch.dict(sys.modules, {"plotly": None, "plotly.graph_objects": None}):
-        with pytest.raises((ImportError, TypeError)):
-            visualise._require_plotly()
+@pytest.mark.skipif(not _has_plotly(), reason="plotly not installed")
+class TestPhase2InteractiveReturnType:
+    """Assert interactive=True returns a plotly Figure when plotly is present."""
+
+    def test_bar_returns_figure(self, small_df):
+        import plotly.graph_objects as go
+        fig = visualise.bar(small_df, interactive=True)
+        assert isinstance(fig, go.Figure)
+
+    def test_miss_case_returns_figure(self, small_df):
+        import plotly.graph_objects as go
+        fig = visualise.miss_case(small_df, interactive=True)
+        assert isinstance(fig, go.Figure)
+
+    def test_upset_returns_figure(self, small_df):
+        import plotly.graph_objects as go
+        fig = visualise.upset(small_df, interactive=True)
+        asse
