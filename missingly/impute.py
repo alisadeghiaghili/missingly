@@ -53,6 +53,8 @@ from sklearn.preprocessing import OrdinalEncoder
 
 
 _LARGE_DF_ROW_THRESHOLD = 50_000
+# Threshold: warn when n_cat > n_num AND n_neighbors > this value.
+_KNN_CAT_NEIGHBORS_THRESHOLD = 5
 
 
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
@@ -71,6 +73,39 @@ def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
             f"very long runtimes or high memory usage. "
             f"Consider sampling your data or using impute_mean / impute_median "
             f"for large datasets.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
+def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
+    """Warn when the feature space is dominated by categorical columns.
+
+    KNN uses Euclidean distance on ordinal-encoded integers.  When most
+    columns are categorical the encoded distances are largely arbitrary
+    (ordinal codes carry no meaningful magnitude) which can degrade
+    imputation quality significantly.  The warning fires only when the
+    caller also requests more neighbours than the default, as that
+    indicates an intentional configuration that is likely to amplify the
+    problem.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame passed to ``impute_knn``.
+    n_neighbors : int
+        The ``n_neighbors`` argument passed by the caller.
+    """
+    n_cat = len(df.select_dtypes(exclude=[np.number]).columns)
+    n_num = len(df.select_dtypes(include=[np.number]).columns)
+    if n_cat > n_num and n_neighbors > _KNN_CAT_NEIGHBORS_THRESHOLD:
+        warnings.warn(
+            f"KNN imputation may be unreliable: the DataFrame has {n_cat} categorical "
+            f"column(s) but only {n_num} numeric column(s), and n_neighbors={n_neighbors} "
+            f"(> {_KNN_CAT_NEIGHBORS_THRESHOLD}). "
+            "Euclidean distance over ordinal-encoded categoricals is not statistically "
+            "meaningful and degrades as n_neighbors grows. "
+            "Consider impute_rf(), impute_gb(), or impute_mice() for heavy-categorical datasets.",
             UserWarning,
             stacklevel=3,
         )
@@ -351,8 +386,15 @@ def impute_mode(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
 
 
-def impute_knn(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
-    """Impute missing values using k-Nearest Neighbors.
+def impute_knn(
+    df: pd.DataFrame,
+    n_neighbors: int = 5,
+) -> pd.DataFrame:
+    """Impute missing values using k-Nearest Neighbors (KNN).
+
+    Categorical columns are ordinal-encoded before computing distances and
+    decoded back to their original dtype after imputation.  All pairwise
+    distances are Euclidean (sklearn default).
 
     .. warning::
         Fits and transforms the same DataFrame.  Use :func:`make_imputer`
@@ -361,14 +403,59 @@ def impute_knn(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-    n_neighbors : int, optional
-        Default 5.
+        Input DataFrame with missing values.  May contain numeric and/or
+        categorical (object / category) columns.
+    n_neighbors : int, default 5
+        Number of nearest neighbours to use for imputation.
 
     Returns
     -------
     pd.DataFrame
+        Imputed copy of *df* with the same dtypes as the input.
+
+    Limitations
+    -----------
+    **Categorical columns and Euclidean distance.**
+        KNN relies on Euclidean distance computed over ordinal-encoded
+        integer codes.  For nominal categoricals (e.g. ``"red"``,
+        ``"green"``, ``"blue"``) ordinal codes carry no meaningful
+        magnitude — the distance between ``"red"`` (0) and ``"blue"`` (2)
+        is *not* twice the distance between ``"red"`` and ``"green"`` (1).
+        This means neighbours selected by the algorithm may not be
+        semantically similar, which degrades imputation quality.
+
+    **Heavy-categorical datasets.**
+        When most columns are categorical the entire distance matrix becomes
+        dominated by these meaningless ordinal distances.  In that regime
+        KNN often performs no better than mode imputation while being
+        significantly slower.  For datasets where categorical columns
+        outnumber numeric columns, prefer:
+
+        * :func:`impute_rf` — Random Forest handles categoricals natively
+          via decision-tree splits (no distance metric required).
+        * :func:`impute_gb` — Gradient Boosting, same reasoning.
+        * :func:`impute_mice` — chained-equation imputer that routes each
+          column through an appropriate model (regressor or classifier).
+
+    **Planned (not yet implemented).**
+        A future release will add a ``metric='mixed'`` option backed by
+        Gower distance :cite:p:`gower1971` which handles mixed numeric /
+        categorical feature spaces correctly by normalising each column to
+        ``[0, 1]`` and using indicator-based similarity for nominals.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> from missingly.impute import impute_knn
+    >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': [4.0, 5.0, np.nan]})
+    >>> impute_knn(df, n_neighbors=2)
+         a    b
+    0  1.0  4.0
+    1  2.0  5.0
+    2  3.0  4.5
     """
     _warn_if_large(df, "impute_knn")
+    _warn_if_knn_heavy_categorical(df, n_neighbors)
     df = _normalize_missing(df)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     imputer = KNNImputer(n_neighbors=n_neighbors)
@@ -645,7 +732,6 @@ class FittedImputer:
         **kwargs
             Forwarded to MissinglyImputer.
         """
-        # Import here to avoid circular import at module load time
         from .transformer import MissinglyImputer
         self.strategy = strategy
         self._imputer = MissinglyImputer(strategy=strategy, **kwargs)

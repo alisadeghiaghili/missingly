@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and is callable, and that legacy functions emit `FutureWarning`.
 - `tests/test_impute_mice.py` — tests for `impute_mice` single-chain and
   multi-imputation behaviour (edge cases included).
+- `tests/test_impute_knn.py` — tests for `impute_knn` correctness,
+  heavy-categorical safety warning, and edge cases.
 
 ### Changed
 - Marked advanced utilities as experimental with `FutureWarning`:
@@ -36,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     *single chained imputation* using `sklearn.impute.IterativeImputer`,
     not a statistically complete MI procedure, and to explain the path
     towards real MI (independent chains → fit models → Rubin's Rules).
+- **`impute_knn`** — documented limitations and added a runtime safety warning.
+  - Documented in a new **Limitations** section of the docstring that
+    KNN uses Euclidean distance over ordinal-encoded integer codes, which
+    is not statistically meaningful for nominal categoricals and degrades
+    imputation quality when categoricals dominate the feature space.
+  - Added recommendation to prefer `impute_rf()`, `impute_gb()`, or
+    `impute_mice()` for heavy-categorical datasets.
+  - Now emits a `UserWarning` ("KNN imputation may be unreliable") when
+    the number of categorical columns exceeds the number of numeric columns
+    **and** `n_neighbors > 5`. No warning is raised for the default
+    `n_neighbors=5` to avoid noise in common mixed-type use cases.
+  - Planned future work noted in docstring: a ``metric='mixed'`` option
+    backed by Gower distance for proper mixed numeric/categorical KNN.
 
 ## [0.1.0] - 2025-01-01
 
