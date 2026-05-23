@@ -1,25 +1,19 @@
 """Data manipulation utilities for missing data workflows.
 
-This module provides helpers for replacing sentinel values with ``NaN``,
-cleaning column names, removing empty rows/columns, coalescing columns,
-and encoding missingness as binary features.
-
 Compatibility
 -------------
-Compatible with Python 3.9+.  Uses ``from __future__ import annotations``
-for lazy annotation evaluation and ``typing`` generics instead of the
-``X | Y`` union syntax introduced in Python 3.10.
+Compatible with Python 3.9+.
 """
 
 from __future__ import annotations
 
 import warnings
-import re
-import unicodedata
 from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 import numpy as np
+
+from ._deprecation import deprecated_api
 
 
 def replace_with_na(
@@ -36,15 +30,14 @@ def replace_with_na(
         A dictionary whose keys are column names and whose values
         describe which entries to replace.  Each value may be:
 
-        * a single scalar — replace that exact value;
-        * a list of scalars — replace any value in the list;
-        * a callable — replace where ``callable(cell)`` returns ``True``.
+        * a single scalar \u2014 replace that exact value;
+        * a list of scalars \u2014 replace any value in the list;
+        * a callable \u2014 replace where ``callable(cell)`` returns ``True``.
 
     Returns
     -------
     pd.DataFrame
         A new dataframe with the specified values replaced with ``NaN``.
-        The original dataframe is not modified.
     """
     df_copy = df.copy()
     for col, condition in replace.items():
@@ -62,14 +55,15 @@ def replace_with_na_all(df: pd.DataFrame, condition: Callable) -> pd.DataFrame:
     return df.map(lambda x: np.nan if condition(x) else x)
 
 
+@deprecated_api(
+    "Use `from data_quality_toolkit.cleaning import clean_names` instead.",
+    since="0.2.0",
+)
 def clean_names(*args, **kwargs):
-    """Deprecated shim for :func:`data_quality_toolkit.cleaning.clean_names`.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    This function will be removed in a future release. Use::
-
-        from data_quality_toolkit import clean_names
-
-    instead.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.cleaning``.
     """
     warnings.warn(
         "clean_names moved to data_quality_toolkit.cleaning and will be "
@@ -81,10 +75,15 @@ def clean_names(*args, **kwargs):
     return _clean(*args, **kwargs)
 
 
+@deprecated_api(
+    "Use `from data_quality_toolkit.cleaning import remove_empty` instead.",
+    since="0.2.0",
+)
 def remove_empty(*args, **kwargs):
-    """Deprecated shim for :func:`data_quality_toolkit.cleaning.remove_empty`.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    Use ``data_quality_toolkit.cleaning.remove_empty`` instead.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.cleaning``.
     """
     warnings.warn(
         "remove_empty moved to data_quality_toolkit.cleaning and will be "
@@ -96,10 +95,15 @@ def remove_empty(*args, **kwargs):
     return _remove(*args, **kwargs)
 
 
+@deprecated_api(
+    "Use `from data_quality_toolkit.cleaning import coalesce_columns` instead.",
+    since="0.2.0",
+)
 def coalesce_columns(*args, **kwargs):
-    """Deprecated shim for :func:`data_quality_toolkit.cleaning.coalesce_columns`.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    Use ``data_quality_toolkit.cleaning.coalesce_columns`` instead.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.cleaning``.
     """
     warnings.warn(
         "coalesce_columns moved to data_quality_toolkit.cleaning and will be "
@@ -111,6 +115,10 @@ def coalesce_columns(*args, **kwargs):
     return _coal(*args, **kwargs)
 
 
+@deprecated_api(
+    "This function may be moved to a separate feature-engineering package in a future release.",
+    since="0.2.0",
+)
 def miss_as_feature(
     df: pd.DataFrame,
     columns: Optional[List[str]] = None,
@@ -119,10 +127,10 @@ def miss_as_feature(
     suffix: str = "_NA",
     keep_original: bool = True,
 ) -> pd.DataFrame:
-    """Encode missingness as binary indicator columns.
+    """Encode missingness as binary indicator columns (experimental).
 
-    For each selected column, a new binary column ``<col><suffix>`` is
-    appended: ``1`` where the value is missing, ``0`` otherwise.
+    .. deprecated:: 0.2.0
+        Experimental \u2014 may be moved to a separate package.
     """
     if columns is not None:
         missing_cols = [c for c in columns if c not in df.columns]

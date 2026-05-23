@@ -1,16 +1,8 @@
 """Performance utilities for large-dataset workflows.
 
-This module provides three complementary tools that make missingly
-usable on DataFrames that do not fit comfortably in memory or that
-take too long to process in a single pass::
-
-    - chunk_apply
-    - memory_usage_mb
-    - optimize_dtypes
-
-In v0.2 these functions were moved to the separate
-``data_quality_toolkit`` package. They remain available here as
-backwards-compatible shims for one release cycle.
+.. deprecated:: 0.2.0
+    All three functions were moved to ``data_quality_toolkit``.
+    They remain as backwards-compatible shims and emit :class:`FutureWarning`.
 
 Compatibility
 -------------
@@ -24,11 +16,18 @@ import warnings
 
 import pandas as pd
 
+from ._deprecation import deprecated_api
 
+
+@deprecated_api(
+    "Use `from data_quality_toolkit.performance import memory_usage_mb` instead.",
+    since="0.2.0",
+)
 def memory_usage_mb(*args, **kwargs):
-    """Deprecated shim for :func:`data_quality_toolkit.performance.memory_usage_mb`.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    Use ``data_quality_toolkit.performance.memory_usage_mb`` instead.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.performance``.
     """
     warnings.warn(
         "memory_usage_mb moved to data_quality_toolkit.performance and will "
@@ -40,10 +39,15 @@ def memory_usage_mb(*args, **kwargs):
     return _mem(*args, **kwargs)
 
 
+@deprecated_api(
+    "Use `from data_quality_toolkit.performance import optimize_dtypes` instead.",
+    since="0.2.0",
+)
 def optimize_dtypes(*args, **kwargs):
-    """Deprecated shim for :func:`data_quality_toolkit.performance.optimize_dtypes`.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    Use ``data_quality_toolkit.performance.optimize_dtypes`` instead.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.performance``.
     """
     warnings.warn(
         "optimize_dtypes moved to data_quality_toolkit.performance and will "
@@ -55,16 +59,20 @@ def optimize_dtypes(*args, **kwargs):
     return _opt(*args, **kwargs)
 
 
+@deprecated_api(
+    "Use `from data_quality_toolkit.performance import chunk_apply` instead.",
+    since="0.2.0",
+)
 def chunk_apply(
     df: pd.DataFrame,
     func: Callable[[pd.DataFrame], pd.DataFrame],
     chunk_size: int = 10_000,
     reset_index: bool = True,
 ):
-    """Deprecated shim for :func:`data_quality_toolkit.performance.chunk_apply`.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    The behaviour is identical; this wrapper only exists for backwards
-    compatibility and will be removed in a future release.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.performance``.
     """
     warnings.warn(
         "chunk_apply moved to data_quality_toolkit.performance and will "

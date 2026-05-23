@@ -1,11 +1,7 @@
 """Additional statistical tests for missing data analysis.
 
-This module extends :mod:`missingly.stats` with three additional tests
-that are commonly needed but absent from the core module:
-
-- hotelling_test (moved to data_quality_toolkit.statistics)
-- pattern_monotone_test
-- missing_correlation_matrix
+.. deprecated:: 0.2.0
+    These functions are experimental / legacy and emit :class:`FutureWarning`.
 
 Compatibility
 -------------
@@ -19,16 +15,21 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
+from ._deprecation import deprecated_api
 
+
+@deprecated_api(
+    "Use `from data_quality_toolkit.statistics import hotelling_test` instead.",
+    since="0.2.0",
+)
 def hotelling_test(
     frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
-    """Deprecated shim for data_quality_toolkit.statistics.hotelling_test.
+    """Legacy shim \u2014 emits :class:`FutureWarning`.
 
-    This function was moved to :mod:`data_quality_toolkit.statistics` and
-    will be removed from ``missingly`` in a future release. Import and
-    use it from there instead.
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.statistics``.
     """
     import warnings
 
@@ -42,24 +43,18 @@ def hotelling_test(
     return _hotelling(frame=frame, missing_values=missing_values)
 
 
+@deprecated_api(
+    "This function is experimental and may be moved in a future release.",
+    since="0.2.0",
+)
 def pattern_monotone_test(
     frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
-    """Test whether the missing data pattern is monotone.
+    """Test whether the missing data pattern is monotone (experimental).
 
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        Input DataFrame.
-    missing_values : list, optional
-        Extra sentinel values to treat as missing.
-
-    Returns
-    -------
-    dict
-        Keys: ``is_monotone``, ``n_violating_rows``, ``sorted_columns``,
-        ``monotone_pct``.
+    .. deprecated:: 0.2.0
+        Experimental \u2014 may be moved or renamed.
     """
     if missing_values is not None:
         frame = frame.replace(missing_values, np.nan)
@@ -90,30 +85,19 @@ def pattern_monotone_test(
     }
 
 
-pattern_monotone_test.__test__ = False  # type: ignore[attr-defined]
-
-
+@deprecated_api(
+    "This function is experimental and may be moved in a future release.",
+    since="0.2.0",
+)
 def missing_correlation_matrix(
     frame: pd.DataFrame,
     method: str = "pearson",
     missing_values: Optional[list] = None,
 ) -> pd.DataFrame:
-    """Compute the pairwise nullity correlation matrix.
+    """Compute the pairwise nullity correlation matrix (experimental).
 
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        Input DataFrame.
-    method : {'pearson', 'kendall', 'spearman'}, optional
-        Correlation method.  Default ``'pearson'``.
-    missing_values : list, optional
-        Extra sentinel values to treat as missing.
-
-    Returns
-    -------
-    pd.DataFrame
-        Square correlation matrix over columns that have missing values.
-        Empty DataFrame (shape 0×0) when no column has missing values.
+    .. deprecated:: 0.2.0
+        Experimental \u2014 may be moved or renamed.
     """
     valid_methods = {"pearson", "kendall", "spearman"}
     if method not in valid_methods:
