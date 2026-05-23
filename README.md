@@ -1,10 +1,13 @@
 # missingly
 
+> **This README describes the v1.0.0+ public API. For historical experiments see the [`legacy-experiments`](https://github.com/alisadeghiaghili/missingly/tree/legacy-experiments) branch.**
+
 > **Missing data analysis for pandas — batteries included.**
 
 [![PyPI](https://img.shields.io/pypi/v/missingly)](https://pypi.org/project/missingly/)
 [![Python](https://img.shields.io/pypi/pyversions/missingly)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![API stability](https://img.shields.io/badge/API-v1.0.0%20stable-brightgreen)](https://github.com/alisadeghiaghili/missingly/releases/tag/v1.0.0)
 
 missingly is a Python package for **diagnosing, visualising, and imputing
 missing data** in pandas DataFrames. It provides:
