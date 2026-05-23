@@ -89,14 +89,58 @@ mi.create_report(df, output_path="missing_report.html")
 # Opens a standalone HTML report in the current directory
 ```
 
-### Time Series
+### Time-series missingness
+
+missingly provides first-class support for time-indexed DataFrames.
+The example below works through a realistic temperature sensor scenario
+where readings drop out intermittently.
 
 ```python
-mi.miss_ts_summary(df)          # gap count, mean/max gap per column
-mi.vis_ts_miss(df)              # tile heatmap of missingness over time
-mi.vis_miss_over_time(df)       # rolling missingness rate chart
-mi.impute_ts(df, method="time") # time-aware interpolation
+import pandas as pd
+import numpy as np
+import missingly as mi
+
+# ── 1. Build a temperature series with sensor dropouts ──────────────────────
+idx = pd.date_range("2024-01-01", periods=30, freq="h")
+temp = pd.Series(
+    [18.5, 19.0, np.nan, np.nan, 20.1, 20.3, np.nan, 20.8,
+     21.0, 21.2, np.nan, np.nan, np.nan, 21.9, 22.0,
+     22.3, np.nan, 22.7, 23.0, 23.1, 23.4, np.nan, np.nan,
+     23.8, 24.0, 24.1, np.nan, 24.5, 24.7, 25.0],
+    index=idx, name="temp_C"
+)
+df = temp.to_frame()
+
+# ── 2. Diagnose gaps ─────────────────────────────────────────────────────────
+summary = mi.miss_ts_summary(df)
+print(summary)
+# variable   n_miss  pct_miss  n_gaps  mean_gap  max_gap  median_gap
+# temp_C          9      30.0       5       1.8        3         2.0
+
+# ── 3. Visualise missingness over time ───────────────────────────────────────
+mi.vis_ts_miss(df)           # tile heatmap — green = present, red = missing
+mi.vis_miss_over_time(df, window=6)  # rolling 6-hour missingness rate
+
+# ── 4. Impute with time-aware interpolation ──────────────────────────────────
+df_clean = mi.impute_ts(df, method="time")   # weights by actual timestamp gap
+df_ffill  = mi.impute_ts(df, method="ffill", limit=2)  # fill at most 2 consecutive
+
+print(df_clean.isnull().sum())   # temp_C    0
 ```
+
+**Available strategies for `impute_ts`:**
+
+| `method` | Description |
+|---|---|
+| `"ffill"` | Forward-fill (last observation carried forward) |
+| `"bfill"` | Backward-fill (next observation carried backward) |
+| `"linear"` | Linear interpolation by row position |
+| `"time"` | Linear interpolation weighted by actual timestamp gap |
+| `"spline"` | Spline interpolation (configurable `spline_order`) |
+
+> **Tip — `limit` parameter:** pass `limit=N` to cap how many consecutive
+> NaNs are filled. Values in longer gaps are left as `NaN`, making it
+> easy to flag unreliable stretches for downstream handling.
 
 ### Advanced / Experimental Utilities
 

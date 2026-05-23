@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multi-imputation behaviour (edge cases included).
 - `tests/test_impute_knn.py` — tests for `impute_knn` correctness,
   heavy-categorical safety warning, and edge cases.
+- `tests/test_timeseries_summary.py` — comprehensive tests for
+  `miss_ts_summary`: zero-gap case, two-gap case (n_gaps, max_gap,
+  mean_gap, longest-gap boundaries), and multi-column correctness.
+- `tests/test_timeseries_visuals.py` — tests for `vis_ts_miss`,
+  `vis_gap_lengths` (hist + box, FutureWarning, no-gap edge case), and
+  `vis_miss_over_time` (axes type, ylim, custom window, existing axes).
+- `tests/test_impute_ts.py` — tests for `impute_ts` covering all five
+  strategies (ffill, bfill, linear, time, spline), `limit` behaviour on
+  a long gap, columns-subset logic, invalid-method error, and the
+  `method='time'` + non-DatetimeIndex ValueError.
+- **README:** `Time-series missingness` subsection with a full worked
+  example (temperature sensor dropouts → `miss_ts_summary` →
+  `vis_ts_miss` / `vis_miss_over_time` → `impute_ts`) and a strategy
+  reference table.
 
 ### Changed
 - Marked advanced utilities as experimental with `FutureWarning`:
@@ -51,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `n_neighbors=5` to avoid noise in common mixed-type use cases.
   - Planned future work noted in docstring: a ``metric='mixed'`` option
     backed by Gower distance for proper mixed numeric/categorical KNN.
+- **Time-series API stabilised** (`miss_ts_summary`, `vis_ts_miss`,
+  `vis_miss_over_time`, `impute_ts`) with dedicated tests and documentation.
+  `gap_table` and `vis_gap_lengths` remain experimental (emit `FutureWarning`).
+  No Kalman / ARIMA imputation yet — planned for 0.3.0.
 
 ## [0.1.0] - 2025-01-01
 
