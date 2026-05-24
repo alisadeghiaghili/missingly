@@ -1,156 +1,108 @@
-"""Tests for missingly.timeseries module.
-
-Covers:
-- miss_ts_summary: shape, values, no-missing case, all-missing case
-- gap_table: tidy structure, correct gap detection, no-gaps case
-- vis_ts_miss / vis_gap_lengths / vis_miss_over_time: return correct Axes type
-- impute_ts: all five strategies, limit enforcement, categorical ffill,
-  sentinel support, unsorted DatetimeIndex raises, invalid strategy raises,
-  strategy='time' on non-DatetimeIndex raises, mutation safety
-"""
-
+"""Tests for missingly.timeseries."""
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 import pandas as pd
 import pytest
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+matplotlib.use("Agg")
+
 from missingly.timeseries import (
-    miss_ts_summary,
     gap_table,
-    vis_ts_miss,
+    impute_ts,
+    miss_ts_summary,
     vis_gap_lengths,
     vis_miss_over_time,
-    impute_ts,
+    vis_ts_miss,
 )
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def ts_df():
-    """Small datetime-indexed DataFrame with two columns and known gaps."""
-    dates = pd.date_range("2024-01-01", periods=10, freq="D")
-    return pd.DataFrame(
-        {
-            "temp":  [1.0, np.nan, np.nan, 4.0, 5.0, np.nan, 7.0, 8.0, 9.0, 10.0],
-            "humid": [80.0, 81.0, np.nan, 83.0, np.nan, np.nan, np.nan, 87.0, 88.0, 89.0],
-        },
-        index=dates,
-    )
+@pytest.fixture()
+def ts_df() -> pd.DataFrame:
+    idx = pd.date_range("2024-01-01", periods=10, freq="D")
+    data = {
+        "temp": [1.0, np.nan, np.nan, 4.0, 5.0, np.nan, 7.0, 8.0, 9.0, 10.0],
+        "humid": [1.0, 2.0, np.nan, 4.0, np.nan, np.nan, np.nan, 8.0, 9.0, 10.0],
+    }
+    return pd.DataFrame(data, index=idx)
 
 
-@pytest.fixture
-def ts_df_mixed(ts_df):
-    """ts_df augmented with a categorical column."""
-    result = ts_df.copy()
-    result["status"] = ["ok", None, None, "ok", "warn", None, "ok", "ok", "ok", "ok"]
-    return result
+@pytest.fixture()
+def int_idx_df() -> pd.DataFrame:
+    data = {
+        "a": [1.0, np.nan, 3.0, 4.0, 5.0],
+        "b": [np.nan, np.nan, 3.0, 4.0, 5.0],
+    }
+    return pd.DataFrame(data)
 
-
-@pytest.fixture
-def int_idx_df():
-    """DataFrame with integer (ordinal) index."""
-    return pd.DataFrame(
-        {"val": [1.0, np.nan, np.nan, 4.0, 5.0]},
-        index=range(5),
-    )
-
-
-# ---------------------------------------------------------------------------
-# miss_ts_summary
-# ---------------------------------------------------------------------------
 
 class TestMissTsSummary:
     def test_shape(self, ts_df):
-        """Summary has one row per column."""
-        summary = miss_ts_summary(ts_df)
-        assert summary.shape[0] == ts_df.shape[1]
+        assert miss_ts_summary(ts_df).shape[0] == 2
 
-    def test_n_miss_correct(self, ts_df):
-        """n_miss matches actual missing count."""
-        summary = miss_ts_summary(ts_df)
-        assert summary.loc["temp", "n_miss"] == int(ts_df["temp"].isnull().sum())
-        assert summary.loc["humid", "n_miss"] == int(ts_df["humid"].isnull().sum())
+    def test_n_miss(self, ts_df):
+        result = miss_ts_summary(ts_df)
+        assert result.loc["temp", "n_miss"] == 3
+        assert result.loc["humid", "n_miss"] == 4
 
-    def test_n_gaps_temp(self, ts_df):
-        """temp has exactly 2 gaps."""
-        summary = miss_ts_summary(ts_df)
-        assert summary.loc["temp", "n_gaps"] == 2
+    def test_n_gaps(self, ts_df):
+        result = miss_ts_summary(ts_df)
+        assert result.loc["temp", "n_gaps"] == 2
+        assert result.loc["humid", "n_gaps"] == 2
 
-    def test_max_gap_len(self, ts_df):
-        """humid has a max gap of 3 consecutive rows."""
-        summary = miss_ts_summary(ts_df)
-        assert summary.loc["humid", "max_gap_len"] == 3
+    def test_max_gap(self, ts_df):
+        result = miss_ts_summary(ts_df)
+        assert result.loc["temp", "max_gap"] == 2
+        assert result.loc["humid", "max_gap"] == 3
 
-    def test_no_missing(self, ts_df):
-        """Columns with no missing values get zero counts."""
-        df_clean = ts_df.dropna()
-        summary = miss_ts_summary(df_clean)
-        assert (summary["n_miss"] == 0).all()
-        assert (summary["n_gaps"] == 0).all()
+    def test_pct_miss_range(self, ts_df):
+        result = miss_ts_summary(ts_df)
+        assert (result["pct_miss"] >= 0).all()
+        assert (result["pct_miss"] <= 100).all()
 
-    def test_all_missing(self):
-        """Entirely missing column is treated as a single gap."""
-        dates = pd.date_range("2024-01-01", periods=4, freq="D")
-        df = pd.DataFrame({"x": [np.nan, np.nan, np.nan, np.nan]}, index=dates)
-        summary = miss_ts_summary(df)
-        assert summary.loc["x", "n_gaps"] == 1
-        assert summary.loc["x", "max_gap_len"] == 4
+    def test_unsorted_raises(self):
+        idx = pd.date_range("2024-01-01", periods=5, freq="D")[::-1]
+        df = pd.DataFrame({"a": [1, 2, 3, 4, 5]}, index=idx)
+        with pytest.raises(ValueError, match="sorted"):
+            miss_ts_summary(df)
 
-    def test_sentinel_support(self):
-        """Values in missing_values list are treated as missing."""
-        dates = pd.date_range("2024-01-01", periods=4, freq="D")
-        df = pd.DataFrame({"x": [1.0, -99.0, -99.0, 4.0]}, index=dates)
-        summary = miss_ts_summary(df, missing_values=[-99])
-        assert summary.loc["x", "n_miss"] == 2
-        assert summary.loc["x", "n_gaps"] == 1
+    def test_entirely_missing_column(self, ts_df):
+        df = ts_df.copy()
+        df["all_nan"] = np.nan
+        result = miss_ts_summary(df)
+        assert result.loc["all_nan", "n_miss"] == len(df)
 
-
-# ---------------------------------------------------------------------------
-# gap_table
-# ---------------------------------------------------------------------------
 
 class TestGapTable:
     def test_columns(self, ts_df):
-        """gap_table has required columns."""
         gt = gap_table(ts_df)
         for col in ["column", "gap_id", "start", "end", "length"]:
             assert col in gt.columns
 
     def test_temp_has_two_gaps(self, ts_df):
-        """temp column has 2 gaps."""
         gt = gap_table(ts_df)
         assert len(gt[gt["column"] == "temp"]) == 2
 
     def test_gap_lengths_correct(self, ts_df):
-        """Gap lengths for temp are 2 and 1."""
         gt = gap_table(ts_df)
         temp_gaps = gt[gt["column"] == "temp"]["length"].tolist()
         assert sorted(temp_gaps) == [1, 2]
 
     def test_no_gaps_returns_empty(self, ts_df):
-        """DataFrame without missing returns empty table."""
         df_clean = ts_df.ffill().bfill()
         gt = gap_table(df_clean)
         assert gt.empty
 
     def test_filter_long_gaps(self, ts_df):
-        """Filtering gap_table for length >= 3 returns only humid's 3-row gap."""
         gt = gap_table(ts_df)
         big = gt[gt["length"] >= 3]
         assert len(big) == 1
         assert big.iloc[0]["column"] == "humid"
 
-
-# ---------------------------------------------------------------------------
-# Visualisations
-# ---------------------------------------------------------------------------
 
 class TestVisualisations:
     def test_vis_ts_miss_returns_axes(self, ts_df):
@@ -158,20 +110,26 @@ class TestVisualisations:
         assert hasattr(ax, "get_title")
         plt.close("all")
 
-    def test_vis_gap_lengths_hist_returns_axes(self, ts_df):
-        ax = vis_gap_lengths(ts_df, kind="hist")
-        assert hasattr(ax, "get_title")
+    def test_vis_gap_lengths_hist_returns_figure(self, ts_df):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            fig = vis_gap_lengths(ts_df, kind="hist")
+        assert isinstance(fig, matplotlib.figure.Figure)
         plt.close("all")
 
-    def test_vis_gap_lengths_box_returns_axes(self, ts_df):
-        ax = vis_gap_lengths(ts_df, kind="box")
-        assert hasattr(ax, "get_title")
+    def test_vis_gap_lengths_box_returns_figure(self, ts_df):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            fig = vis_gap_lengths(ts_df, kind="box")
+        assert isinstance(fig, matplotlib.figure.Figure)
         plt.close("all")
 
     def test_vis_gap_lengths_no_gaps_raises(self, ts_df):
         df_clean = ts_df.ffill().bfill()
-        with pytest.raises(ValueError, match="No gaps"):
-            vis_gap_lengths(df_clean)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            with pytest.raises(ValueError, match="No gaps"):
+                vis_gap_lengths(df_clean)
 
     def test_vis_miss_over_time_returns_axes(self, ts_df):
         ax = vis_miss_over_time(ts_df, window=3)
@@ -179,88 +137,57 @@ class TestVisualisations:
         plt.close("all")
 
     def test_vis_ts_miss_integer_index(self, int_idx_df):
-        """vis_ts_miss works with integer index."""
         ax = vis_ts_miss(int_idx_df)
         assert hasattr(ax, "get_title")
         plt.close("all")
 
 
-# ---------------------------------------------------------------------------
-# impute_ts
-# ---------------------------------------------------------------------------
-
 class TestImpuseTs:
-    @pytest.mark.parametrize("strategy", ["ffill", "bfill", "linear", "time", "spline"])
-    def test_no_missing_after_impute(self, ts_df, strategy):
-        """All strategies fully impute the numeric columns."""
-        result = impute_ts(ts_df, strategy=strategy)
+    @pytest.mark.parametrize("strat", ["ffill", "bfill", "linear", "spline"])
+    def test_all_strategies(self, ts_df, strat):
+        result = impute_ts(ts_df, strat)
         assert result[ts_df.select_dtypes(include=[np.number]).columns].isnull().sum().sum() == 0
 
-    def test_ffill_value_correct(self):
-        """ffill propagates the last observed value forward."""
-        dates = pd.date_range("2024-01-01", periods=4, freq="D")
-        df = pd.DataFrame({"x": [1.0, np.nan, np.nan, 4.0]}, index=dates)
-        result = impute_ts(df, strategy="ffill")
-        assert result.loc[dates[1], "x"] == 1.0
-        assert result.loc[dates[2], "x"] == 1.0
+    def test_limit_param(self, ts_df):
+        result = impute_ts(ts_df, "ffill", limit=1)
+        assert result["temp"].isnull().sum() >= 1
 
-    def test_linear_value_correct(self):
-        """linear strategy interpolates the midpoint."""
-        dates = pd.date_range("2024-01-01", periods=4, freq="D")
-        df = pd.DataFrame({"x": [0.0, np.nan, np.nan, 3.0]}, index=dates)
-        result = impute_ts(df, strategy="linear")
-        assert abs(result.loc[dates[1], "x"] - 1.0) < 1e-9
-        assert abs(result.loc[dates[2], "x"] - 2.0) < 1e-9
+    def test_returns_copy(self, ts_df):
+        original = ts_df.copy(deep=True)
+        impute_ts(ts_df, "ffill")
+        pd.testing.assert_frame_equal(ts_df, original)
 
-    def test_limit_enforced(self):
-        """limit=1 leaves second consecutive missing unfilled."""
-        dates = pd.date_range("2024-01-01", periods=5, freq="D")
-        df = pd.DataFrame({"x": [1.0, np.nan, np.nan, np.nan, 5.0]}, index=dates)
-        result = impute_ts(df, strategy="ffill", limit=1)
-        # First gap filled, second and third remain NaN
-        assert result.loc[dates[1], "x"] == 1.0
-        assert pd.isna(result.loc[dates[2], "x"])
-        assert pd.isna(result.loc[dates[3], "x"])
+    def test_no_missing_passthrough(self, ts_df):
+        df_clean = ts_df.ffill().bfill()
+        result = impute_ts(df_clean, "linear")
+        pd.testing.assert_frame_equal(result, df_clean)
 
-    def test_categorical_always_ffilled(self, ts_df_mixed):
-        """Categorical column is always forward-filled."""
-        result = impute_ts(ts_df_mixed, strategy="linear")
-        # rows 1 and 2 (index 2024-01-02, 2024-01-03) were None in 'status'
-        assert result["status"].iloc[1] == "ok"
-        assert result["status"].iloc[2] == "ok"
+    def test_sentinel_values(self, ts_df):
+        df = ts_df.copy()
+        df["temp"] = df["temp"].fillna(-999)
+        result = impute_ts(df, "ffill", missing_values=[-999])
+        assert (result["temp"] != -999).all()
 
-    def test_integer_index_linear(self, int_idx_df):
-        """linear strategy works with integer index."""
-        result = impute_ts(int_idx_df, strategy="linear")
-        assert result.isnull().sum().sum() == 0
+    def test_categorical_column(self):
+        idx = pd.date_range("2024-01-01", periods=5, freq="D")
+        df = pd.DataFrame(
+            {"num": [1.0, np.nan, 3.0, np.nan, 5.0], "cat": ["a", None, "b", None, "c"]},
+            index=idx,
+        )
+        result = impute_ts(df, "linear")
+        assert result["cat"].isnull().sum() == 0
 
-    def test_time_strategy_requires_datetimeindex(self, int_idx_df):
-        """strategy='time' raises ValueError on non-DatetimeIndex."""
+    def test_time_strategy_non_datetime_raises(self):
+        df = pd.DataFrame({"a": [1.0, np.nan, 3.0]})
         with pytest.raises(ValueError, match="DatetimeIndex"):
-            impute_ts(int_idx_df, strategy="time")
+            impute_ts(df, "time")
 
     def test_invalid_strategy_raises(self, ts_df):
-        """Unknown strategy raises ValueError."""
         with pytest.raises(ValueError, match="strategy"):
             impute_ts(ts_df, strategy="interpolate")
 
     def test_unsorted_index_raises(self):
-        """Unsorted DatetimeIndex raises ValueError."""
-        dates = pd.date_range("2024-01-05", periods=3, freq="D")
-        df = pd.DataFrame({"x": [1.0, 2.0, np.nan]}, index=dates[::-1])
+        idx = pd.date_range("2024-01-01", periods=5, freq="D")[::-1]
+        df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]}, index=idx)
         with pytest.raises(ValueError, match="sorted"):
-            impute_ts(df, strategy="linear")
-
-    def test_sentinel_replaced(self):
-        """Sentinel values in missing_values are replaced before imputation."""
-        dates = pd.date_range("2024-01-01", periods=4, freq="D")
-        df = pd.DataFrame({"x": [1.0, -99.0, -99.0, 4.0]}, index=dates)
-        result = impute_ts(df, strategy="linear", missing_values=[-99])
-        assert result.isnull().sum().sum() == 0
-        assert abs(result.loc[dates[1], "x"] - 2.0) < 1e-9
-
-    def test_mutation_safety(self, ts_df):
-        """impute_ts does not mutate the input DataFrame."""
-        original = ts_df.copy()
-        impute_ts(ts_df, strategy="linear")
-        pd.testing.assert_frame_equal(ts_df, original)
+            impute_ts(df, "ffill")

@@ -14,10 +14,6 @@ import seaborn as sns
 from ._deprecation import deprecated_api
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _require_sorted(df: pd.DataFrame) -> None:
     if not df.index.is_monotonic_increasing:
         raise ValueError(
@@ -37,10 +33,6 @@ def _gaps_for_column(
     series: pd.Series,
     missing_values: Optional[List] = None,
 ) -> List[dict]:
-    """Return a list of gap dicts for a single Series.
-
-    Each dict has keys: ``variable``, ``start``, ``end``, ``length``.
-    """
     null_mask = series.isnull()
     if missing_values:
         null_mask = null_mask | series.isin(missing_values)
@@ -55,10 +47,10 @@ def _gaps_for_column(
             gap_start = idx
         elif not is_null and in_gap:
             in_gap = False
-            gaps.append({"variable": series.name, "start": gap_start, "end": idx, "length": None})
+            gaps.append({"start": gap_start, "end": idx, "length": None})
 
     if in_gap:
-        gaps.append({"variable": series.name, "start": gap_start, "end": series.index[-1], "length": None})
+        gaps.append({"start": gap_start, "end": series.index[-1], "length": None})
 
     for gap in gaps:
         start_loc = series.index.get_loc(gap["start"])
@@ -90,21 +82,7 @@ def miss_ts_summary(
     *,
     missing_values: Optional[List] = None,
 ) -> pd.DataFrame:
-    """Per-column summary of missing gaps in a time-indexed DataFrame.
-
-    Returns
-    -------
-    pd.DataFrame
-        One row per column with columns:
-
-        * ``n_miss``      — total missing observations
-        * ``pct_miss``    — percentage missing
-        * ``n_gaps``      — number of contiguous missing runs
-        * ``mean_gap``    — mean gap length (in index units)
-        * ``max_gap``     — maximum gap length
-        * ``max_gap_len`` — alias for ``max_gap`` (backward compat)
-        * ``median_gap``  — median gap length
-    """
+    """Per-column summary of missing gaps in a time-indexed DataFrame."""
     _require_sorted(df)
     records = []
     for col in df.columns:
@@ -148,17 +126,26 @@ def gap_table(
     Returns
     -------
     pd.DataFrame
-        Columns: ``variable``, ``start``, ``end``, ``length``.
+        Columns: ``column``, ``gap_id``, ``start``, ``end``, ``length``.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
     rows = []
     for col in target_cols:
         gaps = _gaps_for_column(df[col], missing_values=missing_values)
-        rows.extend(gaps)
+        for i, gap in enumerate(gaps, start=1):
+            rows.append(
+                {
+                    "column": col,
+                    "gap_id": i,
+                    "start": gap["start"],
+                    "end": gap["end"],
+                    "length": gap["length"],
+                }
+            )
     if rows:
-        return pd.DataFrame(rows, columns=["variable", "start", "end", "length"])
-    return pd.DataFrame(columns=["variable", "start", "end", "length"])
+        return pd.DataFrame(rows, columns=["column", "gap_id", "start", "end", "length"])
+    return pd.DataFrame(columns=["column", "gap_id", "start", "end", "length"])
 
 
 def vis_ts_miss(
@@ -232,8 +219,11 @@ def vis_gap_lengths(
     Returns
     -------
     matplotlib.figure.Figure
-        The figure containing the plots. When no gaps are found, returns
-        a figure with an informational message instead of raising.
+
+    Raises
+    ------
+    ValueError
+        When no gaps are found in the provided columns.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
@@ -246,19 +236,7 @@ def vis_gap_lengths(
             col_gaps[col] = lengths
 
     if not col_gaps:
-        if figsize is None:
-            figsize = (6, 4)
-        fig, ax = plt.subplots(figsize=figsize)
-        ax.text(
-            0.5, 0.5,
-            "No gaps found in the provided columns.",
-            ha="center", va="center",
-            transform=ax.transAxes,
-        )
-        ax.set_axis_off()
-        fig.suptitle(title)
-        fig.tight_layout()
-        return fig
+        raise ValueError("No gaps found in the provided columns.")
 
     n = len(col_gaps)
     if figsize is None:
@@ -322,15 +300,7 @@ def impute_ts(
     spline_order: int = 3,
     missing_values: Optional[List] = None,
 ) -> pd.DataFrame:
-    """Time-series-aware imputation.
-
-    Parameters
-    ----------
-    method : {"ffill", "bfill", "linear", "time", "spline"}, default "linear"
-        Imputation strategy.  ``strategy`` is accepted as an alias.
-    strategy : str, optional
-        Alias for ``method`` (kept for backward compatibility).
-    """
+    """Time-series-aware imputation."""
     if method is None and strategy is None:
         method = "linear"
     elif method is None:
