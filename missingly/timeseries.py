@@ -219,11 +219,7 @@ def vis_gap_lengths(
     Returns
     -------
     matplotlib.figure.Figure
-
-    Raises
-    ------
-    ValueError
-        When no gaps are found in the provided columns.
+        When no gaps are found, returns a Figure with an informational message.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
@@ -236,7 +232,17 @@ def vis_gap_lengths(
             col_gaps[col] = lengths
 
     if not col_gaps:
-        raise ValueError("No gaps found in the provided columns.")
+        fig, ax = plt.subplots(figsize=figsize or (6, 4))
+        ax.text(
+            0.5, 0.5,
+            "No gaps found in the provided columns.",
+            ha="center", va="center",
+            transform=ax.transAxes,
+            fontsize=12,
+        )
+        ax.set_axis_off()
+        fig.suptitle(title)
+        return fig
 
     n = len(col_gaps)
     if figsize is None:
@@ -315,7 +321,7 @@ def impute_ts(
     valid_methods = {"ffill", "bfill", "linear", "time", "spline"}
     if method not in valid_methods:
         raise ValueError(
-            f"strategy/method must be one of {sorted(valid_methods)}; got {method!r}."
+            f"strategy must be one of {sorted(valid_methods)}; got {method!r}."
         )
 
     result = df.copy()

@@ -68,7 +68,7 @@ class TestTwoGaps:
         assert "temp" in result.index
 
     def test_longest_gap_boundaries(self, two_gap_df):
-        """The longest gap (length 3) starts at 2024-01-06 and ends at 2024-01-08 (exclusive end).
+        """The longest gap (length 3) starts at 2024-01-06 and ends at 2024-01-09 (exclusive end).
 
         We verify via gap_table that start/end are correct.
         """
@@ -79,7 +79,8 @@ class TestTwoGaps:
             warnings.simplefilter("ignore", FutureWarning)
             gt = gap_table(two_gap_df)
 
-        longest = gt[gt["variable"] == "temp"].sort_values("length", ascending=False).iloc[0]
+        # gap_table uses 'column' not 'variable'
+        longest = gt[gt["column"] == "temp"].sort_values("length", ascending=False).iloc[0]
         assert longest["start"] == pd.Timestamp("2024-01-06")
         # end is the first non-null index *after* the gap
         assert longest["end"] == pd.Timestamp("2024-01-09")
