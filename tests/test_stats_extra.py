@@ -8,7 +8,8 @@ from missingly.stats_extra import (
     pattern_monotone_test,
     missing_correlation_matrix,
 )
-from missingly import test_hotelling, test_pattern_monotone
+from missingly import test_hotelling as _alias_hotelling
+from missingly import test_pattern_monotone as _alias_pattern_monotone
 import missingly
 
 
@@ -166,24 +167,26 @@ def test_missing_corr_invalid_method(df_with_missing):
 
 
 # ---------------------------------------------------------------------------
-# Alias tests (test_hotelling / test_pattern_monotone in missingly.__init__)
+# Alias tests (_alias_hotelling / _alias_pattern_monotone from missingly.__init__)
+# Imported with underscore-prefixed names so pytest does NOT collect them
+# as test items (avoids "fixture 'frame' not found" errors).
 # ---------------------------------------------------------------------------
 
 def test_alias_hotelling_is_callable():
-    assert callable(test_hotelling)
+    assert callable(_alias_hotelling)
 
 
 def test_alias_pattern_monotone_is_callable():
-    assert callable(test_pattern_monotone)
+    assert callable(_alias_pattern_monotone)
 
 
 def test_alias_hotelling_returns_dict(df_with_missing):
-    result = test_hotelling(df_with_missing)
+    result = _alias_hotelling(df_with_missing)
     assert isinstance(result, dict)
 
 
 def test_alias_pattern_monotone_returns_dict(df_with_missing):
-    result = test_pattern_monotone(df_with_missing)
+    result = _alias_pattern_monotone(df_with_missing)
     assert isinstance(result, dict)
 
 
@@ -192,5 +195,5 @@ def test_aliases_are_same_function():
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FutureWarning)
-        assert test_hotelling.__wrapped__ is hotelling_test.__wrapped__
-        assert test_pattern_monotone.__wrapped__ is pattern_monotone_test.__wrapped__
+        assert _alias_hotelling.__wrapped__ is hotelling_test.__wrapped__
+        assert _alias_pattern_monotone.__wrapped__ is pattern_monotone_test.__wrapped__
