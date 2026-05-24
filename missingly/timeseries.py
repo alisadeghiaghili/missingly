@@ -321,7 +321,7 @@ def impute_ts(
     valid_methods = {"ffill", "bfill", "linear", "time", "spline"}
     if method not in valid_methods:
         raise ValueError(
-            f"strategy must be one of {sorted(valid_methods)}; got {method!r}."
+            f"Invalid strategy: method must be one of {sorted(valid_methods)}; got {method!r}."
         )
 
     result = df.copy()

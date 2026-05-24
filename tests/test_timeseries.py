@@ -110,14 +110,14 @@ class TestVisualisations:
         assert hasattr(ax, "get_title")
         plt.close("all")
 
-    def test_vis_gap_lengths_hist_returns_figure(self, ts_df):
+    def test_vis_gap_lengths_hist_returns_axes(self, ts_df):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
             fig = vis_gap_lengths(ts_df, kind="hist")
         assert isinstance(fig, matplotlib.figure.Figure)
         plt.close("all")
 
-    def test_vis_gap_lengths_box_returns_figure(self, ts_df):
+    def test_vis_gap_lengths_box_returns_axes(self, ts_df):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
             fig = vis_gap_lengths(ts_df, kind="box")
@@ -125,11 +125,13 @@ class TestVisualisations:
         plt.close("all")
 
     def test_vis_gap_lengths_no_gaps_raises(self, ts_df):
+        """When no gaps exist, vis_gap_lengths should return a Figure with an informational message."""
         df_clean = ts_df.ffill().bfill()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
-            with pytest.raises(ValueError, match="No gaps"):
-                vis_gap_lengths(df_clean)
+            fig = vis_gap_lengths(df_clean)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close("all")
 
     def test_vis_miss_over_time_returns_axes(self, ts_df):
         ax = vis_miss_over_time(ts_df, window=3)
