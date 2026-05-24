@@ -26,7 +26,7 @@ __test__ = False
     since="0.2.0",
 )
 def hotelling_test(
-    frame: pd.DataFrame,
+    df: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
     """Legacy shim — emits :class:`FutureWarning`.
@@ -43,7 +43,7 @@ def hotelling_test(
         stacklevel=2,
     )
     from data_quality_toolkit.statistics import hotelling_test as _hotelling
-    return _hotelling(frame=frame, missing_values=missing_values)
+    return _hotelling(frame=df, missing_values=missing_values)
 
 
 @deprecated_api(
@@ -51,7 +51,7 @@ def hotelling_test(
     since="0.2.0",
 )
 def pattern_monotone_test(
-    frame: pd.DataFrame,
+    df: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
     """Test whether the missing data pattern is monotone (experimental).
@@ -60,11 +60,11 @@ def pattern_monotone_test(
         Experimental — may be moved or renamed.
     """
     if missing_values is not None:
-        frame = frame.replace(missing_values, np.nan)
+        df = df.replace(missing_values, np.nan)
 
-    miss_rate = frame.isnull().mean().sort_values()
+    miss_rate = df.isnull().mean().sort_values()
     sorted_cols = miss_rate.index.tolist()
-    indicator = frame[sorted_cols].isnull().to_numpy(dtype=int)
+    indicator = df[sorted_cols].isnull().to_numpy(dtype=int)
 
     n_rows = len(indicator)
     n_violating = 0
@@ -93,7 +93,7 @@ def pattern_monotone_test(
     since="0.2.0",
 )
 def missing_correlation_matrix(
-    frame: pd.DataFrame,
+    df: pd.DataFrame,
     method: str = "pearson",
     missing_values: Optional[list] = None,
 ) -> pd.DataFrame:
@@ -109,9 +109,9 @@ def missing_correlation_matrix(
         )
 
     if missing_values is not None:
-        frame = frame.replace(missing_values, np.nan)
+        df = df.replace(missing_values, np.nan)
 
-    indicator = frame.isnull().astype(float)
+    indicator = df.isnull().astype(float)
     has_missing = indicator.any(axis=0)
     indicator = indicator.loc[:, has_missing]
 
