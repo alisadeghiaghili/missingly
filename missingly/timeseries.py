@@ -39,9 +39,7 @@ def _gaps_for_column(
 ) -> List[dict]:
     """Return a list of gap dicts for a single Series.
 
-    Each dict has keys: ``start``, ``end``, ``length``.
-    For a fully-missing series the single gap runs from index[0] to index[-1]
-    and has length == len(series).
+    Each dict has keys: ``variable``, ``start``, ``end``, ``length``.
     """
     null_mask = series.isnull()
     if missing_values:
@@ -57,16 +55,15 @@ def _gaps_for_column(
             gap_start = idx
         elif not is_null and in_gap:
             in_gap = False
-            gaps.append({"start": gap_start, "end": idx, "length": None})
+            gaps.append({"variable": series.name, "start": gap_start, "end": idx, "length": None})
 
     if in_gap:
-        gaps.append({"start": gap_start, "end": series.index[-1], "length": None})
+        gaps.append({"variable": series.name, "start": gap_start, "end": series.index[-1], "length": None})
 
     for gap in gaps:
         start_loc = series.index.get_loc(gap["start"])
         end_val = gap["end"]
         if end_val == series.index[-1] and series.isnull().iloc[series.index.get_loc(end_val)]:
-            # trailing / all-NaN gap
             end_loc = series.index.get_loc(end_val)
             length = end_loc - start_loc + 1
         else:
@@ -104,7 +101,8 @@ def miss_ts_summary(
         * ``pct_miss``    — percentage missing
         * ``n_gaps``      — number of contiguous missing runs
         * ``mean_gap``    — mean gap length (in index units)
-        * ``max_gap_len`` — maximum gap length
+        * ``max_gap``     — maximum gap length
+        * ``max_gap_len`` — alias for ``max_gap`` (backward compat)
         * ``median_gap``  — median gap length
     """
     _require_sorted(df)
@@ -118,6 +116,7 @@ def miss_ts_summary(
         pct_miss = round(100.0 * n_miss / len(df), 2) if len(df) > 0 else 0.0
         gaps = _gaps_for_column(df[col], missing_values=missing_values)
         lengths = [g["length"] for g in gaps if g["length"] is not None]
+        max_gap = int(max(lengths)) if lengths else 0
 
         records.append(
             {
@@ -126,7 +125,8 @@ def miss_ts_summary(
                 "pct_miss": pct_miss,
                 "n_gaps": len(gaps),
                 "mean_gap": round(float(np.mean(lengths)), 2) if lengths else 0.0,
-                "max_gap_len": int(max(lengths)) if lengths else 0,
+                "max_gap": max_gap,
+                "max_gap_len": max_gap,
                 "median_gap": float(np.median(lengths)) if lengths else 0.0,
             }
         )
@@ -148,24 +148,17 @@ def gap_table(
     Returns
     -------
     pd.DataFrame
-        Columns: ``column``, ``gap_id``, ``start``, ``end``, ``length``.
+        Columns: ``variable``, ``start``, ``end``, ``length``.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
     rows = []
     for col in target_cols:
         gaps = _gaps_for_column(df[col], missing_values=missing_values)
-        for i, gap in enumerate(gaps, start=1):
-            rows.append(
-                {
-                    "column": col,
-                    "gap_id": i,
-                    "start": gap["start"],
-                    "end": gap["end"],
-                    "length": gap["length"],
-                }
-            )
-    return pd.DataFrame(rows)
+        rows.extend(gaps)
+    if rows:
+        return pd.DataFrame(rows, columns=["variable", "start", "end", "length"])
+    return pd.DataFrame(columns=["variable", "start", "end", "length"])
 
 
 def vis_ts_miss(
@@ -233,20 +226,14 @@ def vis_gap_lengths(
     columns: Optional[List[str]] = None,
     figsize: Optional[tuple] = None,
     title: str = "Gap Length Distribution",
-) -> matplotlib.axes.Axes:
+) -> matplotlib.figure.Figure:
     """Distribution of gap lengths per column (experimental).
-
-    Raises
-    ------
-    ValueError
-        When no gaps are found in the provided columns.
 
     Returns
     -------
-    matplotlib.axes.Axes
-        The axes object(s).  When there is more than one column with gaps
-        a single Axes from the last subplot is returned (callers that need
-        all axes should inspect ``ax.figure.axes``).
+    matplotlib.figure.Figure
+        The figure containing the plots. When no gaps are found, returns
+        a figure with an informational message instead of raising.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
@@ -259,7 +246,19 @@ def vis_gap_lengths(
             col_gaps[col] = lengths
 
     if not col_gaps:
-        raise ValueError("No gaps found in the provided columns.")
+        if figsize is None:
+            figsize = (6, 4)
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.text(
+            0.5, 0.5,
+            "No gaps found in the provided columns.",
+            ha="center", va="center",
+            transform=ax.transAxes,
+        )
+        ax.set_axis_off()
+        fig.suptitle(title)
+        fig.tight_layout()
+        return fig
 
     n = len(col_gaps)
     if figsize is None:
@@ -267,7 +266,6 @@ def vis_gap_lengths(
 
     fig, axes = plt.subplots(1, n, figsize=figsize, squeeze=False)
 
-    last_ax = None
     for ax, (col, lengths) in zip(axes[0], col_gaps.items()):
         if kind == "hist":
             ax.hist(lengths, bins="auto", color="steelblue", edgecolor="white")
@@ -277,11 +275,10 @@ def vis_gap_lengths(
             _boxplot_compat(ax, [lengths], [col])
             ax.set_ylabel("Gap length")
         ax.set_title(col)
-        last_ax = ax
 
     fig.suptitle(title)
-    plt.tight_layout()
-    return last_ax
+    fig.tight_layout()
+    return fig
 
 
 def vis_miss_over_time(
@@ -327,9 +324,6 @@ def impute_ts(
 ) -> pd.DataFrame:
     """Time-series-aware imputation.
 
-    Numeric columns are imputed with the requested strategy.
-    Non-numeric (object/categorical) columns are always forward-filled.
-
     Parameters
     ----------
     method : {"ffill", "bfill", "linear", "time", "spline"}, default "linear"
@@ -351,7 +345,7 @@ def impute_ts(
     valid_methods = {"ffill", "bfill", "linear", "time", "spline"}
     if method not in valid_methods:
         raise ValueError(
-            f"method must be one of {sorted(valid_methods)}; got {method!r}."
+            f"strategy/method must be one of {sorted(valid_methods)}; got {method!r}."
         )
 
     result = df.copy()

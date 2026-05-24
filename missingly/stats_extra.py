@@ -17,6 +17,9 @@ import pandas as pd
 
 from ._deprecation import deprecated_api
 
+# Prevent pytest from treating decorated functions as test items.
+__test__ = False
+
 
 @deprecated_api(
     "Use `from data_quality_toolkit.statistics import hotelling_test` instead.",
@@ -26,7 +29,7 @@ def hotelling_test(
     frame: pd.DataFrame,
     missing_values: Optional[list] = None,
 ) -> Dict:
-    """Legacy shim \u2014 emits :class:`FutureWarning`.
+    """Legacy shim — emits :class:`FutureWarning`.
 
     .. deprecated:: 0.2.0
         Moved to ``data_quality_toolkit.statistics``.
@@ -54,7 +57,7 @@ def pattern_monotone_test(
     """Test whether the missing data pattern is monotone (experimental).
 
     .. deprecated:: 0.2.0
-        Experimental \u2014 may be moved or renamed.
+        Experimental — may be moved or renamed.
     """
     if missing_values is not None:
         frame = frame.replace(missing_values, np.nan)
@@ -97,7 +100,7 @@ def missing_correlation_matrix(
     """Compute the pairwise nullity correlation matrix (experimental).
 
     .. deprecated:: 0.2.0
-        Experimental \u2014 may be moved or renamed.
+        Experimental — may be moved or renamed.
     """
     valid_methods = {"pearson", "kendall", "spearman"}
     if method not in valid_methods:
