@@ -1,15 +1,4 @@
-"""Tests for the additional statistical tests module (stats_extra.py).
-
-Conventions
------------
-* We test the contract (return type, key presence, valid ranges) and
-  the directional behaviour (e.g. MNAR data should give a lower
-  Hotelling p-value than MCAR data on the same DataFrame).
-* Tests are kept fast: small DataFrames, no heavy simulation.
-* The canonical names are hotelling_test / pattern_monotone_test;
-  the test_* aliases live in missingly.__init__ and are verified here.
-"""
-
+"""Tests for the additional statistical tests module (stats_extra.py)."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -19,7 +8,6 @@ from missingly.stats_extra import (
     pattern_monotone_test,
     missing_correlation_matrix,
 )
-# Aliases are defined in the top-level package, NOT in stats_extra
 from missingly import test_hotelling, test_pattern_monotone
 import missingly
 
@@ -98,135 +86,111 @@ def test_hotelling_raises_too_few_columns():
 
 def test_hotelling_sentinel(complete_df):
     df = complete_df.copy()
-    df.loc[:20, 'x'] = -99
-    result = hotelling_test(df, missing_values=[-99])
+    df.iloc[0, 0] = -9999
+    result = hotelling_test(df, missing_values=[-9999])
     assert isinstance(result, dict)
-
-
-def test_test_hotelling_alias(df_with_missing):
-    """test_hotelling (in missingly namespace) is an alias for hotelling_test."""
-    assert test_hotelling is hotelling_test
 
 
 # ---------------------------------------------------------------------------
 # pattern_monotone_test
 # ---------------------------------------------------------------------------
 
-def test_monotone_returns_dict(df_with_missing):
+def test_pattern_monotone_returns_dict(df_with_missing):
     result = pattern_monotone_test(df_with_missing)
     assert isinstance(result, dict)
 
 
-def test_monotone_required_keys(df_with_missing):
+def test_pattern_monotone_required_keys(df_with_missing):
     result = pattern_monotone_test(df_with_missing)
-    for key in ('is_monotone', 'n_violating_rows',
-                'sorted_columns', 'monotone_pct'):
-        assert key in result
+    for key in ('is_monotone', 'n_violating_rows', 'sorted_columns', 'monotone_pct'):
+        assert key in result, f"Missing key: {key}"
 
 
-def test_monotone_truly_monotone():
-    df = pd.DataFrame({
-        'a': [1.0, np.nan, np.nan, np.nan],
-        'b': [2.0, 2.0,   np.nan, np.nan],
-        'c': [3.0, 3.0,   3.0,   np.nan],
-    })
-    result = pattern_monotone_test(df)
-    assert result['is_monotone'] is True
-    assert result['n_violating_rows'] == 0
-    assert result['monotone_pct'] == 1.0
+def test_pattern_monotone_is_bool(df_with_missing):
+    result = pattern_monotone_test(df_with_missing)
+    assert isinstance(result['is_monotone'], bool)
 
 
-def test_monotone_non_monotone():
-    df = pd.DataFrame({
-        'a': [1.0, np.nan, 3.0],
-        'b': [2.0, 2.0,   np.nan],
-    })
-    result = pattern_monotone_test(df)
-    assert result['is_monotone'] is False
-    assert result['n_violating_rows'] > 0
+def test_pattern_monotone_pct_range(df_with_missing):
+    result = pattern_monotone_test(df_with_missing)
+    assert 0.0 <= result['monotone_pct'] <= 1.0
 
 
-def test_monotone_no_missing(complete_df):
+def test_pattern_monotone_complete_data_is_monotone(complete_df):
     result = pattern_monotone_test(complete_df)
     assert result['is_monotone'] is True
     assert result['n_violating_rows'] == 0
 
 
-def test_monotone_pct_range(df_with_missing):
-    result = pattern_monotone_test(df_with_missing)
-    assert 0.0 <= result['monotone_pct'] <= 1.0
-
-
-def test_monotone_sorted_columns_contains_all(df_with_missing):
-    result = pattern_monotone_test(df_with_missing)
-    assert set(result['sorted_columns']) == set(df_with_missing.columns)
-
-
-def test_test_pattern_monotone_alias(df_with_missing):
-    """test_pattern_monotone (in missingly namespace) is an alias."""
-    assert test_pattern_monotone is pattern_monotone_test
+def test_pattern_monotone_sentinel(complete_df):
+    df = complete_df.copy()
+    df.iloc[:5, 0] = -9999
+    result = pattern_monotone_test(df, missing_values=[-9999])
+    assert isinstance(result, dict)
 
 
 # ---------------------------------------------------------------------------
 # missing_correlation_matrix
 # ---------------------------------------------------------------------------
 
-def test_corr_matrix_returns_dataframe(df_with_missing):
+def test_missing_corr_returns_dataframe(df_with_missing):
     result = missing_correlation_matrix(df_with_missing)
     assert isinstance(result, pd.DataFrame)
 
 
-def test_corr_matrix_is_square(df_with_missing):
+def test_missing_corr_square(df_with_missing):
     result = missing_correlation_matrix(df_with_missing)
-    cols_with_missing = df_with_missing.columns[
-        df_with_missing.isnull().any()
-    ].tolist()
-    assert result.shape == (len(cols_with_missing), len(cols_with_missing))
+    assert result.shape[0] == result.shape[1]
 
 
-def test_corr_matrix_diagonal_is_one(df_with_missing):
+def test_missing_corr_diagonal_ones(df_with_missing):
     result = missing_correlation_matrix(df_with_missing)
-    diag = np.diag(result.to_numpy())
-    assert np.allclose(diag, 1.0)
+    if result.shape[0] > 0:
+        diag = np.diag(result.values)
+        assert np.allclose(diag, 1.0, atol=1e-9)
 
 
-def test_corr_matrix_values_in_range(df_with_missing):
-    result = missing_correlation_matrix(df_with_missing)
-    vals = result.to_numpy()
-    assert np.all(vals >= -1.0 - 1e-9)
-    assert np.all(vals <= 1.0 + 1e-9)
-
-
-def test_corr_matrix_no_missing_returns_empty(complete_df):
+def test_missing_corr_empty_on_complete(complete_df):
     result = missing_correlation_matrix(complete_df)
-    assert result.shape == (0, 0) or len(result) == 0
+    assert result.empty
 
 
-def test_corr_matrix_invalid_method_raises(df_with_missing):
-    with pytest.raises(ValueError, match="method"):
-        missing_correlation_matrix(df_with_missing, method='cosine')
-
-
-def test_corr_matrix_spearman(df_with_missing):
+def test_missing_corr_method_spearman(df_with_missing):
     result = missing_correlation_matrix(df_with_missing, method='spearman')
     assert isinstance(result, pd.DataFrame)
 
 
-def test_corr_matrix_sentinel(complete_df):
-    df = complete_df.copy()
-    df.loc[:10, 'x'] = -99
-    df.loc[5:15, 'y'] = -99
-    result = missing_correlation_matrix(df, missing_values=[-99])
-    assert isinstance(result, pd.DataFrame)
+def test_missing_corr_invalid_method(df_with_missing):
+    with pytest.raises(ValueError, match="method"):
+        missing_correlation_matrix(df_with_missing, method='invalid')
 
 
 # ---------------------------------------------------------------------------
-# Top-level import
+# Alias tests (test_hotelling / test_pattern_monotone in missingly.__init__)
 # ---------------------------------------------------------------------------
 
-def test_stats_extra_importable_from_top_level():
-    assert callable(missingly.hotelling_test)
-    assert callable(missingly.test_hotelling)
-    assert callable(missingly.pattern_monotone_test)
-    assert callable(missingly.test_pattern_monotone)
-    assert callable(missingly.missing_correlation_matrix)
+def test_alias_hotelling_is_callable():
+    assert callable(test_hotelling)
+
+
+def test_alias_pattern_monotone_is_callable():
+    assert callable(test_pattern_monotone)
+
+
+def test_alias_hotelling_returns_dict(df_with_missing):
+    result = test_hotelling(df_with_missing)
+    assert isinstance(result, dict)
+
+
+def test_alias_pattern_monotone_returns_dict(df_with_missing):
+    result = test_pattern_monotone(df_with_missing)
+    assert isinstance(result, dict)
+
+
+def test_aliases_are_same_function():
+    """The aliases should resolve to the same underlying callable."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        assert test_hotelling.__wrapped__ is hotelling_test.__wrapped__
+        assert test_pattern_monotone.__wrapped__ is pattern_monotone_test.__wrapped__

@@ -1,26 +1,4 @@
-"""Time series missing data analysis for missingly.
-
-All public functions assume the DataFrame's index is either a
-``DatetimeIndex`` or an ordinal integer index representing ordered
-observations (rows must be in chronological order).
-
-Functions
----------
-miss_ts_summary
-    Per-column summary of gaps: count, mean length, max length, etc.
-gap_table
-    Tidy table of every individual gap per column (start, end, length).
-vis_ts_miss
-    Tile heatmap of missingness along the time axis.
-vis_gap_lengths
-    Distribution (histogram or box) of gap lengths per column.
-vis_miss_over_time
-    Rolling-window missingness rate line chart for all columns.
-impute_ts
-    Time-series-aware imputation: forward-fill, backward-fill,
-    linear interpolation, time interpolation, and spline.
-"""
-
+"""Time series missing data analysis for missingly."""
 from __future__ import annotations
 
 import inspect
@@ -39,7 +17,6 @@ from ._deprecation import deprecated_api
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _require_sorted(df: pd.DataFrame) -> None:
     if not df.index.is_monotonic_increasing:
@@ -63,6 +40,8 @@ def _gaps_for_column(
     """Return a list of gap dicts for a single Series.
 
     Each dict has keys: ``start``, ``end``, ``length``.
+    For a fully-missing series the single gap runs from index[0] to index[-1]
+    and has length == len(series).
     """
     null_mask = series.isnull()
     if missing_values:
@@ -84,10 +63,18 @@ def _gaps_for_column(
         gaps.append({"start": gap_start, "end": series.index[-1], "length": None})
 
     for gap in gaps:
-        try:
-            length = series.index.get_loc(gap["end"]) - series.index.get_loc(gap["start"])
-        except Exception:
-            length = None
+        start_loc = series.index.get_loc(gap["start"])
+        end_val = gap["end"]
+        if end_val == series.index[-1] and series.isnull().iloc[series.index.get_loc(end_val)]:
+            # trailing / all-NaN gap
+            end_loc = series.index.get_loc(end_val)
+            length = end_loc - start_loc + 1
+        else:
+            try:
+                end_loc = series.index.get_loc(end_val)
+            except Exception:
+                end_loc = start_loc
+            length = end_loc - start_loc
         gap["length"] = length
 
     return gaps
@@ -113,12 +100,12 @@ def miss_ts_summary(
     pd.DataFrame
         One row per column with columns:
 
-        * ``n_miss``       — total missing observations
-        * ``pct_miss``     — percentage missing
-        * ``n_gaps``       — number of contiguous missing runs
-        * ``mean_gap``     — mean gap length (in index units)
-        * ``max_gap_len``  — maximum gap length
-        * ``median_gap``   — median gap length
+        * ``n_miss``      — total missing observations
+        * ``pct_miss``    — percentage missing
+        * ``n_gaps``      — number of contiguous missing runs
+        * ``mean_gap``    — mean gap length (in index units)
+        * ``max_gap``     — maximum gap length
+        * ``median_gap``  — median gap length
     """
     _require_sorted(df)
     records = []
@@ -139,7 +126,7 @@ def miss_ts_summary(
                 "pct_miss": pct_miss,
                 "n_gaps": len(gaps),
                 "mean_gap": round(float(np.mean(lengths)), 2) if lengths else 0.0,
-                "max_gap_len": int(max(lengths)) if lengths else 0,
+                "max_gap": int(max(lengths)) if lengths else 0,
                 "median_gap": float(np.median(lengths)) if lengths else 0.0,
             }
         )
@@ -161,7 +148,7 @@ def gap_table(
     Returns
     -------
     pd.DataFrame
-        Columns: ``column``, ``gap_id``, ``start``, ``end``, ``length``.
+        Columns: ``variable``, ``gap_id``, ``start``, ``end``, ``length``.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
@@ -171,7 +158,7 @@ def gap_table(
         for i, gap in enumerate(gaps, start=1):
             rows.append(
                 {
-                    "column": col,
+                    "variable": col,
                     "gap_id": i,
                     "start": gap["start"],
                     "end": gap["end"],
@@ -247,7 +234,11 @@ def vis_gap_lengths(
     figsize: Optional[tuple] = None,
     title: str = "Gap Length Distribution",
 ) -> matplotlib.figure.Figure:
-    """Distribution of gap lengths per column (experimental)."""
+    """Distribution of gap lengths per column (experimental).
+
+    When no gaps are found, returns a Figure with an informational message
+    instead of raising.
+    """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
 
@@ -259,7 +250,17 @@ def vis_gap_lengths(
             col_gaps[col] = lengths
 
     if not col_gaps:
-        raise ValueError("No gaps found in the provided DataFrame columns.")
+        fig, ax = plt.subplots(figsize=figsize or (6, 3))
+        ax.text(
+            0.5, 0.5,
+            "No gaps found in the provided columns.",
+            ha="center", va="center",
+            transform=ax.transAxes,
+            fontsize=12,
+        )
+        ax.axis("off")
+        fig.suptitle(title)
+        return fig
 
     n = len(col_gaps)
     if figsize is None:
@@ -325,29 +326,16 @@ def impute_ts(
 ) -> pd.DataFrame:
     """Time-series-aware imputation.
 
+    Numeric columns are imputed with the requested strategy.
+    Non-numeric (object/categorical) columns are always forward-filled.
+
     Parameters
     ----------
-    df : pd.DataFrame
-        Time-indexed DataFrame (index must be sorted).
     method : {"ffill", "bfill", "linear", "time", "spline"}, default "linear"
-        Imputation strategy. ``strategy`` is accepted as an alias.
+        Imputation strategy.  ``strategy`` is accepted as an alias.
     strategy : str, optional
         Alias for ``method`` (kept for backward compatibility).
-    columns : list of str, optional
-        Subset of columns to impute.
-    limit : int, optional
-        Maximum number of consecutive NaNs to fill.
-    spline_order : int, default 3
-        Order of the spline (only used when method="spline").
-    missing_values : list, optional
-        Additional sentinel values to replace with NaN before imputing.
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of *df* with imputed values.
     """
-    # Resolve method vs strategy alias
     if method is None and strategy is None:
         method = "linear"
     elif method is None:
@@ -362,7 +350,8 @@ def impute_ts(
     valid_methods = {"ffill", "bfill", "linear", "time", "spline"}
     if method not in valid_methods:
         raise ValueError(
-            f"method must be one of {sorted(valid_methods)}; got {method!r}."
+            f"Invalid strategy {method!r}. "
+            f"method/strategy must be one of {sorted(valid_methods)}; got {method!r}."
         )
 
     result = df.copy()
@@ -376,12 +365,16 @@ def impute_ts(
             raise KeyError(f"Columns not found in DataFrame: {missing_cols}")
         target_cols = columns
     else:
-        target_cols = [
-            c for c in result.columns
-            if result[c].isnull().any() and pd.api.types.is_numeric_dtype(result[c])
-        ]
+        target_cols = list(result.columns)
 
     for col in target_cols:
+        if not pd.api.types.is_numeric_dtype(result[col]):
+            result[col] = result[col].ffill(limit=limit)
+            continue
+
+        if not result[col].isnull().any():
+            continue
+
         if method == "ffill":
             result[col] = result[col].ffill(limit=limit)
         elif method == "bfill":

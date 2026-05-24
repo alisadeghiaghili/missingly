@@ -1,6 +1,8 @@
 """Tests for impute_knn — correctness, safety warnings, and edge cases."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -67,8 +69,7 @@ class TestNumericImputation:
     def test_no_warning_on_numeric_df(self, numeric_df):
         """Numeric-only DataFrame must not trigger the categorical warning."""
         with warnings.catch_warnings():
-            import warnings as _w
-            _w.simplefilter("error", UserWarning)
+            warnings.simplefilter("error", UserWarning)
             # Should not raise
             impute_knn(numeric_df, n_neighbors=10)
 
@@ -85,10 +86,8 @@ class TestHeavyCategoricalWarning:
 
     def test_no_warning_with_default_k(self, heavy_cat_df):
         """n_neighbors=5 (default) must NOT trigger the warning, even on heavy-cat data."""
-        # Collect all UserWarnings and filter for the specific message
         with warnings.catch_warnings(record=True) as caught:
-            import warnings as _w
-            _w.simplefilter("always")
+            warnings.simplefilter("always")
             impute_knn(heavy_cat_df, n_neighbors=5)
         cat_warnings = [
             w for w in caught
@@ -118,21 +117,19 @@ class TestHeavyCategoricalWarning:
 class TestEdgeCases:
     def test_no_missing_data_passthrough(self):
         """DataFrame with no NaN should pass through without error or warning."""
-        import warnings as _w
         df_clean = pd.DataFrame({"x": [1.0, 2.0, 3.0], "y": [4.0, 5.0, 6.0]})
-        with _w.catch_warnings():
-            _w.simplefilter("error", UserWarning)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
             result = impute_knn(df_clean)
         assert result.isnull().sum().sum() == 0
 
     def test_single_cat_single_num_no_warning(self):
         """Equal number of cat and numeric columns: no warning (cat not strictly > num)."""
-        import warnings as _w
         df = pd.DataFrame(
             {"label": ["A", "B", None, "A"], "value": [1.0, 2.0, 3.0, np.nan]}
         )
-        with _w.catch_warnings(record=True) as caught:
-            _w.simplefilter("always")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
             impute_knn(df, n_neighbors=10)
         cat_warnings = [
             w for w in caught
