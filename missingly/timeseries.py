@@ -104,7 +104,7 @@ def miss_ts_summary(
         * ``pct_miss``    — percentage missing
         * ``n_gaps``      — number of contiguous missing runs
         * ``mean_gap``    — mean gap length (in index units)
-        * ``max_gap``     — maximum gap length
+        * ``max_gap_len`` — maximum gap length
         * ``median_gap``  — median gap length
     """
     _require_sorted(df)
@@ -126,7 +126,7 @@ def miss_ts_summary(
                 "pct_miss": pct_miss,
                 "n_gaps": len(gaps),
                 "mean_gap": round(float(np.mean(lengths)), 2) if lengths else 0.0,
-                "max_gap": int(max(lengths)) if lengths else 0,
+                "max_gap_len": int(max(lengths)) if lengths else 0,
                 "median_gap": float(np.median(lengths)) if lengths else 0.0,
             }
         )
@@ -148,7 +148,7 @@ def gap_table(
     Returns
     -------
     pd.DataFrame
-        Columns: ``variable``, ``gap_id``, ``start``, ``end``, ``length``.
+        Columns: ``column``, ``gap_id``, ``start``, ``end``, ``length``.
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
@@ -158,7 +158,7 @@ def gap_table(
         for i, gap in enumerate(gaps, start=1):
             rows.append(
                 {
-                    "variable": col,
+                    "column": col,
                     "gap_id": i,
                     "start": gap["start"],
                     "end": gap["end"],
@@ -233,11 +233,20 @@ def vis_gap_lengths(
     columns: Optional[List[str]] = None,
     figsize: Optional[tuple] = None,
     title: str = "Gap Length Distribution",
-) -> matplotlib.figure.Figure:
+) -> matplotlib.axes.Axes:
     """Distribution of gap lengths per column (experimental).
 
-    When no gaps are found, returns a Figure with an informational message
-    instead of raising.
+    Raises
+    ------
+    ValueError
+        When no gaps are found in the provided columns.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes object(s).  When there is more than one column with gaps
+        a single Axes from the last subplot is returned (callers that need
+        all axes should inspect ``ax.figure.axes``).
     """
     _require_sorted(df)
     target_cols = columns if columns is not None else df.columns.tolist()
@@ -250,17 +259,7 @@ def vis_gap_lengths(
             col_gaps[col] = lengths
 
     if not col_gaps:
-        fig, ax = plt.subplots(figsize=figsize or (6, 3))
-        ax.text(
-            0.5, 0.5,
-            "No gaps found in the provided columns.",
-            ha="center", va="center",
-            transform=ax.transAxes,
-            fontsize=12,
-        )
-        ax.axis("off")
-        fig.suptitle(title)
-        return fig
+        raise ValueError("No gaps found in the provided columns.")
 
     n = len(col_gaps)
     if figsize is None:
@@ -268,6 +267,7 @@ def vis_gap_lengths(
 
     fig, axes = plt.subplots(1, n, figsize=figsize, squeeze=False)
 
+    last_ax = None
     for ax, (col, lengths) in zip(axes[0], col_gaps.items()):
         if kind == "hist":
             ax.hist(lengths, bins="auto", color="steelblue", edgecolor="white")
@@ -277,10 +277,11 @@ def vis_gap_lengths(
             _boxplot_compat(ax, [lengths], [col])
             ax.set_ylabel("Gap length")
         ax.set_title(col)
+        last_ax = ax
 
     fig.suptitle(title)
     plt.tight_layout()
-    return fig
+    return last_ax
 
 
 def vis_miss_over_time(
@@ -350,8 +351,7 @@ def impute_ts(
     valid_methods = {"ffill", "bfill", "linear", "time", "spline"}
     if method not in valid_methods:
         raise ValueError(
-            f"Invalid strategy {method!r}. "
-            f"method/strategy must be one of {sorted(valid_methods)}; got {method!r}."
+            f"method must be one of {sorted(valid_methods)}; got {method!r}."
         )
 
     result = df.copy()

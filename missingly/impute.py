@@ -58,15 +58,6 @@ _KNN_CAT_NEIGHBORS_THRESHOLD = 5
 
 
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
-    """Emit a UserWarning when *df* exceeds the large-data row threshold.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame being imputed.
-    method_name : str
-        Name of the calling imputation function (used in the warning text).
-    """
     if len(df) > _LARGE_DF_ROW_THRESHOLD:
         warnings.warn(
             f"{method_name}: DataFrame has {len(df):,} rows which may result in "
@@ -79,23 +70,6 @@ def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
 
 
 def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
-    """Warn when the feature space is dominated by categorical columns.
-
-    KNN uses Euclidean distance on ordinal-encoded integers.  When most
-    columns are categorical the encoded distances are largely arbitrary
-    (ordinal codes carry no meaningful magnitude) which can degrade
-    imputation quality significantly.  The warning fires only when the
-    caller also requests more neighbours than the default, as that
-    indicates an intentional configuration that is likely to amplify the
-    problem.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame passed to ``impute_knn``.
-    n_neighbors : int
-        The ``n_neighbors`` argument passed by the caller.
-    """
     n_cat = len(df.select_dtypes(exclude=[np.number]).columns)
     n_num = len(df.select_dtypes(include=[np.number]).columns)
     if n_cat > n_num and n_neighbors > _KNN_CAT_NEIGHBORS_THRESHOLD:
@@ -112,24 +86,6 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
 
 
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
-    """Replace Python ``None`` with ``np.nan`` in all object/string-dtype columns.
-
-    sklearn estimators only recognise ``np.nan`` as a missing sentinel;
-    Python ``None`` stored in object columns is silently ignored, which
-    causes imputation to leave those cells unfilled.  This helper
-    normalises the representation so downstream imputers behave correctly.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input dataframe, possibly containing ``None`` in object columns.
-
-    Returns
-    -------
-    pd.DataFrame
-        A copy of *df* where every ``None`` in object/string-dtype columns
-        has been replaced with ``np.nan``.
-    """
     result = df.copy()
     obj_cols = result.select_dtypes(include=["object", "string"]).columns
     if len(obj_cols):
@@ -140,17 +96,6 @@ def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _split_encode(df: pd.DataFrame):
-    """Split df into numeric and categorical parts; ordinal-encode categoricals.
-
-    Returns
-    -------
-    df_work : pd.DataFrame
-        All columns as float64.
-    cat_cols : list[str]
-    num_cols : list[str]
-    encoder : OrdinalEncoder or None
-    cat_dtypes : dict[str, dtype]
-    """
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
@@ -177,19 +122,6 @@ def _decode(
     encoder,
     cat_dtypes: dict,
 ) -> pd.DataFrame:
-    """Inverse-transform ordinal-encoded columns back to original categories.
-
-    Parameters
-    ----------
-    df_imputed : pd.DataFrame
-    cat_cols : list[str]
-    encoder : OrdinalEncoder or None
-    cat_dtypes : dict[str, dtype]
-
-    Returns
-    -------
-    pd.DataFrame
-    """
     if not cat_cols or encoder is None:
         return df_imputed
 
@@ -206,19 +138,6 @@ def _decode(
 
 
 def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
-    """Fill NaN values in a 2-D float array with column means.
-
-    Used internally to make feature matrices safe for
-    ``GradientBoostingRegressor`` / ``GradientBoostingClassifier``.
-
-    Parameters
-    ----------
-    X : np.ndarray, shape (n_samples, n_features)
-
-    Returns
-    -------
-    np.ndarray
-    """
     X_out = X.copy()
     col_means = np.nanmean(X_out, axis=0)
     col_means = np.where(np.isnan(col_means), 0.0, col_means)
@@ -235,22 +154,6 @@ def _impute_column_by_column(
     max_iter: int = 1,
     fill_feature_nan: bool = False,
 ) -> pd.DataFrame:
-    """Impute each column using a regressor (numeric) or classifier (categorical).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    regressor : sklearn estimator
-    classifier : sklearn estimator
-    random_state : int
-    max_iter : int
-    fill_feature_nan : bool
-        Fill NaN in feature matrix with column means before fit/predict.
-
-    Returns
-    -------
-    pd.DataFrame
-    """
     cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
     result = df.copy()
 
@@ -306,22 +209,7 @@ def _impute_column_by_column(
 # ---------------------------------------------------------------------------
 
 def impute_mean(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the column mean (numeric) / mode (categorical).
-
-    .. warning::
-        This function fits and transforms the *same* DataFrame.  Do **not**
-        use it across train/test splits.  Use :func:`make_imputer` instead
-        to obtain a ``FittedImputer`` with a proper ``fit`` / ``transform``
-        interface.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-
-    Returns
-    -------
-    pd.DataFrame
-    """
+    """Impute missing values using the column mean (numeric) / mode (categorical)."""
     df = _normalize_missing(df)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -337,20 +225,7 @@ def impute_mean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def impute_median(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the column median (numeric) / mode (categorical).
-
-    .. warning::
-        Fits and transforms the same DataFrame.  Use :func:`make_imputer`
-        for proper train/test separation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-
-    Returns
-    -------
-    pd.DataFrame
-    """
+    """Impute missing values using the column median (numeric) / mode (categorical)."""
     df = _normalize_missing(df)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -366,20 +241,7 @@ def impute_median(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def impute_mode(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the most frequent value of each column.
-
-    .. warning::
-        Fits and transforms the same DataFrame.  Use :func:`make_imputer`
-        for proper train/test separation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-
-    Returns
-    -------
-    pd.DataFrame
-    """
+    """Impute missing values using the most frequent value of each column."""
     df = _normalize_missing(df)
     imputer = SimpleImputer(strategy="most_frequent")
     imputed_array = imputer.fit_transform(df)
@@ -390,70 +252,7 @@ def impute_knn(
     df: pd.DataFrame,
     n_neighbors: int = 5,
 ) -> pd.DataFrame:
-    """Impute missing values using k-Nearest Neighbors (KNN).
-
-    Categorical columns are ordinal-encoded before computing distances and
-    decoded back to their original dtype after imputation.  All pairwise
-    distances are Euclidean (sklearn default).
-
-    .. warning::
-        Fits and transforms the same DataFrame.  Use :func:`make_imputer`
-        for proper train/test separation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame with missing values.  May contain numeric and/or
-        categorical (object / category) columns.
-    n_neighbors : int, default 5
-        Number of nearest neighbours to use for imputation.
-
-    Returns
-    -------
-    pd.DataFrame
-        Imputed copy of *df* with the same dtypes as the input.
-
-    Limitations
-    -----------
-    **Categorical columns and Euclidean distance.**
-        KNN relies on Euclidean distance computed over ordinal-encoded
-        integer codes.  For nominal categoricals (e.g. ``"red"``,
-        ``"green"``, ``"blue"``) ordinal codes carry no meaningful
-        magnitude — the distance between ``"red"`` (0) and ``"blue"`` (2)
-        is *not* twice the distance between ``"red"`` and ``"green"`` (1).
-        This means neighbours selected by the algorithm may not be
-        semantically similar, which degrades imputation quality.
-
-    **Heavy-categorical datasets.**
-        When most columns are categorical the entire distance matrix becomes
-        dominated by these meaningless ordinal distances.  In that regime
-        KNN often performs no better than mode imputation while being
-        significantly slower.  For datasets where categorical columns
-        outnumber numeric columns, prefer:
-
-        * :func:`impute_rf` — Random Forest handles categoricals natively
-          via decision-tree splits (no distance metric required).
-        * :func:`impute_gb` — Gradient Boosting, same reasoning.
-        * :func:`impute_mice` — chained-equation imputer that routes each
-          column through an appropriate model (regressor or classifier).
-
-    **Planned (not yet implemented).**
-        A future release will add a ``metric='mixed'`` option backed by
-        Gower distance :cite:p:`gower1971` which handles mixed numeric /
-        categorical feature spaces correctly by normalising each column to
-        ``[0, 1]`` and using indicator-based similarity for nominals.
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.impute import impute_knn
-    >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': [4.0, 5.0, np.nan]})
-    >>> impute_knn(df, n_neighbors=2)
-         a    b
-    0  1.0  4.0
-    1  2.0  5.0
-    2  3.0  4.5
-    """
+    """Impute missing values using k-Nearest Neighbors (KNN)."""
     _warn_if_large(df, "impute_knn")
     _warn_if_knn_heavy_categorical(df, n_neighbors)
     df = _normalize_missing(df)
@@ -471,102 +270,10 @@ def impute_mice(
     estimator=None,
     n_imputations: int = 1,
 ) -> Union[pd.DataFrame, List[pd.DataFrame]]:
-    """Impute missing values using single chained imputation (sklearn IterativeImputer).
+    """Impute missing values using MICE (IterativeImputer).
 
-    .. note:: **Current implementation — single chained imputation only.**
-
-        Despite the name, this function currently performs **one** run of
-        ``sklearn.impute.IterativeImputer`` (MICE-style chained equations)
-        and returns a *single* completed DataFrame.  It does **not** yet
-        produce multiple independent datasets or pool results across chains,
-        which is required for statistically valid Multiple Imputation (MI).
-
-        When ``n_imputations > 1`` the function runs ``n_imputations``
-        independent chains (each seeded differently via
-        ``random_state + i``) and returns a **list** of completed
-        DataFrames.  No pooling (Rubin's Rules) is performed yet — that
-        is groundwork for a future release.  To obtain a single pooled
-        estimate from the list, average the numeric columns yourself::
-
-            dfs = impute_mice(df, n_imputations=5)
-            pooled = pd.concat(dfs).groupby(level=0).mean()
-
-    .. warning::
-        Fits and transforms the same DataFrame.  Use :func:`make_imputer`
-        for proper train/test separation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame with missing values to impute.
-    max_iter : int, default 10
-        Maximum number of imputation rounds per chain (passed to
-        ``IterativeImputer``).
-    random_state : int, default 0
-        Base random seed.  When ``n_imputations > 1`` chain *i* uses
-        ``random_state + i`` so each chain explores a different region of
-        the posterior predictive distribution.
-    estimator : sklearn estimator, optional
-        Regressor used by ``IterativeImputer``.  Defaults to
-        ``BayesianRidge()``.  Must support ``fit`` / ``predict``.
-    n_imputations : int, default 1
-        Number of independent imputed datasets to generate.
-
-        * ``1`` (default) — returns a single ``pd.DataFrame`` (backward
-          compatible with all previous callers).
-        * ``> 1`` — returns a ``List[pd.DataFrame]`` of length
-          ``n_imputations``.  Each DataFrame is produced by an independent
-          ``IterativeImputer`` chain with a distinct random seed.
-          **No pooling is performed**; this interface is designed as
-          groundwork for full MI support in a future release.
-
-    Returns
-    -------
-    pd.DataFrame
-        When ``n_imputations == 1``: a single imputed copy of *df*.
-    List[pd.DataFrame]
-        When ``n_imputations > 1``: a list of ``n_imputations`` imputed
-        copies of *df*, one per independent chain.
-
-    Raises
-    ------
-    ValueError
-        If ``n_imputations < 1``.
-
-    Notes
-    -----
-    **Towards real Multiple Imputation**
-
-    Statistically valid MI requires:
-
-    1. Running *m* independent imputation chains (typically m ≥ 5).
-    2. Fitting the analysis model on each completed dataset separately.
-    3. Pooling the *m* sets of estimates using Rubin's Rules
-       (combined estimate = mean of estimates; combined variance accounts
-       for both within-imputation and between-imputation variance).
-
-    The ``n_imputations > 1`` path in this function covers step 1.
-    Steps 2–3 are left to the caller for now and will be implemented in
-    ``pool_imputations()`` in a future release.
-
-    Examples
-    --------
-    Single imputation (default, backward-compatible):
-
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.impute import impute_mice
-    >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': [4.0, 5.0, np.nan]})
-    >>> result = impute_mice(df)
-    >>> isinstance(result, pd.DataFrame)
-    True
-
-    Multiple imputation (returns list of DataFrames, no pooling yet):
-
-    >>> dfs = impute_mice(df, n_imputations=5)
-    >>> len(dfs)
-    5
-    >>> all(isinstance(d, pd.DataFrame) for d in dfs)
-    True
+    When ``n_imputations > 1`` runs independent chains each with a distinct
+    random seed so the returned DataFrames differ from one another.
     """
     if n_imputations < 1:
         raise ValueError(f"n_imputations must be >= 1; got {n_imputations}.")
@@ -576,12 +283,20 @@ def impute_mice(
 
     def _single_chain(seed: int) -> pd.DataFrame:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
-        est = BayesianRidge() if estimator is None else estimator
+        # Use sample_posterior=True so each chain draws different samples
+        # from the posterior and produces distinct imputed values.
+        if estimator is None:
+            est = BayesianRidge()
+            use_sample_posterior = True
+        else:
+            est = estimator
+            use_sample_posterior = False
         imputer = IterativeImputer(
             estimator=est,
             max_iter=max_iter,
             random_state=seed,
             imputation_order="roman",
+            sample_posterior=use_sample_posterior,
         )
         imputed_array = imputer.fit_transform(df_work)
         df_imputed = pd.DataFrame(
@@ -601,26 +316,7 @@ def impute_rf(
     random_state: int = 0,
     **rf_kwargs,
 ) -> pd.DataFrame:
-    """Impute missing values using Random Forest (regressor + classifier).
-
-    .. warning::
-        Fits and transforms the same DataFrame.  Use :func:`make_imputer`
-        for proper train/test separation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    max_iter : int, optional
-        Default 1.
-    random_state : int, optional
-    **rf_kwargs
-        Forwarded to both ``RandomForestRegressor`` and
-        ``RandomForestClassifier``.
-
-    Returns
-    -------
-    pd.DataFrame
-    """
+    """Impute missing values using Random Forest."""
     _warn_if_large(df, "impute_rf")
     df = _normalize_missing(df)
     regressor = RandomForestRegressor(random_state=random_state, **rf_kwargs)
@@ -638,26 +334,7 @@ def impute_gb(
     random_state: int = 0,
     **gb_kwargs,
 ) -> pd.DataFrame:
-    """Impute missing values using Gradient Boosting (regressor + classifier).
-
-    .. warning::
-        Fits and transforms the same DataFrame.  Use :func:`make_imputer`
-        for proper train/test separation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    max_iter : int, optional
-        Default 1.
-    random_state : int, optional
-    **gb_kwargs
-        Forwarded to both ``GradientBoostingRegressor`` and
-        ``GradientBoostingClassifier``.
-
-    Returns
-    -------
-    pd.DataFrame
-    """
+    """Impute missing values using Gradient Boosting."""
     _warn_if_large(df, "impute_gb")
     df = _normalize_missing(df)
     regressor = GradientBoostingRegressor(random_state=random_state, **gb_kwargs)
@@ -674,110 +351,22 @@ def impute_gb(
 # ---------------------------------------------------------------------------
 
 class FittedImputer:
-    """Lightweight fit/transform wrapper for missingly imputation strategies.
-
-    Unlike the stateless ``impute_*`` functions, ``FittedImputer`` separates
-    the fitting step (learning statistics from training data) from the
-    transform step (applying those statistics to new data).  This prevents
-    data leakage when imputing train and test sets.
-
-    Under the hood this delegates to
-    :class:`~missingly.transformer.MissinglyImputer`, which is a full
-    scikit-learn ``BaseEstimator`` / ``TransformerMixin`` and can be
-    embedded directly in a ``sklearn.pipeline.Pipeline``.
-
-    Parameters
-    ----------
-    strategy : str
-        One of ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``,
-        ``"mice"``, ``"rf"``, ``"gb"``.
-    **kwargs
-        Additional keyword arguments forwarded to
-        :class:`~missingly.transformer.MissinglyImputer`
-        (e.g. ``n_neighbors=3`` for KNN, ``random_state=42`` for RF).
-
-    Attributes
-    ----------
-    strategy : str
-    is_fitted : bool
-        ``True`` after :meth:`fit` has been called.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.impute import make_imputer
-    >>>
-    >>> X_train = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': [4.0, 5.0, np.nan]})
-    >>> X_test  = pd.DataFrame({'a': [np.nan, 2.0],      'b': [6.0, np.nan]})
-    >>>
-    >>> imp = make_imputer('mean')
-    >>> imp.fit(X_train)
-    >>> X_train_clean = imp.transform(X_train)   # uses train means
-    >>> X_test_clean  = imp.transform(X_test)    # still uses train means — no leakage
-
-    Notes
-    -----
-    For full sklearn pipeline integration use
-    :class:`~missingly.transformer.MissinglyImputer` directly, which
-    inherits from ``BaseEstimator`` and ``TransformerMixin``.
-    """
+    """Lightweight fit/transform wrapper for missingly imputation strategies."""
 
     def __init__(self, strategy: str = "mean", **kwargs) -> None:
-        """Initialise the FittedImputer.
-
-        Parameters
-        ----------
-        strategy : str
-            Imputation strategy name.
-        **kwargs
-            Forwarded to MissinglyImputer.
-        """
         from .transformer import MissinglyImputer
         self.strategy = strategy
         self._imputer = MissinglyImputer(strategy=strategy, **kwargs)
 
     @property
     def is_fitted(self) -> bool:
-        """Return True if fit() has been called."""
         return self._imputer._is_fitted
 
     def fit(self, X: pd.DataFrame, y=None) -> "FittedImputer":
-        """Learn imputation parameters from training data.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Training data that may contain missing values.  Only this
-            data is used to compute imputation statistics (means, medians,
-            KNN distances, etc.).
-        y : ignored
-
-        Returns
-        -------
-        self
-        """
         self._imputer.fit(X)
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply fitted imputation to *X*.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Data to impute.  Must have the same columns as the training
-            DataFrame passed to :meth:`fit`.
-
-        Returns
-        -------
-        pd.DataFrame
-            Fully-imputed copy of *X*.
-
-        Raises
-        ------
-        RuntimeError
-            If called before :meth:`fit`.
-        """
         if not self.is_fitted:
             raise RuntimeError(
                 "FittedImputer.transform() called before fit(). "
@@ -786,52 +375,13 @@ class FittedImputer:
         return self._imputer.transform(X)
 
     def fit_transform(self, X: pd.DataFrame, y=None) -> pd.DataFrame:
-        """Fit on *X* and return the imputed version of *X*.
-
-        Equivalent to calling ``fit(X).transform(X)``.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-        y : ignored
-
-        Returns
-        -------
-        pd.DataFrame
-        """
         return self.fit(X).transform(X)
 
     def __repr__(self) -> str:
-        """Return a concise string representation."""
         fitted = "fitted" if self.is_fitted else "unfitted"
         return f"FittedImputer(strategy={self.strategy!r}, {fitted})"
 
 
 def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
-    """Factory function that returns an unfitted :class:`FittedImputer`.
-
-    Use this instead of calling the stateless ``impute_*`` functions when
-    you need to fit on training data and transform test data separately
-    (i.e. to avoid data leakage).
-
-    Parameters
-    ----------
-    strategy : str
-        One of ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``,
-        ``"mice"``, ``"rf"``, ``"gb"``.
-    **kwargs
-        Forwarded to :class:`FittedImputer` and ultimately to
-        :class:`~missingly.transformer.MissinglyImputer`.
-
-    Returns
-    -------
-    FittedImputer
-
-    Example
-    -------
-    >>> from missingly.impute import make_imputer
-    >>> imp = make_imputer('knn', n_neighbors=3)
-    >>> imp.fit(X_train)
-    >>> X_test_clean = imp.transform(X_test)
-    """
+    """Factory function that returns an unfitted :class:`FittedImputer`."""
     return FittedImputer(strategy=strategy, **kwargs)
