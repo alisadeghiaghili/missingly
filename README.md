@@ -198,6 +198,59 @@ print(df_clean.isnull().sum())   # temp_C    0
 > NaNs are filled. Values in longer gaps are left as `NaN`, making it
 > easy to flag unreliable stretches for downstream handling.
 
+### Multiple Imputation (advanced)
+
+For statistically valid inference under missing data, use the full
+**Multiple Imputation** workflow: generate *m* imputed datasets, fit your
+analytical model on each, then combine the results via **Rubin's Rules**.
+
+```python
+import numpy as np
+import pandas as pd
+import missingly as mi
+from missingly import pool_scalar_estimates, pool_linear_regression_results
+from sklearn.linear_model import LinearRegression
+
+# ── 1. Data with missingness in y ────────────────────────────────────────
+rng = np.random.default_rng(42)
+n = 100
+x = rng.normal(size=n)
+y = 3.0 * x + rng.normal(size=n)
+mask = rng.random(n) < 0.3
+y_obs = y.copy()
+y_obs[mask] = np.nan
+df = pd.DataFrame({"x": x, "y": y_obs})
+
+# ── 2. Generate m=5 imputed datasets ────────────────────────────────────
+m = 5
+imputed_dfs = mi.impute_mice(df, n_imputations=m)
+
+# ── 3. Fit model on each imputed dataset ────────────────────────────────
+estimates, variances = [], []
+for df_imp in imputed_dfs:
+    X = df_imp[["x"]].values
+    y_imp = df_imp["y"].values
+    reg = LinearRegression().fit(X, y_imp)
+    coef = reg.coef_[0]
+    residuals = y_imp - reg.predict(X)
+    se2 = residuals.var(ddof=2)          # variance of the slope estimate
+    estimates.append(coef)
+    variances.append(se2)
+
+# ── 4. Pool with Rubin's Rules ───────────────────────────────────────────
+result = pool_scalar_estimates(estimates, variances)
+print(f"Pooled beta_1 = {result['q_bar']:.3f}")
+print(f"95% CI ≈ [{result['q_bar'] - 1.96*result['t']**0.5:.3f}, "
+      f"{result['q_bar'] + 1.96*result['t']**0.5:.3f}]")
+# Pooled beta_1 ≈ 3.0  (true value)
+```
+
+For regression models with multiple coefficients, use
+`pool_linear_regression_results(coefs, covs)` which accepts an
+`(m, p)` coefficient array and an `(m, p, p)` covariance array and
+returns a pooled coefficient vector, pooled covariance matrix, standard
+errors, t-statistics, and degrees of freedom.
+
 ### Advanced / Experimental Utilities
 
 The following tools are available but **experimental** — they emit a
