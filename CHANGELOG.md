@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - Unreleased
 
 ### Added
+- Added MI pooling utilities (`pool_scalar_estimates`, `pool_linear_regression_results`) implementing Rubin's Rules, plus end-to-end examples and tests.
 - Defined v1 public API surface (`df.miss.*`, `MissinglyImputer`, `create_report`,
   core visualisation & diagnosis functions).
 - Marked advanced utilities (`simulate_*`, performance helpers, extra statistical tests)
