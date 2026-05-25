@@ -5,7 +5,7 @@ Every public function follows the same conventions:
 * Accepts an optional ``ax`` (or ``fig`` for multi-panel plots) so callers
   can embed plots inside existing figures.
 * Accepts an optional ``missing_values`` list to treat arbitrary sentinel
-  values (e.g. ``-99``, ``"N/A"``) as missing.
+  values (e.g. ``-99``, ``\"N/A\"``) as missing.
 * Accepts an optional ``interactive`` boolean (default ``False``). When
   ``True``, returns a :class:`plotly.graph_objects.Figure` instead of a
   matplotlib Axes — the ``ax`` parameter is ignored in that case.
@@ -1447,9 +1447,6 @@ def vis_miss_span(
 ):
     """Rolling-window missingness rate for a single column over row-index spans.
 
-    Divides the DataFrame into non-overlapping spans of ``span_every`` rows
-    and plots the missingness rate within each span as a line chart.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -1505,11 +1502,6 @@ def vis_parallel_coords(
 ):
     """Parallel coordinates plot coloured by row-level missingness.
 
-    Each row in *df* is drawn as a polyline across all numeric columns.
-    Rows that contain at least one missing value are drawn in
-    ``color_missing``; fully complete rows are drawn in ``color_complete``.
-    Non-numeric columns are silently ignored.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -1543,7 +1535,6 @@ def vis_parallel_coords(
     null_mat = _nullity(df, missing_values)
     has_missing = null_mat.any(axis=1)
 
-    # Normalise each column to [0, 1] for visual comparability
     norm_df = num_df.copy().astype(float)
     for col in norm_df.columns:
         col_min = norm_df[col].min()

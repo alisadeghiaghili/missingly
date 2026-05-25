@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
 
@@ -42,6 +42,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[test]"
+          pip install statsmodels  # required for MI pooling end-to-end tests
 
       - name: Run pytest
         run: |
@@ -68,6 +69,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[test]"
+          pip install statsmodels  # required for MI pooling end-to-end tests
 
       - name: Verify correlation_heatmap contract
         run: |
@@ -87,7 +89,6 @@ jobs:
               print(f"FAIL: cannot import correlation_heatmap from DQT: {e}")
               sys.exit(1)
 
-          # Build a tiny 3x3 correlation matrix
           rng = np.random.default_rng(42)
           raw = rng.standard_normal((20, 3))
           df = pd.DataFrame(raw, columns=["a", "b", "c"])
