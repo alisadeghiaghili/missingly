@@ -16,6 +16,7 @@ Public API (v1)
   impute_ts
 - Evaluation: compare_imputations, cv_compare_imputations
 - sklearn: MissinglyImputer, FittedImputer, make_imputer
+- Multiple Imputation pooling: pool_scalar_estimates, pool_linear_regression_results
 """
 
 __version__ = "0.1.0"
@@ -100,6 +101,10 @@ from .performance import (
     memory_usage_mb,
     optimize_dtypes,
 )
+from .mi import (
+    pool_scalar_estimates,
+    pool_linear_regression_results,
+)
 from .stats_extra import (
     hotelling_test,
     pattern_monotone_test,
@@ -118,7 +123,7 @@ from . import accessor  # noqa: F401
 # v1 Public API surface
 # ---------------------------------------------------------------------------
 __all__ = [
-    # ── summary ──────────────────────────────────────────────────────────────
+    # ── summary ──────────────────────────────────────────────────────────────────────
     "bind_shadow",
     "n_miss",
     "n_complete",
@@ -126,11 +131,11 @@ __all__ = [
     "pct_complete",
     "miss_var_summary",
     "miss_case_summary",
-    # ── diagnosis ────────────────────────────────────────────────────────────
+    # ── diagnosis ────────────────────────────────────────────────────────────────────
     "mcar_test",
     "mar_mnar_test",
     "diagnose_missing",
-    # ── visualisation (core) ─────────────────────────────────────────────────
+    # ── visualisation (core) ────────────────────────────────────────────────────────
     "matrix",
     "bar",
     "miss_case",
@@ -142,21 +147,21 @@ __all__ = [
     "miss_cooccurrence",
     "heatmap",
     "miss_cluster",
-    # ── report ───────────────────────────────────────────────────────────────
+    # ── report ──────────────────────────────────────────────────────────────────────
     "create_report",
-    # ── time series ──────────────────────────────────────────────────────────
+    # ── time series ───────────────────────────────────────────────────────────────────
     "miss_ts_summary",
     "vis_ts_miss",
     "vis_miss_over_time",
     "impute_ts",
-    # ── evaluation ───────────────────────────────────────────────────────────
+    # ── evaluation ───────────────────────────────────────────────────────────────────
     "compare_imputations",
     "cv_compare_imputations",
-    # ── sklearn-style components ─────────────────────────────────────────────
+    # ── sklearn-style components ─────────────────────────────────────────────────────
     "MissinglyImputer",
     "FittedImputer",
     "make_imputer",
-    # ── impute helpers ────────────────────────────────────────────────────────
+    # ── impute helpers ────────────────────────────────────────────────────────────────────
     "impute_mean",
     "impute_median",
     "impute_mode",
@@ -164,10 +169,13 @@ __all__ = [
     "impute_mice",
     "impute_rf",
     "impute_gb",
-    # ── manipulation helpers ──────────────────────────────────────────────────
+    # ── Multiple Imputation pooling utilities ─────────────────────────────────────────────
+    "pool_scalar_estimates",
+    "pool_linear_regression_results",
+    # ── manipulation helpers ──────────────────────────────────────────────────────────
     "replace_with_na",
     "replace_with_na_all",
-    # Legacy / power-user API (subject to change) ─────────────────────────────
+    # Legacy / power-user API (subject to change) ────────────────────────────────────────────
     # These symbols are experimental or have been superseded.  They emit a
     # FutureWarning on every call and may be moved, renamed, or removed in a
     # future release without a major-version bump.
