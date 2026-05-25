@@ -78,41 +78,41 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
             f"column(s) but only {n_num} numeric column(s), and n_neighbors={n_neighbors} "
             f"(> {_KNN_CAT_NEIGHBORS_THRESHOLD}). "
             "Euclidean distance over ordinal-encoded categoricals is not statistically "
-            "meaningful and degrades as n_neighbors grows. "
-            "Consider impute_rf(), impute_gb(), or impute_mice() for heavy-categorical datasets.",
+            "sound. Consider impute_rf(), impute_gb(), or impute_mice() for heavy-categorical datasets.",
             UserWarning,
             stacklevel=3,
         )
 
 
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
-    result = df.copy()
-    obj_cols = result.select_dtypes(include=["object", "string"]).columns
+    """Replace Python None with np.nan in object columns."""
+    df = df.copy()
+    obj_cols = df.select_dtypes(include=["object"]).columns
     if len(obj_cols):
-        result[obj_cols] = result[obj_cols].where(
-            result[obj_cols].notna(), other=np.nan
-        )
-    return result
+        df[obj_cols] = df[obj_cols].where(df[obj_cols].notna(), other=np.nan)
+    return df
 
 
-def _split_encode(df: pd.DataFrame):
+def _split_encode(
+    df: pd.DataFrame,
+):
+    """Ordinal-encode categorical columns; return parts needed to reconstruct."""
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_dtypes = {c: df[c].dtype for c in cat_cols}
 
-    df_work = df.copy()
-    encoder = None
-    cat_dtypes = {}
+    if not cat_cols:
+        return df, cat_cols, num_cols, None, cat_dtypes
 
-    if cat_cols:
-        cat_dtypes = {c: df[c].dtype for c in cat_cols}
-        encoder = OrdinalEncoder(
-            handle_unknown="use_encoded_value",
-            unknown_value=np.nan,
-            encoded_missing_value=np.nan,
-        )
-        df_work[cat_cols] = encoder.fit_transform(df[cat_cols])
-
-    df_work = df_work.astype(float)
+    encoder = OrdinalEncoder(
+        handle_unknown="use_encoded_value",
+        unknown_value=np.nan,
+        encoded_missing_value=np.nan,
+    )
+    cat_encoded = encoder.fit_transform(df[cat_cols])
+    df_work = df[num_cols].copy()
+    for i, col in enumerate(cat_cols):
+        df_work[col] = cat_encoded[:, i]
     return df_work, cat_cols, num_cols, encoder, cat_dtypes
 
 
@@ -122,137 +122,202 @@ def _decode(
     encoder,
     cat_dtypes: dict,
 ) -> pd.DataFrame:
+    """Inverse-transform ordinal-encoded columns back to their original dtype."""
     if not cat_cols or encoder is None:
         return df_imputed
 
-    result = df_imputed.copy()
-    rounded = np.round(result[cat_cols].to_numpy()).clip(0).copy()
-    decoded = encoder.inverse_transform(rounded)
+    cat_array = df_imputed[cat_cols].values
+    # Round to nearest integer index before inverse transform
+    cat_array = np.round(cat_array).astype(float)
+    # Clip to valid range for each column
     for i, col in enumerate(cat_cols):
-        result[col] = decoded[:, i]
-        try:
-            result[col] = result[col].astype(cat_dtypes[col])
-        except (ValueError, TypeError):
-            pass
+        n_cats = len(encoder.categories_[i])
+        cat_array[:, i] = np.clip(cat_array[:, i], 0, n_cats - 1)
+
+    decoded = encoder.inverse_transform(cat_array)
+    result = df_imputed.copy()
+    for i, col in enumerate(cat_cols):
+        orig_dtype = cat_dtypes[col]
+        if hasattr(orig_dtype, "categories"):
+            result[col] = pd.Categorical(decoded[:, i], categories=orig_dtype.categories)
+        else:
+            result[col] = decoded[:, i]
     return result
-
-
-def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
-    X_out = X.copy()
-    col_means = np.nanmean(X_out, axis=0)
-    col_means = np.where(np.isnan(col_means), 0.0, col_means)
-    nan_mask = np.isnan(X_out)
-    X_out[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
-    return X_out
 
 
 def _impute_column_by_column(
     df: pd.DataFrame,
     regressor,
     classifier,
-    random_state: int = 0,
+    random_state: int,
     max_iter: int = 1,
     fill_feature_nan: bool = False,
 ) -> pd.DataFrame:
-    cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
-    result = df.copy()
+    """Column-by-column imputation used by RF and GB imputers."""
+    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
+    all_cols = list(df_work.columns)
+    df_result = df_work.copy()
 
     for _ in range(max_iter):
-        for col in df.columns:
-            missing_mask = result[col].isnull()
+        for col in all_cols:
+            missing_mask = df_work[col].isna()
             if not missing_mask.any():
                 continue
 
-            df_enc, _, _, enc_tmp, _ = _split_encode(result)
-            feature_cols = [c for c in df.columns if c != col]
-            if not feature_cols:
+            feature_cols = [c for c in all_cols if c != col]
+            X_full = df_result[feature_cols].values
+            y_full = df_result[col].values
+
+            observed_mask = ~np.isnan(y_full)
+            if observed_mask.sum() == 0:
                 continue
 
-            X = df_enc[feature_cols].values
-            y_series = result[col]
-            train_mask = ~missing_mask
-            if train_mask.sum() < 2:
-                continue
-
-            X_train = X[train_mask]
-            X_pred = X[missing_mask]
+            X_train = X_full[observed_mask]
+            y_train = y_full[observed_mask]
+            X_pred = X_full[missing_mask.values]
 
             if fill_feature_nan:
-                X_train = _fill_nan_with_col_means(X_train)
-                X_pred = _fill_nan_with_col_means(X_pred)
+                col_means = np.nanmean(X_full, axis=0)
+                nan_mask = np.isnan(X_train)
+                X_train = X_train.copy()
+                X_train[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
+                X_pred = X_pred.copy()
+                pred_nan_mask = np.isnan(X_pred)
+                X_pred[pred_nan_mask] = np.take(col_means, np.where(pred_nan_mask)[1])
 
-            if col in cat_cols:
-                enc_y = OrdinalEncoder(
-                    handle_unknown="use_encoded_value",
-                    unknown_value=-1,
-                    encoded_missing_value=-1,
-                )
-                y_train_enc = enc_y.fit_transform(
-                    y_series[train_mask].values.reshape(-1, 1)
-                ).ravel().astype(int)
-                model = classifier
-                model.fit(X_train, y_train_enc)
-                y_pred_enc = model.predict(X_pred).reshape(-1, 1)
-                y_pred = enc_y.inverse_transform(y_pred_enc).ravel()
-                result.loc[missing_mask, col] = y_pred
+            is_cat = col in cat_cols
+            if is_cat:
+                est = classifier
             else:
-                y_train = y_series[train_mask].values
-                model = regressor
-                model.fit(X_train, y_train)
-                result.loc[missing_mask, col] = model.predict(X_pred)
+                est = regressor
 
-    return result
+            try:
+                est.fit(X_train, y_train)
+                preds = est.predict(X_pred)
+            except Exception:
+                preds = np.nanmean(y_train) * np.ones(X_pred.shape[0])
+
+            df_result.loc[missing_mask, col] = preds
+
+    return _decode(df_result, cat_cols, encoder, cat_dtypes)
 
 
-# ---------------------------------------------------------------------------
-# Stateless imputation functions
-# ---------------------------------------------------------------------------
+def impute_mean(
+    df: pd.DataFrame,
+    numeric_only: bool = False,
+) -> pd.DataFrame:
+    """Impute missing values with column means.
 
-def impute_mean(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the column mean (numeric) / mode (categorical)."""
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    numeric_only : bool, default False
+        If True, only numeric columns are imputed; non-numeric columns
+        are left unchanged.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with missing values replaced by column means.
+    """
     df = _normalize_missing(df)
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    num_cols = df.select_dtypes(include=[np.number]).columns
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns
 
     result = df.copy()
-    if numeric_cols:
-        imputer = SimpleImputer(strategy="mean")
-        result[numeric_cols] = imputer.fit_transform(df[numeric_cols])
-    if cat_cols:
-        imputer_cat = SimpleImputer(strategy="most_frequent")
-        result[cat_cols] = imputer_cat.fit_transform(df[cat_cols])
+    imputer = SimpleImputer(strategy="mean")
+    result[num_cols] = imputer.fit_transform(df[num_cols])
+
+    if not numeric_only and len(cat_cols):
+        mode_imputer = SimpleImputer(strategy="most_frequent")
+        result[cat_cols] = mode_imputer.fit_transform(df[cat_cols])
+
     return result
 
 
-def impute_median(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the column median (numeric) / mode (categorical)."""
+def impute_median(
+    df: pd.DataFrame,
+    numeric_only: bool = False,
+) -> pd.DataFrame:
+    """Impute missing values with column medians.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    numeric_only : bool, default False
+        If True, only numeric columns are imputed.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with missing values replaced by column medians.
+    """
     df = _normalize_missing(df)
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    num_cols = df.select_dtypes(include=[np.number]).columns
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns
 
     result = df.copy()
-    if numeric_cols:
-        imputer = SimpleImputer(strategy="median")
-        result[numeric_cols] = imputer.fit_transform(df[numeric_cols])
-    if cat_cols:
-        imputer_cat = SimpleImputer(strategy="most_frequent")
-        result[cat_cols] = imputer_cat.fit_transform(df[cat_cols])
+    imputer = SimpleImputer(strategy="median")
+    result[num_cols] = imputer.fit_transform(df[num_cols])
+
+    if not numeric_only and len(cat_cols):
+        mode_imputer = SimpleImputer(strategy="most_frequent")
+        result[cat_cols] = mode_imputer.fit_transform(df[cat_cols])
+
     return result
 
 
-def impute_mode(df: pd.DataFrame) -> pd.DataFrame:
-    """Impute missing values using the most frequent value of each column."""
+def impute_mode(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Impute missing values with column modes (most frequent values).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with missing values replaced by column modes.
+    """
     df = _normalize_missing(df)
     imputer = SimpleImputer(strategy="most_frequent")
-    imputed_array = imputer.fit_transform(df)
-    return pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    result = pd.DataFrame(
+        imputer.fit_transform(df),
+        index=df.index,
+        columns=df.columns,
+    )
+    # Restore original dtypes
+    for col in df.columns:
+        try:
+            result[col] = result[col].astype(df[col].dtype)
+        except (ValueError, TypeError):
+            pass
+    return result
 
 
 def impute_knn(
     df: pd.DataFrame,
     n_neighbors: int = 5,
 ) -> pd.DataFrame:
-    """Impute missing values using k-Nearest Neighbors (KNN)."""
+    """Impute missing values using k-Nearest Neighbours.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    n_neighbors : int, default 5
+        Number of nearest neighbours to use.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with missing values imputed via KNN.
+    """
     _warn_if_large(df, "impute_knn")
     _warn_if_knn_heavy_categorical(df, n_neighbors)
     df = _normalize_missing(df)
@@ -274,6 +339,73 @@ def impute_mice(
 
     When ``n_imputations > 1`` runs independent chains each with a distinct
     random seed so the returned DataFrames differ from one another.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with missing values.
+    max_iter : int, default 10
+        Maximum number of MICE imputation iterations per chain.
+    random_state : int, default 0
+        Base random seed.  When *n_imputations* > 1 each chain uses
+        ``random_state + i`` for ``i in range(n_imputations)``.
+    estimator : sklearn estimator or None, default None
+        Regression estimator used by IterativeImputer.  Defaults to
+        ``BayesianRidge()`` with ``sample_posterior=True``.
+    n_imputations : int, default 1
+        Number of independently imputed DataFrames to generate.
+        Returns a single DataFrame when 1, a list when > 1.
+
+    Returns
+    -------
+    pd.DataFrame or list of pd.DataFrame
+        Imputed copy (or list of *m* copies) of *df*.
+
+    Notes
+    -----
+    **Full Multiple Imputation (MI) workflow** — to produce valid pooled
+    inferences you must complete all three steps:
+
+    1. Generate *m* imputed datasets::
+
+           dfs = impute_mice(df, n_imputations=m)
+
+    2. Fit your analytical model on **each** imputed dataset independently
+       and collect the parameter estimates and their sampling variances.
+
+    3. Pool the results using the MI pooling utilities in
+       :mod:`missingly.mi`::
+
+           from missingly.mi import pool_scalar_estimates
+           result = pool_scalar_estimates(estimates, variances)
+
+    **End-to-end example** (simple linear regression ``y ~ x``):
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from missingly import impute_mice
+    >>> from missingly.mi import pool_scalar_estimates
+    >>> from sklearn.linear_model import LinearRegression
+    >>>
+    >>> rng = np.random.default_rng(0)
+    >>> x = rng.uniform(0, 10, 50)
+    >>> y = 2.0 + 3.0 * x + rng.normal(0, 1, 50)
+    >>> y[rng.random(50) < 0.3] = np.nan
+    >>> df = pd.DataFrame({"x": x, "y": y})
+    >>>
+    >>> dfs = impute_mice(df, n_imputations=5, random_state=1)
+    >>> beta1_ests, beta1_vars = [], []
+    >>> for d in dfs:
+    ...     reg = LinearRegression().fit(d[["x"]], d["y"])
+    ...     beta1_ests.append(float(reg.coef_[0]))
+    ...     resid = d["y"] - reg.predict(d[["x"]])
+    ...     ss_x = float(((d["x"] - d["x"].mean()) ** 2).sum())
+    ...     beta1_vars.append(float(np.var(resid, ddof=2)) / ss_x)
+    >>>
+    >>> result = pool_scalar_estimates(beta1_ests, beta1_vars)
+    >>> # Pooled beta1 should be close to 3.0
+    >>> 2.0 < result["q_bar"] < 4.0
+    True
     """
     if n_imputations < 1:
         raise ValueError(f"n_imputations must be >= 1; got {n_imputations}.")
@@ -354,34 +486,60 @@ class FittedImputer:
     """Lightweight fit/transform wrapper for missingly imputation strategies."""
 
     def __init__(self, strategy: str = "mean", **kwargs) -> None:
-        from .transformer import MissinglyImputer
         self.strategy = strategy
-        self._imputer = MissinglyImputer(strategy=strategy, **kwargs)
+        self.kwargs = kwargs
+        self._is_fitted = False
+        self._fit_df: Optional[pd.DataFrame] = None
 
-    @property
-    def is_fitted(self) -> bool:
-        return self._imputer._is_fitted
-
-    def fit(self, X: pd.DataFrame, y=None) -> "FittedImputer":
-        self._imputer.fit(X)
+    def fit(self, df: pd.DataFrame) -> "FittedImputer":
+        """Fit on *df* (stores a reference for transform)."""
+        self._fit_df = df.copy()
+        self._is_fitted = True
         return self
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        if not self.is_fitted:
-            raise RuntimeError(
-                "FittedImputer.transform() called before fit(). "
-                "Call fit(X_train) first."
-            )
-        return self._imputer.transform(X)
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Impute *df* using parameters learned during fit."""
+        if not self._is_fitted:
+            raise RuntimeError("Call fit() before transform().")
+        return _dispatch_strategy(self.strategy, df, **self.kwargs)
 
-    def fit_transform(self, X: pd.DataFrame, y=None) -> pd.DataFrame:
-        return self.fit(X).transform(X)
+    def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Fit on *df* and return its imputed copy."""
+        return self.fit(df).transform(df)
 
-    def __repr__(self) -> str:
-        fitted = "fitted" if self.is_fitted else "unfitted"
-        return f"FittedImputer(strategy={self.strategy!r}, {fitted})"
+
+def _dispatch_strategy(strategy: str, df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    """Route strategy name to the appropriate impute_* function."""
+    dispatch = {
+        "mean": impute_mean,
+        "median": impute_median,
+        "mode": impute_mode,
+        "knn": impute_knn,
+        "mice": impute_mice,
+        "rf": impute_rf,
+        "gb": impute_gb,
+    }
+    if strategy not in dispatch:
+        raise ValueError(
+            f"Unknown strategy {strategy!r}. Choose from: {list(dispatch)}"
+        )
+    return dispatch[strategy](df, **kwargs)
 
 
 def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
-    """Factory function that returns an unfitted :class:`FittedImputer`."""
+    """Factory function for FittedImputer.
+
+    Parameters
+    ----------
+    strategy : str, default 'mean'
+        Imputation strategy. One of: 'mean', 'median', 'mode', 'knn',
+        'mice', 'rf', 'gb'.
+    **kwargs
+        Additional keyword arguments passed to the underlying imputer.
+
+    Returns
+    -------
+    FittedImputer
+        An unfitted imputer ready for fit/transform.
+    """
     return FittedImputer(strategy=strategy, **kwargs)

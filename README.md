@@ -18,6 +18,40 @@ missing data** in pandas DataFrames. It provides:
 - Statistical tests for MCAR / MAR / MNAR mechanisms.
 - Time-series-aware gap analysis and imputation.
 
+### Multiple Imputation (advanced)
+
+For statistically valid inference after imputation, generate *m* datasets
+with `impute_mice(..., n_imputations=m)` and pool the model results using
+Rubin's Rules via the utilities in `missingly.mi`:
+
+```python
+import numpy as np
+import pandas as pd
+from missingly import impute_mice
+from missingly.mi import pool_scalar_estimates
+from sklearn.linear_model import LinearRegression
+
+# 1. Generate m imputed datasets
+dfs = impute_mice(df, n_imputations=5)
+
+# 2. Fit model on each imputed dataset
+beta1_ests, beta1_vars = [], []
+for d in dfs:
+    reg = LinearRegression().fit(d[["x"]], d["y"])
+    beta1_ests.append(float(reg.coef_[0]))
+    resid = d["y"] - reg.predict(d[["x"]])
+    ss_x = float(((d["x"] - d["x"].mean()) ** 2).sum())
+    beta1_vars.append(float(np.var(resid, ddof=2)) / ss_x)
+
+# 3. Pool with Rubin's Rules
+result = pool_scalar_estimates(beta1_ests, beta1_vars)
+print(f"Pooled beta1 = {result['q_bar']:.3f}  (total var = {result['t']:.4f})")
+```
+
+For multivariate models use `pool_linear_regression_results(coefs, covs)`
+which accepts arrays of shape `(m, p)` and `(m, p, p)` and returns a
+pooled coefficient vector plus a pooled covariance matrix.
+
 ---
 
 ## Public API (v1)
@@ -58,180 +92,58 @@ mi.diagnose_missing(df)   # mechanism + recommendation dict
 ### Visualisation
 
 ```python
-mi.vis_miss(df)          # missingness overview matrix
-mi.matrix(df)            # nullity matrix (missingno-style)
-mi.bar(df)               # bar chart of missing counts
-mi.upset(df)             # UpSet plot of co-missing patterns
-mi.miss_patterns(df)     # pattern frequency bar chart
-mi.miss_cooccurrence(df) # co-occurrence heatmap
-mi.heatmap(df)           # nullity correlation heatmap
-mi.miss_cluster(df)      # hierarchical cluster heatmap
+mi.vis_miss(df)            # missingness matrix (static or interactive)
+mi.matrix(df)              # similar matrix plot
+mi.bar(df)                 # bar chart of % missing per column
+mi.upset(df)               # UpSet plot of missingness patterns
+mi.miss_patterns(df)       # pattern heatmap
+mi.miss_cooccurrence(df)   # co-occurrence matrix
+mi.heatmap(df)             # correlation heatmap of missingness
+mi.miss_cluster(df)        # clustered missingness heatmap
+```
+
+### Imputation
+
+```python
+mi.impute_mean(df)           # mean imputation
+mi.impute_median(df)         # median imputation
+mi.impute_mode(df)           # mode imputation
+mi.impute_knn(df)            # k-NN imputation
+mi.impute_mice(df)           # MICE (IterativeImputer + BayesianRidge)
+mi.impute_rf(df)             # Random Forest imputation
+mi.impute_gb(df)             # Gradient Boosting imputation
+
+# Multiple Imputation — generate m datasets for Rubin pooling
+dfs = mi.impute_mice(df, n_imputations=5)
+```
+
+### sklearn Pipeline integration
+
+```python
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+
+pipe = Pipeline([
+    ("impute", mi.MissinglyImputer(strategy="knn")),
+    ("model",  LogisticRegression()),
+])
+pipe.fit(X_train, y_train)
 ```
 
 ### Interactive Plots
 
-Pass `interactive=True` to get a **Plotly figure** instead of a matplotlib
-Axes. Plotly figures render in Jupyter notebooks out of the box and can be
-saved as self-contained HTML files with `.write_html(path)`.
-
-**Requires:** `pip install plotly` (not installed by default).
-
-| Function | interactive=True supported |
-|---|---|
-| `vis_miss` | ✅ |
-| `matrix` | ✅ |
-| `heatmap` | ✅ |
-| `miss_var_pct` | ✅ |
-| `miss_cooccurrence` | ✅ |
-| `bar` | ✅ |
-| `miss_case` | ✅ |
-| `upset` | ✅ |
-| `miss_patterns` | ✅ |
+Pass `interactive=True` to get Plotly-powered plots that can be panned,
+zoomed, and exported:
 
 ```python
-import missingly as mi
-import pandas as pd
-import numpy as np
-
-df = pd.DataFrame({
-    "age":    [25, np.nan, 30, np.nan, 45],
-    "income": [50000, 60000, np.nan, 80000, np.nan],
-    "score":  [7.2, 8.1, np.nan, 6.5, 9.0],
-})
-
-# Interactive missingness matrix
-fig = mi.vis_miss(df, interactive=True)
-fig.show()                         # in Jupyter
-fig.write_html("missing.html")     # save as HTML
-
-# Interactive UpSet plot
-fig = mi.upset(df, interactive=True)
-fig.show()
-
-# Interactive bar chart
-fig = mi.bar(df, interactive=True)
-fig.show()
-
-# Interactive per-row missing count
-fig = mi.miss_case(df, interactive=True)
-fig.show()
-
-# Interactive pattern frequency chart
-fig = mi.miss_patterns(df, top_n=5, interactive=True)
-fig.show()
+mi.vis_miss(df, interactive=True)
+mi.heatmap(df, interactive=True)
+mi.bar(df, interactive=True)
 ```
 
-### `MissinglyImputer` inside a sklearn Pipeline
-
-```python
-from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
-from missingly import MissinglyImputer
-
-pipe = Pipeline([
-    ("imputer", MissinglyImputer(strategy="knn")),
-    ("clf",     RandomForestClassifier()),
-])
-pipe.fit(X_train, y_train)
-predictions = pipe.predict(X_test)
-```
-
-### Report
-
-```python
-import missingly as mi
-
-mi.create_report(df, output_path="missing_report.html")
-# Opens a standalone HTML report in the current directory
-```
-
-### Time-series missingness
-
-missingly provides first-class support for time-indexed DataFrames.
-The example below works through a realistic temperature sensor scenario
-where readings drop out intermittently.
-
-```python
-import pandas as pd
-import numpy as np
-import missingly as mi
-
-# ── 1. Build a temperature series with sensor dropouts ──────────────────────
-idx = pd.date_range("2024-01-01", periods=30, freq="h")
-temp = pd.Series(
-    [18.5, 19.0, np.nan, np.nan, 20.1, 20.3, np.nan, 20.8,
-     21.0, 21.2, np.nan, np.nan, np.nan, 21.9, 22.0,
-     22.3, np.nan, 22.7, 23.0, 23.1, 23.4, np.nan, np.nan,
-     23.8, 24.0, 24.1, np.nan, 24.5, 24.7, 25.0],
-    index=idx, name="temp_C"
-)
-df = temp.to_frame()
-
-# ── 2. Diagnose gaps ──────────────────────────────────────────────────────
-summary = mi.miss_ts_summary(df)
-print(summary)
-# variable   n_miss  pct_miss  n_gaps  mean_gap  max_gap  median_gap
-# temp_C          9      30.0       5       1.8        3         2.0
-
-# ── 3. Visualise missingness over time ─────────────────────────────────────
-mi.vis_ts_miss(df)           # tile heatmap — green = present, red = missing
-mi.vis_miss_over_time(df, window=6)  # rolling 6-hour missingness rate
-
-# ── 4. Impute with time-aware interpolation ──────────────────────────────
-df_clean = mi.impute_ts(df, method="time")   # weights by actual timestamp gap
-df_ffill  = mi.impute_ts(df, method="ffill", limit=2)  # fill at most 2 consecutive
-
-print(df_clean.isnull().sum())   # temp_C    0
-```
-
-**Available strategies for `impute_ts`:**
-
-| `method` | Description |
-|---|---|
-| `"ffill"` | Forward-fill (last observation carried forward) |
-| `"bfill"` | Backward-fill (next observation carried backward) |
-| `"linear"` | Linear interpolation by row position |
-| `"time"` | Linear interpolation weighted by actual timestamp gap |
-| `"spline"` | Spline interpolation (configurable `spline_order`) |
-
-> **Tip — `limit` parameter:** pass `limit=N` to cap how many consecutive
-> NaNs are filled. Values in longer gaps are left as `NaN`, making it
-> easy to flag unreliable stretches for downstream handling.
-
-### Advanced / Experimental Utilities
-
-The following tools are available but **experimental** — they emit a
-`FutureWarning` on every call and **may be moved to separate packages,
-renamed, or removed** in a future release without a major-version bump:
-
-- **Simulation:** `simulate_mcar`, `simulate_mar`, `simulate_mnar`,
-  `simulate_mixed` — introduce controlled missingness for benchmarking.
-  These may migrate to a dedicated `missingly-sim` package in 0.3.0+.
-- **Time-series extras:** `gap_table`, `vis_gap_lengths` — detailed
-  per-gap diagnostics. Core time-series functions (`miss_ts_summary`,
-  `vis_ts_miss`, `impute_ts`) are stable v1 API.
-- **Performance helpers:** `optimize_dtypes`, `memory_usage_mb`,
-  `chunk_apply` — utility shims kept for one release cycle; may move
-  to `data_quality_toolkit` in 0.3.0+.
-- **Stats extras:** `hotelling_test`, `pattern_monotone_test`,
-  `missing_correlation_matrix` (and `test_*` aliases).
-- **Data manipulation helpers:** `clean_names`, `remove_empty`,
-  `coalesce_columns`, `miss_as_feature`.
-
----
-
-## Why missingly?
-
-Python's missing-data ecosystem is fragmented:
-[missingno](https://github.com/ResidentMario/missingno) visualises,
-[fancyimpute](https://github.com/iskandr/fancyimpute) imputes, and
-scikit-learn transformers handle the pipeline — but nothing ties them
-together in one coherent, opinionated API.
-
-missingly draws inspiration from R's
-[naniar](https://github.com/njtierney/naniar) and
-[VIM](https://github.com/statistikat/VIM) to give you a **single,
-pandas-native entry point** for the full missing-data workflow.
+The following functions support `interactive=True`:
+`vis_miss`, `heatmap`, `matrix`, `miss_var_pct`, `miss_cooccurrence`,
+`bar`, `miss_case`, `upset`, `miss_patterns`.
 
 ---
 
@@ -243,40 +155,6 @@ pip install missingly
 
 ---
 
-## Quick Start
-
-```python
-import pandas as pd
-import numpy as np
-import missingly as mi
-
-# Sample data
-df = pd.DataFrame({
-    "age":    [25, np.nan, 30, np.nan, 45],
-    "income": [50000, 60000, np.nan, 80000, np.nan],
-    "score":  [7.2, 8.1, np.nan, 6.5, 9.0],
-})
-
-# Summarise
-print(mi.miss_var_summary(df))
-
-# Visualise
-mi.vis_miss(df)
-
-# Test mechanism
-print(mi.mcar_test(df))
-
-# Impute
-from missingly import MissinglyImputer
-imp = MissinglyImputer(strategy="knn")
-df_clean = pd.DataFrame(imp.fit_transform(df), columns=df.columns)
-
-# Report
-mi.create_report(df, output_path="report.html")
-```
-
----
-
 ## License
 
-MIT © Ali Sadeghi Aghili
+MIT — see [LICENSE](LICENSE).
