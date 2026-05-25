@@ -93,6 +93,32 @@ def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
+    """Replace NaN entries in a 2-D array with column means.
+
+    Used by ``GradientBoosting`` imputers which do not natively accept
+    NaN in their feature matrices.
+
+    Parameters
+    ----------
+    X : np.ndarray of shape (n_samples, n_features)
+        Array that may contain NaN values.
+
+    Returns
+    -------
+    np.ndarray
+        Copy of *X* with NaN replaced by per-column means.  Columns
+        that are entirely NaN are filled with 0.
+    """
+    X = X.copy()
+    col_means = np.nanmean(X, axis=0)
+    # For all-NaN columns nanmean returns nan — fall back to 0
+    col_means = np.where(np.isnan(col_means), 0.0, col_means)
+    nan_mask = np.isnan(X)
+    X[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
+    return X
+
+
 def _split_encode(
     df: pd.DataFrame,
 ):
@@ -177,13 +203,8 @@ def _impute_column_by_column(
             X_pred = X_full[missing_mask.values]
 
             if fill_feature_nan:
-                col_means = np.nanmean(X_full, axis=0)
-                nan_mask = np.isnan(X_train)
-                X_train = X_train.copy()
-                X_train[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
-                X_pred = X_pred.copy()
-                pred_nan_mask = np.isnan(X_pred)
-                X_pred[pred_nan_mask] = np.take(col_means, np.where(pred_nan_mask)[1])
+                X_train = _fill_nan_with_col_means(X_train)
+                X_pred = _fill_nan_with_col_means(X_pred)
 
             is_cat = col in cat_cols
             if is_cat:
