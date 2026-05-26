@@ -118,6 +118,7 @@ from missingly.impute import (
     impute_rf,
     impute_gb,
     make_imputer,
+    FittedImputer,
 )
 
 # ---------------------------------------------------------------------------
@@ -125,7 +126,6 @@ from missingly.impute import (
 # ---------------------------------------------------------------------------
 from missingly.transformer import (
     MissinglyImputer,
-    FittedImputer,
 )
 
 # ---------------------------------------------------------------------------
