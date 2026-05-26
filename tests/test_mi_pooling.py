@@ -1,4 +1,11 @@
-"""Tests for missingly.mi pooling utilities (Rubin's Rules)."""
+"""Tests for missingly.mi pooling utilities (Rubin's Rules).
+
+Includes:
+  - Unit tests for pool_scalar_estimates
+  - Unit tests for pool_linear_regression_results
+  - Input validation smoke tests
+  - Integration test: full MI workflow with impute_mice + pool_scalar_estimates
+"""
 
 from __future__ import annotations
 
@@ -120,7 +127,7 @@ class TestInputValidation:
     def test_wrong_coefs_ndim_raises(self):
         with pytest.raises(ValueError, match="2-D array"):
             pool_linear_regression_results(
-                np.array([1.0, 2.0]),      # 1-D, wrong
+                np.array([1.0, 2.0]),
                 np.zeros((2, 2, 2)),
             )
 
@@ -128,5 +135,57 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="inconsistent"):
             pool_linear_regression_results(
                 np.ones((3, 2)),
-                np.ones((3, 3, 3)),        # p=3 but coefs has p=2
+                np.ones((3, 3, 3)),
             )
+
+
+# ---------------------------------------------------------------------------
+# Test 4 (integration): full MI workflow with impute_mice
+# ---------------------------------------------------------------------------
+
+class TestMIIntegration:
+    """End-to-end test: impute_mice → LinearRegression → pool_scalar_estimates.
+
+    True relationship: y = 2 * x + noise.
+    We expect the pooled beta1 (slope) to be close to 2.0.
+    """
+
+    def test_pooled_beta1_close_to_truth(self):
+        """Pooled slope from 5 MI chains should be in (1.7, 2.3)."""
+        from sklearn.linear_model import LinearRegression
+        from missingly.impute import impute_mice
+
+        rng = np.random.default_rng(0)
+        n = 100
+        x = rng.uniform(0, 10, n)
+        y = 2.0 * x + rng.normal(0, 1, n)
+
+        # MCAR: remove ~30% of y
+        mask = rng.random(n) < 0.30
+        y_missing = y.copy()
+        y_missing[mask] = np.nan
+
+        import pandas as pd
+        df = pd.DataFrame({"x": x, "y": y_missing})
+
+        m = 5
+        dfs = impute_mice(df, n_imputations=m, random_state=42)
+
+        beta1_ests, beta1_vars = [], []
+        for d in dfs:
+            reg = LinearRegression().fit(d[["x"]], d["y"])
+            beta1 = float(reg.coef_[0])
+            resid = d["y"] - reg.predict(d[["x"]])
+            ss_x = float(((d["x"] - d["x"].mean()) ** 2).sum())
+            # Variance of slope estimate: sigma^2 / SS_x
+            sigma2 = float(np.var(resid, ddof=2))
+            var_beta1 = sigma2 / ss_x if ss_x > 0 else 1e-6
+            beta1_ests.append(beta1)
+            beta1_vars.append(max(var_beta1, 1e-10))  # guard numerical zeros
+
+        result = pool_scalar_estimates(beta1_ests, beta1_vars)
+
+        assert 1.7 < result["q_bar"] < 2.3, (
+            f"Pooled beta1 = {result['q_bar']:.4f} is outside (1.7, 2.3)"
+        )
+        assert result["t"] > 0, "Total variance must be positive"
