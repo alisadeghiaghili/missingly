@@ -3,101 +3,54 @@
 Public API
 ----------
 
-**Visualisation**
+**Visualisation**::
 
-.. autosummary::
-   :nosignatures:
+    matrix, bar, miss_case, miss_var_pct, vis_miss, miss_which,
+    upset, miss_patterns, miss_cooccurrence, heatmap, miss_cluster, ...
 
-   matrix
-   bar
-   miss_case
-   miss_var_pct
-   vis_miss
-   miss_which
-   upset
-   miss_patterns
-   miss_cooccurrence
-   heatmap
-   dendrogram
-   miss_cluster
-   miss_row_profile
-   shadow_scatter
-   vis_miss_fct
-   vis_miss_by_group
-   vis_impute_dist
-   miss_impute_compare
-   scatter_miss
-   vis_miss_cumsum_var
-   vis_miss_cumsum_case
-   vis_miss_span
-   vis_parallel_coords
+**Summary / stats**::
 
-**Summary / stats**
+    summarise, miss_scan_count, miss_summary,
+    miss_var_summary, miss_case_summary,
+    n_miss, n_complete, pct_miss, pct_complete, bind_shadow
 
-.. autosummary::
-   :nosignatures:
+**Diagnosis**::
 
-   summarise
-   miss_scan_count
-   miss_summary
-   miss_case_summary
-   miss_var_summary
+    mcar_test, mar_mnar_test, diagnose_missing
 
-**Imputation**
+**Imputation**::
 
-.. autosummary::
-   :nosignatures:
+    impute_mean, impute_median, impute_mode,
+    impute_knn, impute_mice, impute_rf, impute_gb, make_imputer
 
-   impute_mean
-   impute_median
-   impute_mode
-   impute_knn
-   impute_mice
-   impute_rf
-   impute_gb
-   make_imputer
+**sklearn-style**::
 
-**Multiple Imputation pooling utilities**
+    MissinglyImputer, FittedImputer, make_imputer
 
-.. autosummary::
-   :nosignatures:
+**Comparison**::
 
-   pool_scalar_estimates
-   pool_linear_regression_results
+    compare_imputations, cv_compare_imputations
 
-**Comparison**
+**Time-series**::
 
-.. autosummary::
-   :nosignatures:
+    miss_ts_summary, vis_ts_miss, vis_miss_over_time, impute_ts
 
-   compare_imputation_methods
+**Evaluation**::
 
-**Simulation**
+    compare_imputations, cv_compare_imputations
 
-.. autosummary::
-   :nosignatures:
+**Report**::
 
-   simulate_mcar
-   simulate_mar
-   simulate_mnar
+    create_report
 
-**Manipulation**
+**Accessor**::
 
-.. autosummary::
-   :nosignatures:
-
-   add_any_miss_var
-   bind_shadow_matrix
-
-**Accessor**
-
-The ``DataFrame.miss`` accessor exposes the full API without extra imports::
-
-    df.miss.summary()
-    df.miss.vis_miss()
+    df.miss.n_miss(), df.miss.vis_miss(), ...
 """
 
 from __future__ import annotations
+
+import warnings as _warnings
 
 # ---------------------------------------------------------------------------
 # Visualisation
@@ -132,11 +85,25 @@ from missingly.visualise import (
 # Summary / stats
 # ---------------------------------------------------------------------------
 from missingly.summary import (
+    bind_shadow,
+    n_miss,
+    n_complete,
+    pct_miss,
+    pct_complete,
+    miss_var_summary,
+    miss_case_summary,
     summarise,
     miss_scan_count,
     miss_summary,
-    miss_case_summary,
-    miss_var_summary,
+)
+
+# ---------------------------------------------------------------------------
+# Diagnosis
+# ---------------------------------------------------------------------------
+from missingly.stats import (
+    mcar_test,
+    mar_mnar_test,
+    diagnose_missing,
 )
 
 # ---------------------------------------------------------------------------
@@ -154,6 +121,14 @@ from missingly.impute import (
 )
 
 # ---------------------------------------------------------------------------
+# sklearn-style transformer
+# ---------------------------------------------------------------------------
+from missingly.transformer import (
+    MissinglyImputer,
+    FittedImputer,
+)
+
+# ---------------------------------------------------------------------------
 # Multiple Imputation pooling utilities
 # ---------------------------------------------------------------------------
 from missingly.mi import (
@@ -164,7 +139,25 @@ from missingly.mi import (
 # ---------------------------------------------------------------------------
 # Comparison
 # ---------------------------------------------------------------------------
-from missingly.compare import compare_imputation_methods
+from missingly.compare import (
+    compare_imputations,
+    cv_compare_imputations,
+)
+
+# ---------------------------------------------------------------------------
+# Report
+# ---------------------------------------------------------------------------
+from missingly.report import create_report
+
+# ---------------------------------------------------------------------------
+# Time-series
+# ---------------------------------------------------------------------------
+from missingly.timeseries import (
+    miss_ts_summary,
+    vis_ts_miss,
+    vis_miss_over_time,
+    impute_ts,
+)
 
 # ---------------------------------------------------------------------------
 # Simulation
@@ -173,15 +166,50 @@ from missingly.simulate import (
     simulate_mcar,
     simulate_mar,
     simulate_mnar,
+    simulate_mixed,
 )
 
 # ---------------------------------------------------------------------------
 # Manipulation
 # ---------------------------------------------------------------------------
 from missingly.manipulation import (
+    replace_with_na,
+    replace_with_na_all,
     add_any_miss_var,
     bind_shadow_matrix,
 )
+
+# ---------------------------------------------------------------------------
+# Evaluation aliases (same as compare)
+# ---------------------------------------------------------------------------
+compare_imputations = compare_imputations  # noqa: F811 (explicit re-bind)
+cv_compare_imputations = cv_compare_imputations  # noqa: F811
+
+# ---------------------------------------------------------------------------
+# Legacy / experimental symbols — emit FutureWarning on call
+# ---------------------------------------------------------------------------
+from missingly._deprecation import deprecated as _deprecated
+from missingly.stats_extra import (
+    hotelling_test,
+    pattern_monotone_test,
+    missing_correlation_matrix,
+)
+from missingly.timeseries import gap_table, vis_gap_lengths
+from missingly.manipulation import (
+    clean_names,
+    remove_empty,
+    coalesce_columns,
+    miss_as_feature,
+)
+from missingly.performance import (
+    chunk_apply,
+    memory_usage_mb,
+    optimize_dtypes,
+)
+
+# Backward-compat aliases
+test_hotelling = hotelling_test
+test_pattern_monotone = pattern_monotone_test
 
 # ---------------------------------------------------------------------------
 # Accessor (side-effect import — registers df.miss)
@@ -213,12 +241,21 @@ __all__ = [
     "vis_miss_cumsum_case",
     "vis_miss_span",
     "vis_parallel_coords",
-    # Summary / stats
+    # Summary
+    "bind_shadow",
+    "n_miss",
+    "n_complete",
+    "pct_miss",
+    "pct_complete",
+    "miss_var_summary",
+    "miss_case_summary",
     "summarise",
     "miss_scan_count",
     "miss_summary",
-    "miss_case_summary",
-    "miss_var_summary",
+    # Diagnosis
+    "mcar_test",
+    "mar_mnar_test",
+    "diagnose_missing",
     # Imputation
     "impute_mean",
     "impute_median",
@@ -228,18 +265,48 @@ __all__ = [
     "impute_rf",
     "impute_gb",
     "make_imputer",
-    # Multiple Imputation pooling utilities
+    # sklearn-style
+    "MissinglyImputer",
+    "FittedImputer",
+    # MI pooling
     "pool_scalar_estimates",
     "pool_linear_regression_results",
-    # Comparison
-    "compare_imputation_methods",
+    # Comparison / Evaluation
+    "compare_imputations",
+    "cv_compare_imputations",
+    # Report
+    "create_report",
+    # Time-series
+    "miss_ts_summary",
+    "vis_ts_miss",
+    "vis_miss_over_time",
+    "impute_ts",
     # Simulation
     "simulate_mcar",
     "simulate_mar",
     "simulate_mnar",
+    "simulate_mixed",
     # Manipulation
+    "replace_with_na",
+    "replace_with_na_all",
     "add_any_miss_var",
     "bind_shadow_matrix",
+    # Legacy
+    "hotelling_test",
+    "pattern_monotone_test",
+    "missing_correlation_matrix",
+    "gap_table",
+    "vis_gap_lengths",
+    "clean_names",
+    "remove_empty",
+    "coalesce_columns",
+    "miss_as_feature",
+    "chunk_apply",
+    "memory_usage_mb",
+    "optimize_dtypes",
+    # Backward-compat aliases
+    "test_hotelling",
+    "test_pattern_monotone",
 ]
 
 __version__ = "0.2.0"
