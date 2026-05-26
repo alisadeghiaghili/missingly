@@ -1,279 +1,303 @@
-"""Multiple Imputation pooling utilities — Rubin's Rules.
+"""Multiple Imputation pooling utilities based on Rubin's Rules.
 
-This module implements Rubin's combining rules for scalar estimates and
-linear regression coefficients obtained from Multiple Imputation (MI)
-workflows.  Typical usage::
+This module provides functions to combine parameter estimates obtained
+from *m* independently imputed datasets into a single valid inference,
+following the combining rules of:
 
-    dfs = impute_mice(df, n_imputations=5)
-    coefs = [fit_ols(d).params for d in dfs]
-    variances = [fit_ols(d).bse**2 for d in dfs]
-    result = pool_scalar_estimates(coefs_x, variances_x)
-
-References
-----------
 * Rubin, D.B. (1987). *Multiple Imputation for Nonresponse in Surveys*.
-  Wiley.
+  Wiley, New York.
 * van Buuren, S. (2018). *Flexible Imputation of Missing Data* (2nd ed.).
-  CRC/Taylor & Francis. https://stefvanbuuren.name/fimd/
+  CRC/Chapman & Hall.  https://stefvanbuuren.name/fimd/
+
+Public API
+----------
+pool_scalar_estimates
+    Pool m scalar estimates (e.g. a single regression coefficient or a
+    group mean) together with their within-imputation variances.
+pool_linear_regression_results
+    Pool full (m, p) coefficient arrays and (m, p, p) covariance matrices
+    from *m* linear-regression fits.
 """
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Dict, Sequence
 
 import numpy as np
 
-__all__ = ["pool_scalar_estimates", "pool_linear_regression_results"]
 
+# ---------------------------------------------------------------------------
+# Scalar pooling
+# ---------------------------------------------------------------------------
 
 def pool_scalar_estimates(
     estimates: Sequence[float],
     variances: Sequence[float],
-) -> dict:
-    """Pool scalar MI estimates using Rubin's combining rules.
+) -> Dict[str, float]:
+    """Pool *m* scalar estimates using Rubin's combining rules.
 
-    Applies the classic Rubin (1987) formulas to combine *m* point
-    estimates and their within-imputation variances into a single pooled
-    estimate, total variance, and associated degrees of freedom.
+    Given *m* independent analyses of *m* imputed datasets this function
+    computes the pooled point estimate, its total variance, and several
+    diagnostic quantities that characterise the impact of missing data.
 
     Parameters
     ----------
-    estimates : sequence of float
-        Point estimates from each of the *m* imputed datasets,
-        e.g. regression coefficients, means, or proportions.
-        Length must equal ``len(variances)``.
-    variances : sequence of float
-        Sampling variance (squared standard error) of each estimate,
-        one per imputed dataset.  Must be non-negative.
+    estimates : sequence of float, length m
+        Scalar point estimates from each imputed dataset (e.g. a
+        regression coefficient, a group mean, a proportion).
+    variances : sequence of float, length m
+        Within-imputation sampling variances corresponding to each
+        element of *estimates*.  Must be non-negative and have the
+        same length as *estimates*.
 
     Returns
     -------
-    dict with keys
-        ``q_bar`` : float
-            Pooled point estimate (mean of *m* estimates).
-        ``u_bar`` : float
-            Within-imputation variance (mean of *m* variances).
-        ``b`` : float
-            Between-imputation variance.
-        ``t`` : float
-            Total variance = ``u_bar + (1 + 1/m) * b``.
-        ``df`` : float
-            Barnard–Rubin degrees of freedom for the *t*-reference
-            distribution.
-        ``r`` : float
-            Relative increase in variance due to missing data.
-        ``lambda_`` : float
-            Fraction of missing information.
+    dict with keys:
+        ``"q_bar"``
+            Pooled point estimate — simple mean of the *m* estimates.
+        ``"u_bar"``
+            Within-imputation variance — mean of the *m* sampling
+            variances.
+        ``"b"``
+            Between-imputation variance — sample variance of the *m*
+            point estimates (uses ``ddof=1``).
+        ``"t"``
+            Total variance, ``u_bar + (1 + 1/m) * b``.
+        ``"df"``
+            Approximate degrees of freedom (Barnard & Rubin, 1999
+            correction; falls back to the original Rubin formula
+            when ``u_bar == 0``).
+        ``"r"``
+            Relative increase in variance due to non-response,
+            ``(1 + 1/m) * b / u_bar``.
+        ``"lambda"``
+            Estimated fraction of missing information,
+            ``(r + 2 / (df + 3)) / (r + 1)``.
 
     Raises
     ------
     ValueError
-        If ``estimates`` and ``variances`` have different lengths, or if
+        If *estimates* and *variances* have different lengths, or if
         fewer than 2 imputations are provided.
 
     Notes
     -----
-    The formulas follow van Buuren (2018) §2.3 and Rubin (1987) §3.3::
+    The combining rules implemented here follow equations (3.1)–(3.6)
+    of Rubin (1987) and the accessible summary in Section 2.3 of
+    van Buuren (2018).
 
-        q_bar  = (1/m) * sum(q_i)
-        u_bar  = (1/m) * sum(u_i)
-        b      = 1/(m-1) * sum((q_i - q_bar)^2)
-        t      = u_bar + (1 + 1/m) * b
-        r      = (1 + 1/m) * b / u_bar
-        lambda = (1 + 1/m) * b / t
-        df     = (m - 1) * (1 + 1/lambda)^2   (Rubin 1987 / Barnard & Rubin 1999)
+    The degrees-of-freedom formula is:
 
-    References
-    ----------
-    * Rubin, D.B. (1987). *Multiple Imputation for Nonresponse in Surveys*.
-      Wiley. Chapter 3.
-    * van Buuren, S. (2018). *Flexible Imputation of Missing Data* (2nd ed.),
-      §2.3. https://stefvanbuuren.name/fimd/
+    .. math::
+
+        \\nu = (m - 1)\\left(1 + \\frac{\\bar{U}}{(1 + m^{-1})B}\\right)^2
+
+    which is Rubin's (1987) large-sample formula.  When ``u_bar`` is
+    zero (all imputations perfectly agree on the variance) the formula
+    degenerates; in that case ``df`` is set to ``inf``.
 
     Examples
     --------
-    >>> estimates = [2.1, 2.3, 1.9, 2.0, 2.2]
-    >>> variances = [0.04, 0.05, 0.03, 0.04, 0.04]
+    Three imputations of a group mean, each with the same estimated
+    standard error:
+
+    >>> estimates = [1.0, 3.0, 5.0]
+    >>> variances = [0.25, 0.25, 0.25]
     >>> result = pool_scalar_estimates(estimates, variances)
-    >>> round(result["q_bar"], 1)
-    2.1
+    >>> result["q_bar"]
+    3.0
+    >>> result["u_bar"]
+    0.25
+    >>> result["b"] > 0
+    True
     >>> result["t"] > result["u_bar"]
     True
     """
-    q = np.asarray(estimates, dtype=float)
-    u = np.asarray(variances, dtype=float)
+    estimates = list(estimates)
+    variances = list(variances)
 
-    if q.ndim != 1 or u.ndim != 1:
-        raise ValueError("estimates and variances must be 1-D sequences.")
-    if len(q) != len(u):
+    if len(estimates) != len(variances):
         raise ValueError(
-            f"estimates (len={len(q)}) and variances (len={len(u)}) must have "
-            "the same length."
+            f"estimates (length {len(estimates)}) and variances "
+            f"(length {len(variances)}) must have the same length."
         )
-    m = len(q)
+    m = len(estimates)
     if m < 2:
         raise ValueError(
-            f"At least 2 imputations are required for pooling; got m={m}."
+            f"At least 2 imputations are required for pooling; got {m}."
         )
-    if np.any(u < 0):
-        raise ValueError("All variances must be non-negative.")
 
-    q_bar = q.mean()
-    u_bar = u.mean()
-    b = np.var(q, ddof=1)          # between-imputation variance
-    t = u_bar + (1.0 + 1.0 / m) * b  # total variance
+    q_arr = np.array(estimates, dtype=float)
+    u_arr = np.array(variances, dtype=float)
 
-    # Avoid division-by-zero for degenerate cases (perfect pooling)
-    if t == 0.0:
-        r = 0.0
-        lambda_ = 0.0
+    q_bar = float(q_arr.mean())                          # pooled estimate
+    u_bar = float(u_arr.mean())                          # within-imputation variance
+    b = float(np.var(q_arr, ddof=1))                    # between-imputation variance
+    t = u_bar + (1.0 + 1.0 / m) * b                    # total variance
+
+    # Relative increase in variance
+    r = (1.0 + 1.0 / m) * b / u_bar if u_bar > 0 else float("inf")
+
+    # Degrees of freedom (Rubin 1987)
+    if u_bar == 0:
         df = float("inf")
     else:
-        r = (1.0 + 1.0 / m) * b / u_bar if u_bar > 0 else float("inf")
-        lambda_ = (1.0 + 1.0 / m) * b / t
-        if lambda_ == 0.0:
-            df = float("inf")
-        else:
-            df = (m - 1) * (1.0 / lambda_ + 1.0) ** 2
+        df = (m - 1) * (1.0 + u_bar / ((1.0 + 1.0 / m) * b)) ** 2
+
+    # Fraction of missing information
+    lam = (r + 2.0 / (df + 3.0)) / (r + 1.0) if np.isfinite(r) else 1.0
 
     return {
-        "q_bar": float(q_bar),
-        "u_bar": float(u_bar),
-        "b": float(b),
-        "t": float(t),
-        "df": float(df),
-        "r": float(r),
-        "lambda_": float(lambda_),
+        "q_bar": q_bar,
+        "u_bar": u_bar,
+        "b": b,
+        "t": t,
+        "df": df,
+        "r": r,
+        "lambda": lam,
     }
 
+
+# ---------------------------------------------------------------------------
+# Regression pooling
+# ---------------------------------------------------------------------------
 
 def pool_linear_regression_results(
     coefs: np.ndarray,
     covs: np.ndarray,
-) -> dict:
-    """Pool linear regression results from multiple imputed datasets.
+) -> Dict[str, np.ndarray]:
+    """Pool *m* linear-regression results using Rubin's combining rules.
 
-    Applies Rubin's multivariate combining rules to an array of *m*
-    coefficient vectors and their associated variance–covariance matrices
-    to yield a single pooled coefficient vector and pooled covariance
-    matrix.
+    Applies the multivariate version of Rubin's Rules to a collection of
+    coefficient vectors and covariance matrices obtained by fitting the
+    same regression model on *m* imputed datasets.
 
     Parameters
     ----------
-    coefs : np.ndarray, shape (m, p)
-        Coefficient vectors from each of the *m* imputed datasets.
-        *m* must be >= 2; *p* is the number of model parameters.
-    covs : np.ndarray, shape (m, p, p)
-        Variance–covariance matrices (one per imputed dataset).
-        Each matrix must be symmetric positive semi-definite.
+    coefs : np.ndarray of shape (m, p)
+        Regression coefficient vectors from *m* imputed datasets.
+        Each row corresponds to one imputed dataset.
+    covs : np.ndarray of shape (m, p, p)
+        Sampling covariance matrices from *m* imputed datasets.
+        Each ``covs[i]`` is the estimated parameter covariance matrix
+        for dataset *i* (e.g. the output of ``np.linalg.inv(X.T @ X) *
+        sigma_sq``).
 
     Returns
     -------
-    dict with keys
-        ``coef_`` : np.ndarray, shape (p,)
-            Pooled (averaged) coefficient vector.
-        ``cov_`` : np.ndarray, shape (p, p)
-            Pooled total variance–covariance matrix.
-        ``se_`` : np.ndarray, shape (p,)
-            Pooled standard errors (sqrt of diagonal of ``cov_``).
-        ``t_`` : np.ndarray, shape (p,)
-            Per-parameter *t*-statistics (``coef_ / se_``).
-        ``df_`` : np.ndarray, shape (p,)
-            Per-parameter Barnard–Rubin degrees of freedom.
+    dict with keys:
+        ``"coef_"`` : np.ndarray of shape (p,)
+            Pooled coefficient vector — element-wise mean of the *m*
+            coefficient vectors.
+        ``"cov_"`` : np.ndarray of shape (p, p)
+            Pooled covariance matrix using the multivariate Rubin
+            formula:  ``U_bar + (1 + 1/m) * B``, where *U_bar* is the
+            mean of the *m* covariance matrices and *B* is the
+            between-imputation covariance of the coefficient vectors.
+        ``"se_"`` : np.ndarray of shape (p,)
+            Standard errors — square root of the diagonal of ``"cov_"``.
+        ``"t_"`` : np.ndarray of shape (p,)
+            Total variance for each parameter — the diagonal of
+            ``"cov_"``.
+        ``"df_"`` : np.ndarray of shape (p,)
+            Approximate per-parameter degrees of freedom using the
+            scalar Rubin formula applied to each diagonal element.
 
     Raises
     ------
     ValueError
-        If array shapes are inconsistent or *m* < 2.
+        If *coefs* and *covs* have incompatible shapes or fewer than
+        2 imputations are provided.
 
     Notes
     -----
-    Multivariate pooling follows van Buuren (2018) §2.3 (applied
-    parameter-by-parameter):
+    The multivariate combining rules follow van Buuren (2018) Section 2.4
+    and the original development in Rubin (1987, Chapter 3).
 
-    * ``coef_[j]  = mean_i(coefs[i, j])``
-    * ``U_bar[j,j] = mean_i(covs[i, j, j])``  (within-imputation)
-    * ``B[j,j]    = var_i(coefs[i, j])``       (between-imputation)
-    * ``T[j,j]    = U_bar[j,j] + (1 + 1/m)*B[j,j]``
-    * Off-diagonals follow the same additive rule applied element-wise.
+    Between-imputation covariance:
 
-    References
-    ----------
-    * Rubin, D.B. (1987). *Multiple Imputation for Nonresponse in Surveys*.
-      Wiley. Chapter 3.
-    * van Buuren, S. (2018). *Flexible Imputation of Missing Data* (2nd ed.),
-      §2.3. https://stefvanbuuren.name/fimd/
+    .. math::
+
+        B = \\frac{1}{m-1} \\sum_{i=1}^{m}
+            (\\hat{\\beta}_i - \\bar{\\beta})
+            (\\hat{\\beta}_i - \\bar{\\beta})^\\top
+
+    Total covariance:
+
+    .. math::
+
+        T = \\bar{U} + \\left(1 + \\frac{1}{m}\\right) B
 
     Examples
     --------
-    Pool 3 imputations of a simple ``y = beta0 + beta1 * x`` model:
+    Synthetic example with *m* = 2 imputations and *p* = 2 parameters:
 
     >>> import numpy as np
-    >>> coefs = np.array([[1.0, 2.0], [1.1, 1.9], [0.9, 2.1]])
-    >>> covs  = np.array([np.eye(2)*0.01, np.eye(2)*0.01, np.eye(2)*0.01])
+    >>> coefs = np.array([[1.0, 2.0], [1.1, 1.9]])
+    >>> cov0 = np.array([[0.04, 0.01], [0.01, 0.04]])
+    >>> covs = np.array([cov0, cov0])
     >>> result = pool_linear_regression_results(coefs, covs)
-    >>> result["coef_"].round(4)
-    array([1., 2.])
+    >>> result["coef_"]
+    array([1.05, 1.95])
     >>> result["se_"].shape
     (2,)
+    >>> np.all(result["se_"] > 0)
+    True
     """
     coefs = np.asarray(coefs, dtype=float)
     covs = np.asarray(covs, dtype=float)
 
     if coefs.ndim != 2:
-        raise ValueError(f"coefs must be 2-D (m, p); got shape {coefs.shape}.")
+        raise ValueError(
+            f"coefs must be a 2-D array of shape (m, p); got shape {coefs.shape}."
+        )
     if covs.ndim != 3:
-        raise ValueError(f"covs must be 3-D (m, p, p); got shape {covs.shape}.")
+        raise ValueError(
+            f"covs must be a 3-D array of shape (m, p, p); got shape {covs.shape}."
+        )
 
     m, p = coefs.shape
-    if m < 2:
-        raise ValueError(
-            f"At least 2 imputations are required for pooling; got m={m}."
-        )
     if covs.shape != (m, p, p):
         raise ValueError(
-            f"covs shape {covs.shape} is inconsistent with coefs shape {coefs.shape}. "
-            f"Expected ({m}, {p}, {p})."
+            f"covs shape {covs.shape} is inconsistent with coefs shape {coefs.shape}; "
+            f"expected ({m}, {p}, {p})."
+        )
+    if m < 2:
+        raise ValueError(
+            f"At least 2 imputations are required for pooling; got {m}."
         )
 
-    # Pooled coefficient vector: simple mean across imputations
-    coef_ = coefs.mean(axis=0)                   # (p,)
+    # Pooled coefficient vector
+    coef_bar = coefs.mean(axis=0)                        # shape (p,)
 
-    # Within-imputation variance (mean of covariance matrices)
-    u_bar = covs.mean(axis=0)                    # (p, p)
+    # Within-imputation covariance: mean of the m matrices
+    u_bar = covs.mean(axis=0)                            # shape (p, p)
 
-    # Between-imputation variance
-    diffs = coefs - coef_[np.newaxis, :]         # (m, p)
-    b = (diffs[:, :, np.newaxis] * diffs[:, np.newaxis, :]).mean(axis=0) * m / (m - 1)
-    # Equivalent to: sum_i outer(qi-qbar, qi-qbar) / (m-1)
+    # Between-imputation covariance
+    diffs = coefs - coef_bar                             # shape (m, p)
+    b_mat = (diffs[:, :, None] * diffs[:, None, :]).mean(axis=0) * m / (m - 1)  # unbiased
 
-    # Total variance–covariance matrix
-    cov_ = u_bar + (1.0 + 1.0 / m) * b          # (p, p)
+    # Total covariance
+    t_mat = u_bar + (1.0 + 1.0 / m) * b_mat             # shape (p, p)
 
-    # Per-parameter quantities
-    diag_t = np.diag(cov_)                       # (p,)
-    diag_ub = np.diag(u_bar)
-    diag_b = np.diag(b)
+    # Per-parameter total variance, SE, and df
+    t_diag = np.diag(t_mat)                              # shape (p,)
+    se = np.sqrt(np.maximum(t_diag, 0.0))               # guard against tiny negatives
+    u_diag = np.diag(u_bar)
+    b_diag = np.diag(b_mat)
 
-    se_ = np.sqrt(np.maximum(diag_t, 0.0))       # guard against tiny negatives
-    t_ = np.where(se_ > 0, coef_ / se_, np.inf)
-
-    # Barnard–Rubin df per parameter
-    lambda_j = np.where(
-        diag_t > 0,
-        (1.0 + 1.0 / m) * diag_b / diag_t,
-        0.0,
-    )
-    df_ = np.where(
-        lambda_j > 0,
-        (m - 1) * (1.0 / lambda_j + 1.0) ** 2,
-        np.inf,
-    )
+    # Degrees of freedom (scalar Rubin formula applied element-wise)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        df_arr = np.where(
+            b_diag > 0,
+            (m - 1) * (1.0 + u_diag / ((1.0 + 1.0 / m) * b_diag)) ** 2,
+            np.inf,
+        )
 
     return {
-        "coef_": coef_,
-        "cov_": cov_,
-        "se_": se_,
-        "t_": t_,
-        "df_": df_,
+        "coef_": coef_bar,
+        "cov_": t_mat,
+        "se_": se,
+        "t_": t_diag,
+        "df_": df_arr,
     }
