@@ -37,9 +37,6 @@ Public API
 .. autosummary::
    :nosignatures:
 
-   summarise
-   miss_scan_count
-   miss_summary
    miss_case_summary
    miss_var_summary
 
@@ -129,12 +126,9 @@ from missingly.visualise import (
 )
 
 # ---------------------------------------------------------------------------
-# Summary / stats
+# Summary / stats  (only names that actually exist in missingly.summary)
 # ---------------------------------------------------------------------------
 from missingly.summary import (
-    summarise,
-    miss_scan_count,
-    miss_summary,
     miss_case_summary,
     miss_var_summary,
 )
@@ -214,9 +208,6 @@ __all__ = [
     "vis_miss_span",
     "vis_parallel_coords",
     # Summary / stats
-    "summarise",
-    "miss_scan_count",
-    "miss_summary",
     "miss_case_summary",
     "miss_var_summary",
     # Imputation
