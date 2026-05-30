@@ -53,6 +53,11 @@ from __future__ import annotations
 import warnings as _warnings
 
 # ---------------------------------------------------------------------------
+# Deprecation helper
+# ---------------------------------------------------------------------------
+from missingly._deprecation import deprecated_api as _deprecated_api
+
+# ---------------------------------------------------------------------------
 # Visualisation
 # ---------------------------------------------------------------------------
 from missingly.visualise import (
@@ -160,7 +165,7 @@ from missingly.timeseries import (
 )
 
 # ---------------------------------------------------------------------------
-# Simulation
+# Simulation (v1 stable)
 # ---------------------------------------------------------------------------
 from missingly.simulate import (
     simulate_mcar,
@@ -180,34 +185,56 @@ from missingly.manipulation import (
 )
 
 # ---------------------------------------------------------------------------
-# Evaluation aliases (same as compare)
+# Legacy / experimental — imported raw then wrapped so FutureWarning fires
 # ---------------------------------------------------------------------------
-compare_imputations = compare_imputations  # noqa: F811 (explicit re-bind)
-cv_compare_imputations = cv_compare_imputations  # noqa: F811
-
-# ---------------------------------------------------------------------------
-# Legacy / experimental symbols — emit FutureWarning on call
-# ---------------------------------------------------------------------------
-from missingly._deprecation import deprecated as _deprecated
 from missingly.stats_extra import (
-    hotelling_test,
-    pattern_monotone_test,
-    missing_correlation_matrix,
+    hotelling_test as _hotelling_test,
+    pattern_monotone_test as _pattern_monotone_test,
+    missing_correlation_matrix as _missing_correlation_matrix,
 )
-from missingly.timeseries import gap_table, vis_gap_lengths
+from missingly.timeseries import (
+    gap_table as _gap_table,
+    vis_gap_lengths as _vis_gap_lengths,
+)
 from missingly.manipulation import (
-    clean_names,
-    remove_empty,
-    coalesce_columns,
-    miss_as_feature,
+    clean_names as _clean_names,
+    remove_empty as _remove_empty,
+    coalesce_columns as _coalesce_columns,
+    miss_as_feature as _miss_as_feature,
 )
 from missingly.performance import (
-    chunk_apply,
-    memory_usage_mb,
-    optimize_dtypes,
+    chunk_apply as _chunk_apply,
+    memory_usage_mb as _memory_usage_mb,
+    optimize_dtypes as _optimize_dtypes,
+)
+from missingly.simulate import (
+    simulate_mcar as _simulate_mcar,
+    simulate_mar as _simulate_mar,
+    simulate_mnar as _simulate_mnar,
+    simulate_mixed as _simulate_mixed,
 )
 
-# Backward-compat aliases
+# Wrap each legacy/experimental symbol so callers receive FutureWarning
+hotelling_test = _deprecated_api(since="0.2.0")(_hotelling_test)
+pattern_monotone_test = _deprecated_api(since="0.2.0")(_pattern_monotone_test)
+missing_correlation_matrix = _deprecated_api(since="0.2.0")(_missing_correlation_matrix)
+gap_table = _deprecated_api(since="0.2.0")(_gap_table)
+vis_gap_lengths = _deprecated_api(since="0.2.0")(_vis_gap_lengths)
+clean_names = _deprecated_api(since="0.2.0")(_clean_names)
+remove_empty = _deprecated_api(since="0.2.0")(_remove_empty)
+coalesce_columns = _deprecated_api(since="0.2.0")(_coalesce_columns)
+miss_as_feature = _deprecated_api(since="0.2.0")(_miss_as_feature)
+chunk_apply = _deprecated_api(since="0.2.0")(_chunk_apply)
+memory_usage_mb = _deprecated_api(since="0.2.0")(_memory_usage_mb)
+optimize_dtypes = _deprecated_api(since="0.2.0")(_optimize_dtypes)
+
+# Simulation functions are experimental — wrap them too
+simulate_mcar = _deprecated_api(since="0.2.0")(_simulate_mcar)
+simulate_mar = _deprecated_api(since="0.2.0")(_simulate_mar)
+simulate_mnar = _deprecated_api(since="0.2.0")(_simulate_mnar)
+simulate_mixed = _deprecated_api(since="0.2.0")(_simulate_mixed)
+
+# Backward-compat aliases (point at the wrapped versions)
 test_hotelling = hotelling_test
 test_pattern_monotone = pattern_monotone_test
 
@@ -281,7 +308,7 @@ __all__ = [
     "vis_ts_miss",
     "vis_miss_over_time",
     "impute_ts",
-    # Simulation
+    # Simulation (experimental)
     "simulate_mcar",
     "simulate_mar",
     "simulate_mnar",
@@ -291,7 +318,7 @@ __all__ = [
     "replace_with_na_all",
     "add_any_miss_var",
     "bind_shadow_matrix",
-    # Legacy
+    # Legacy / experimental
     "hotelling_test",
     "pattern_monotone_test",
     "missing_correlation_matrix",
