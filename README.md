@@ -91,15 +91,73 @@ mi.diagnose_missing(df)   # mechanism + recommendation dict
 
 ### Visualisation
 
+The visualisation layer lives in `missingly.visualisation` and is re-exported
+through `missingly.visualise` for backwards compatibility.
+
+> **Implementation note:** all matplotlib-based functions are in
+> `missingly.visualisation.static`; Plotly backends are in
+> `missingly.visualisation.interactive`; shared helpers (`_rtl_safe`,
+> `_safe_labels`, `_nullity`, `_pct_labels`) live in
+> `missingly.visualisation._base`.
+
+#### Basic
+
 ```python
-mi.vis_miss(df)            # missingness matrix (static or interactive)
-mi.matrix(df)              # similar matrix plot
-mi.bar(df)                 # bar chart of % missing per column
-mi.upset(df)               # UpSet plot of missingness patterns
-mi.miss_patterns(df)       # pattern heatmap
-mi.miss_cooccurrence(df)   # co-occurrence matrix
-mi.heatmap(df)             # correlation heatmap of missingness
-mi.miss_cluster(df)        # clustered missingness heatmap
+import missingly as mi
+import pandas as pd, numpy as np
+
+df = pd.DataFrame({
+    "age":    [25, np.nan, 47, 33, np.nan],
+    "income": [50000, 62000, np.nan, np.nan, 71000],
+    "city":   ["A", "B", np.nan, "A", "C"],
+})
+
+mi.vis_miss(df)          # tile matrix: present=dark, missing=light
+mi.matrix(df)            # sparkline-style matrix with completeness sidebar
+mi.bar(df)               # horizontal bar chart: % missing per column
+mi.miss_case(df)         # histogram of missing count per row
+mi.miss_var_pct(df)      # dot plot: % missing per variable
+```
+
+#### Patterns
+
+```python
+mi.miss_patterns(df)     # heatmap of distinct missingness patterns
+mi.miss_cooccurrence(df) # symmetric matrix: how often two columns miss together
+mi.upset(df)             # UpSet plot of intersecting missingness sets
+```
+
+#### Correlation / Clustering
+
+```python
+# heatmap: Pearson correlation of missingness indicators
+# (delegates to data_quality_toolkit.visualization.correlation_heatmap)
+mi.heatmap(df)
+
+# miss_cluster: hierarchical clustering of rows by missingness pattern.
+# Returns a dict with keys: 'heatmap' (Axes), 'dendrogram' (Axes),
+# 'colorbar' (Axes).  Pass ax=... to supply your own Axes.
+axes = mi.miss_cluster(df)
+axes["heatmap"].set_title("My title")
+```
+
+#### Interactive
+
+Pass `interactive=True` to any of the functions below to get a Plotly figure
+that can be panned, zoomed, and exported to HTML.
+When Plotly is not installed the function falls back to the static backend
+silently.
+
+```python
+mi.vis_miss(df, interactive=True)
+mi.heatmap(df, interactive=True)
+mi.matrix(df, interactive=True)
+mi.bar(df, interactive=True)
+mi.miss_var_pct(df, interactive=True)
+mi.miss_cooccurrence(df, interactive=True)
+mi.miss_case(df, interactive=True)
+mi.upset(df, interactive=True)
+mi.miss_patterns(df, interactive=True)
 ```
 
 ### Imputation
@@ -130,21 +188,6 @@ pipe = Pipeline([
 pipe.fit(X_train, y_train)
 ```
 
-### Interactive Plots
-
-Pass `interactive=True` to get Plotly-powered plots that can be panned,
-zoomed, and exported:
-
-```python
-mi.vis_miss(df, interactive=True)
-mi.heatmap(df, interactive=True)
-mi.bar(df, interactive=True)
-```
-
-The following functions support `interactive=True`:
-`vis_miss`, `heatmap`, `matrix`, `miss_var_pct`, `miss_cooccurrence`,
-`bar`, `miss_case`, `upset`, `miss_patterns`.
-
 ---
 
 ## Installation
@@ -158,5 +201,3 @@ pip install missingly
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-
