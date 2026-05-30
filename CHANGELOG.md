@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `data_quality_toolkit.visualization.correlation_heatmap` with test
   coverage (`tests/test_dqt_integration.py`) and CI integration
   (`dqt-integration` job in `.github/workflows/ci.yml`).
+- Refactored visualisation layer into structured modules
+  (`visualisation.static`, `visualisation.interactive`) with shared helpers
+  in `visualisation._base`; `missingly/visualise.py` is now a thin re-export
+  facade. Improved documentation and self-contained examples for all public
+  plots: `matrix`, `vis_miss`, `bar`, `miss_case`, `miss_var_pct`,
+  `miss_patterns`, `miss_cooccurrence`, `heatmap`, `upset`, `miss_cluster`.
+  Added comprehensive smoke tests (`tests/test_visualise_smoke.py`) that call
+  every public visualisation function on a 100×8 DataFrame.
 
 ## [0.1.0] - Initial release
 
