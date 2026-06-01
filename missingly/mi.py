@@ -92,9 +92,11 @@ def pool_scalar_estimates(
 
         \\nu = (m - 1)\\left(1 + \\frac{\\bar{U}}{(1 + m^{-1})B}\\right)^2
 
-    which is Rubin's (1987) large-sample formula.  When ``u_bar`` is
-    zero (all imputations perfectly agree on the variance) the formula
-    degenerates; in that case ``df`` is set to ``inf``.
+    which is Rubin's (1987) large-sample formula.  When ``b == 0``
+    (all imputed estimates are identical, meaning no between-imputation
+    variability) ``df`` is set to ``inf`` and ``r`` / ``lambda`` to 0.
+    When ``u_bar == 0`` but ``b > 0``, ``r`` is ``inf`` and ``df`` is
+    set to ``(m - 1)``.
 
     Examples
     --------
@@ -112,6 +114,16 @@ def pool_scalar_estimates(
     True
     >>> result["t"] > result["u_bar"]
     True
+
+    Identical estimates (b == 0) — no between-imputation variance:
+
+    >>> result2 = pool_scalar_estimates([2.0, 2.0, 2.0], [0.1, 0.1, 0.1])
+    >>> result2["b"]
+    0.0
+    >>> result2["df"]
+    inf
+    >>> result2["r"]
+    0.0
     """
     estimates = list(estimates)
     variances = list(variances)
@@ -135,17 +147,24 @@ def pool_scalar_estimates(
     b = float(np.var(q_arr, ddof=1))                    # between-imputation variance
     t = u_bar + (1.0 + 1.0 / m) * b                    # total variance
 
-    # Relative increase in variance
-    r = (1.0 + 1.0 / m) * b / u_bar if u_bar > 0 else float("inf")
-
-    # Degrees of freedom (Rubin 1987)
-    if u_bar == 0:
+    # --- handle degenerate cases before computing r and df ---
+    if b == 0.0:
+        # All estimates are identical: no between-imputation variability.
+        # r = 0, df = inf, lambda = 0.
+        r = 0.0
         df = float("inf")
+        lam = 0.0
+    elif u_bar == 0.0:
+        # No within-imputation variance but estimates differ.
+        # r = inf, df degenerates to (m-1).
+        r = float("inf")
+        df = float(m - 1)
+        lam = 1.0
     else:
+        r = (1.0 + 1.0 / m) * b / u_bar
+        # Rubin (1987) degrees-of-freedom formula
         df = (m - 1) * (1.0 + u_bar / ((1.0 + 1.0 / m) * b)) ** 2
-
-    # Fraction of missing information
-    lam = (r + 2.0 / (df + 3.0)) / (r + 1.0) if np.isfinite(r) else 1.0
+        lam = (r + 2.0 / (df + 3.0)) / (r + 1.0)
 
     return {
         "q_bar": q_bar,

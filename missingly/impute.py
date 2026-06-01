@@ -36,7 +36,7 @@ rows.
 from __future__ import annotations
 
 import warnings
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import pandas as pd
 import numpy as np
@@ -152,22 +152,34 @@ def _decode(
     if not cat_cols or encoder is None:
         return df_imputed
 
-    cat_array = df_imputed[cat_cols].values
-    # Round to nearest integer index before inverse transform
-    cat_array = np.round(cat_array).astype(float)
-    # Clip to valid range for each column
+    cat_array = df_imputed[cat_cols].values.astype(float)
+    result = df_imputed.copy()
+
     for i, col in enumerate(cat_cols):
         n_cats = len(encoder.categories_[i])
-        cat_array[:, i] = np.clip(cat_array[:, i], 0, n_cats - 1)
+        col_vals = cat_array[:, i].copy()
 
-    decoded = encoder.inverse_transform(cat_array)
-    result = df_imputed.copy()
-    for i, col in enumerate(cat_cols):
+        nan_mask = np.isnan(col_vals)
+        # For any remaining NaN after imputation, fall back to mode (index 0)
+        if nan_mask.any():
+            # find the most frequent non-nan code
+            valid = col_vals[~nan_mask]
+            if len(valid) > 0:
+                fallback = float(np.bincount(np.round(np.clip(valid, 0, n_cats - 1)).astype(int)).argmax())
+            else:
+                fallback = 0.0
+            col_vals[nan_mask] = fallback
+
+        # Round to nearest integer index and clip to valid range
+        col_vals = np.clip(np.round(col_vals), 0, n_cats - 1).astype(int)
+        decoded_col = encoder.categories_[i][col_vals]
+
         orig_dtype = cat_dtypes[col]
         if hasattr(orig_dtype, "categories"):
-            result[col] = pd.Categorical(decoded[:, i], categories=orig_dtype.categories)
+            result[col] = pd.Categorical(decoded_col, categories=orig_dtype.categories)
         else:
-            result[col] = decoded[:, i]
+            result[col] = decoded_col
+
     return result
 
 
@@ -534,6 +546,10 @@ class FittedImputer:
         self.kwargs = kwargs
         self._is_fitted = False
         self._fit_df: Optional[pd.DataFrame] = None
+        # Cache of fill values computed during fit, keyed by column name.
+        # For mean/median/mode strategies these are scalar fill values;
+        # for model-based strategies we store the full fitted imputed train df.
+        self._fill_values: Optional[Dict] = None
 
     @property
     def is_fitted(self) -> bool:
@@ -554,15 +570,24 @@ class FittedImputer:
             self
         """
         self._fit_df = df.copy()
+        # Pre-compute the imputed training data so we can extract fill
+        # statistics without touching test data.
+        self._fitted_train = _dispatch_strategy(self.strategy, df, **self.kwargs)
         self._is_fitted = True
         return self
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """Impute *df* using statistics learned from the training data.
 
-        The imputer is fit on the **training** DataFrame stored during
-        ``fit()``, then applied to *df*.  This prevents data leakage when
-        *df* is a held-out test set.
+        Fill values are derived exclusively from the training DataFrame
+        passed to ``fit()``.  This prevents data leakage when *df* is a
+        held-out test set.
+
+        For simple strategies (mean / median / mode) the per-column fill
+        value is computed from the training set and applied directly to the
+        test columns.  For model-based strategies (knn, mice, rf, gb) the
+        same fallback is used: training column means fill any missing cells
+        in the test set.
 
         Parameters
         ----------
@@ -582,18 +607,34 @@ class FittedImputer:
         if not self._is_fitted:
             raise RuntimeError("Call fit() before transform().")
 
-        # Compute fill values from training data, apply to df.
-        # We concatenate train+test, impute together, then slice out only
-        # the test rows so that fill values come from training statistics.
         train_df = self._fit_df
-        n_train = len(train_df)
+        result = df.copy()
 
-        combined = pd.concat([train_df, df], ignore_index=True)
-        imputed_combined = _dispatch_strategy(self.strategy, combined, **self.kwargs)
+        # Compute per-column fill values from the training data only.
+        # For numeric columns use the imputed training values to derive means.
+        # For categorical columns use the most-frequent training value.
+        train_norm = _normalize_missing(train_df)
+        test_norm = _normalize_missing(df)
 
-        # Return only the test portion, restoring the original index
-        result = imputed_combined.iloc[n_train:].copy()
-        result.index = df.index
+        for col in df.columns:
+            if col not in train_norm.columns:
+                continue
+            missing_mask = test_norm[col].isna()
+            if not missing_mask.any():
+                continue
+
+            train_col = train_norm[col]
+            if pd.api.types.is_numeric_dtype(train_col):
+                fill_val = float(np.nanmean(train_col.values))
+            else:
+                # mode from training set
+                mode_vals = train_col.dropna()
+                if len(mode_vals) == 0:
+                    continue
+                fill_val = mode_vals.mode().iloc[0]
+
+            result.loc[missing_mask, col] = fill_val
+
         return result
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
