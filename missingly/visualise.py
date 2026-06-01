@@ -42,6 +42,9 @@ Imputation diagnostics
 Miscellaneous
   scatter_miss, vis_miss_cumsum_var, vis_miss_cumsum_case,
   vis_miss_span, vis_parallel_coords
+
+Helper utilities (also accessible via this module)
+  _rtl_safe, _safe_labels
 """
 from __future__ import annotations
 
@@ -70,6 +73,7 @@ from missingly.visualisation import (
     vis_miss_span,
     vis_parallel_coords,
 )
+from missingly.visualisation._base import _rtl_safe, _safe_labels
 
 __all__ = [
     "matrix",
@@ -95,4 +99,6 @@ __all__ = [
     "vis_miss_cumsum_case",
     "vis_miss_span",
     "vis_parallel_coords",
+    "_rtl_safe",
+    "_safe_labels",
 ]

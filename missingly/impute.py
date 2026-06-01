@@ -469,7 +469,18 @@ def impute_mice(
         df_imputed = pd.DataFrame(
             imputed_array, index=df_norm.index, columns=df_work.columns
         )
-        return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
+        result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
+
+        # Post-decode safety net: fill any residual NaN in categorical columns
+        # using the most frequent observed value in the original data.
+        for col in cat_cols:
+            if result[col].isna().any():
+                observed = df_norm[col].dropna()
+                if len(observed) > 0:
+                    fallback = observed.mode().iloc[0]
+                    result[col] = result[col].fillna(fallback)
+
+        return result
 
     if n_imputations == 1:
         return _single_chain(random_state)
@@ -536,7 +547,7 @@ class FittedImputer:
     >>> import pandas as pd, numpy as np
     >>> train = pd.DataFrame({'a': [1.0, 2.0, np.nan, 4.0]})
     >>> imp.fit(train)
-    FittedImputer(strategy='mean', fitted=True)
+    FittedImputer(strategy='mean', unfitted=True)
     >>> imp.is_fitted
     True
     """

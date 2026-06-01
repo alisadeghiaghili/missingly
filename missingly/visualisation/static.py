@@ -1123,7 +1123,7 @@ def scatter_miss(
         hue = plot_df[f"{y}_NA"]
         hue.name = f"Missing {_rtl_safe(y)}"
     sns.scatterplot(data=plot_df, x=x, y=y, hue=hue, ax=ax, **kwargs)
-    ax.set_title(f"Scatter: {_rtl_safe(x)} vs {_rtl_safe(y)} with missingness")
+    ax.set_title(f"Scatter Plot of {_rtl_safe(x)} vs {_rtl_safe(y)} with Missing Values")
     return ax
 
 
