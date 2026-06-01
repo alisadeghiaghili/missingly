@@ -5,60 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - Unreleased
+
+### Changed
+- Refactored visualisation layer into structured modules (`visualisation.static`,
+  `visualisation.interactive`) and improved documentation/examples for all public plots.
+- `missingly/visualise.py` is now a thin re-export facade; all implementation lives
+  in `missingly/visualisation/`.
+- Smoke test suite (`tests/test_visualise_smoke.py`) extended to cover all public
+  visualisation functions including sentinel `missing_values`, shadow scatter,
+  parallel coordinates, span, group breakdown, and imputation diagnostics.
+
 ## [0.2.0] - Unreleased
 
 ### Added
 - **KNN with Gower distance** (`metric="mixed"`) for `impute_knn` and
   `MissinglyImputer(strategy="knn", metric="mixed")`: statistically sound
-  imputation for mixed numeric + categorical datasets using Gower similarity.
-  Numeric columns are normalised by their observed range; nominal columns use
-  exact-match comparison.  The Euclidean path (`metric="euclidean"`, default)
-  is unchanged.  O(n²) complexity — not recommended for `n > 10 000`.
-- Stabilised time-series API (`miss_ts_summary`, `gap_table`, `vis_ts_miss`,
-  `vis_gap_lengths`, `vis_miss_over_time`, `impute_ts`) with dedicated tests
-  (`test_timeseries_summary.py`, `test_timeseries_visuals.py`,
-  `test_impute_ts.py`) and documentation. No Kalman/ARIMA yet.
-- Added MI pooling utilities (`pool_scalar_estimates`,
-  `pool_linear_regression_results`) implementing Rubin's Rules, plus
-  end-to-end examples and tests.
-- Defined v1 public API surface (`df.miss.*`, `MissinglyImputer`,
-  `create_report`, core visualisation & diagnosis functions).
-- Marked advanced utilities (`simulate_*`, performance helpers, extra
-  statistical tests) as experimental with `FutureWarning` via new
-  `@deprecated_api` decorator (`missingly/_deprecation.py`).
-- Extended Plotly interactive mode to `bar`, `miss_case`, `upset`, and
-  `miss_patterns`; static matplotlib behaviour remains unchanged.
-- New test file `tests/test_visualise_interactive.py` covering all nine
-  interactive-capable functions: return-type assertions, static fallback
-  checks, `ImportError` checks via monkeypatching, and edge cases.
-- Updated `README.md` with a full `Interactive Plots` section listing all
-  nine functions that accept `interactive=True`.
-- Pinned correlation heatmap implementation to
-  `data_quality_toolkit.visualization.correlation_heatmap` with test
-  coverage (`tests/test_dqt_integration.py`) and CI integration
-  (`dqt-integration` job in `.github/workflows/ci.yml`).
-- Refactored visualisation layer into structured modules
-  (`visualisation.static`, `visualisation.interactive`) with shared helpers
-  in `visualisation._base`; `missingly/visualise.py` is now a thin re-export
-  facade. Improved documentation and self-contained examples for all public
-  plots: `matrix`, `vis_miss`, `bar`, `miss_case`, `miss_var_pct`,
-  `miss_patterns`, `miss_cooccurrence`, `heatmap`, `upset`, `miss_cluster`.
-  Added comprehensive smoke tests (`tests/test_visualise_smoke.py`) that call
-  every public visualisation function on a 100×8 DataFrame.
+  imputation for mixed numeric + categorical datasets.
+- `impute_knn` now selects the distance metric via the `metric` parameter
+  (`"euclidean"` default, `"mixed"` for Gower).
+- `MissinglyImputer` accepts `metric` and forwards it to `impute_knn`.
+- New tests: `test_impute_knn_mixed.py` — covers Gower distance, edge cases
+  (all-numeric, all-categorical, single-column), and sklearn `Pipeline`
+  compatibility.
 
-## [0.1.0] - Initial release
+### Fixed
+- `impute_knn` no longer crashes on DataFrames that contain only categorical
+  columns when `metric="euclidean"` (ordinal encoding is applied first).
+
+## [0.1.0] - 2025-01-10
 
 ### Added
-- `df.miss.*` pandas accessor with summary, visualisation, and imputation helpers.
+- Initial public release.
+- `df.miss.*` accessor (mirrors R `naniar`).
 - `MissinglyImputer` sklearn-compatible transformer.
+- Visualisation module: `matrix`, `vis_miss`, `bar`, `miss_case`,
+  `miss_var_pct`, `miss_patterns`, `miss_cooccurrence`, `heatmap`,
+  `upset`, `miss_cluster`, `dendrogram`, `shadow_scatter`,
+  `vis_miss_fct`, `vis_miss_by_group`, `vis_impute_dist`,
+  `miss_impute_compare`, `scatter_miss`, `vis_miss_cumsum_var`,
+  `vis_miss_cumsum_case`, `vis_miss_span`, `vis_parallel_coords`.
 - Statistical tests: `mcar_test`, `mar_mnar_test`, `diagnose_missing`.
-- Visualisation catalogue: `vis_miss`, `matrix`, `bar`, `miss_case`,
-  `miss_var_pct`, `miss_which`, `upset`, `miss_patterns`, `miss_cooccurrence`,
-  `heatmap`, `dendrogram`, `miss_cluster`.
-- Interactive Plotly backends (Phase 1): `vis_miss`, `heatmap`, `matrix`,
-  `miss_var_pct`, `miss_cooccurrence`.
-- HTML report generation via `create_report`.
-- Time-series support: `miss_ts_summary`, `vis_ts_miss`, `vis_miss_over_time`,
-  `impute_ts`.
-- Simulation utilities: `simulate_mcar`, `simulate_mar`, `simulate_mnar`,
-  `simulate_mixed`.
+- Time-series support: `miss_ts_summary`, `vis_ts_miss`, `impute_ts`, `gap_table`.
+- Multiple imputation: `impute_mice` with Rubin's Rules pooling utilities.
+- HTML report generation: `create_report`.
+- `data_quality_toolkit` integration: `heatmap` delegates to
+  `data_quality_toolkit.visualization.correlation_heatmap` when available.
