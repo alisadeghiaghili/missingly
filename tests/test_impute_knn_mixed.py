@@ -163,6 +163,6 @@ def test_transformer_mixed_no_nan(small_mixed_df):
 def test_gower_large_n_warning():
     n = 10_001
     df = pd.DataFrame({"x": np.zeros(n), "c": ["a"] * n})
-    with pytest.warns(UserWarning, match="10 001"):
+    with pytest.warns(UserWarning, match="10001"):
         # Only compute the first tiny slice to avoid OOM in CI
         gower_distance(df.head(n))  # triggers warning before loop
