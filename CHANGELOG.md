@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - Unreleased
 
 ### Added
+- Stabilised time-series API (`miss_ts_summary`, `gap_table`, `vis_ts_miss`, `vis_gap_lengths`, `vis_miss_over_time`, `impute_ts`) with dedicated tests (`test_timeseries_summary.py`, `test_timeseries_visuals.py`, `test_impute_ts.py`) and documentation. No Kalman/ARIMA yet.
 - Added MI pooling utilities (`pool_scalar_estimates`, `pool_linear_regression_results`) implementing Rubin's Rules, plus end-to-end examples and tests.
 - Defined v1 public API surface (`df.miss.*`, `MissinglyImputer`, `create_report`,
   core visualisation & diagnosis functions).

@@ -175,6 +175,61 @@ mi.impute_gb(df)             # Gradient Boosting imputation
 dfs = mi.impute_mice(df, n_imputations=5)
 ```
 
+### Time-series missingness
+
+For time-indexed data, missingly provides gap-aware summary statistics,
+visualisation helpers, and interpolation-based imputation.
+
+```python
+import missingly as mi
+import pandas as pd
+import numpy as np
+
+# Build a temperature series with some gaps
+index = pd.date_range("2024-01-01", periods=14, freq="D")
+temp  = [5.1, 4.8, np.nan, np.nan, 6.2, 6.5, np.nan, 7.0,
+         7.3, np.nan, np.nan, np.nan, 8.1, 8.4]
+ts = pd.DataFrame({"temp": temp}, index=index)
+
+# 1. Summarise gaps
+summary = mi.miss_ts_summary(ts, col="temp")
+print(summary)
+# n_miss          5
+# n_gaps          3
+# mean_gap_len    1.67
+# max_gap_len     3
+# longest_gap_start  2024-01-10
+# longest_gap_end    2024-01-12
+
+# 2. Visualise missingness over the time axis
+ax = mi.vis_ts_miss(ts)
+
+# 3. Impute with linear interpolation
+ts_filled = mi.impute_ts(ts, strategy="linear")
+print(ts_filled.isnull().sum())  # temp    0
+```
+
+**Available strategies for `impute_ts`:** `ffill`, `bfill`, `linear`, `time`,
+`spline`. Use `limit=n` to cap how many consecutive NaNs are filled.
+
+```python
+# Fill at most 2 consecutive NaNs, leave longer gaps as-is
+ts_partial = mi.impute_ts(ts, strategy="linear", limit=2)
+```
+
+**Gap inspection with `gap_table`:**
+
+```python
+from missingly.timeseries import gap_table
+
+gt = gap_table(ts)
+print(gt)
+#    column  gap_start   gap_end  gap_length
+# 0    temp 2024-01-03 2024-01-04           2
+# 1    temp 2024-01-07 2024-01-07           1
+# 2    temp 2024-01-10 2024-01-12           3
+```
+
 ### sklearn Pipeline integration
 
 ```python
