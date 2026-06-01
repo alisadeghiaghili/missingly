@@ -94,11 +94,13 @@ mi.diagnose_missing(df)   # mechanism + recommendation dict
 The visualisation layer lives in `missingly.visualisation` and is re-exported
 through `missingly.visualise` for backwards compatibility.
 
-> **Implementation note:** all matplotlib-based functions are in
-> `missingly.visualisation.static`; Plotly backends are in
-> `missingly.visualisation.interactive`; shared helpers (`_rtl_safe`,
-> `_safe_labels`, `_nullity`, `_pct_labels`) live in
-> `missingly.visualisation._base`.
+> **Module layout**
+> | Module | Contents |
+> |---|---|
+> | `missingly.visualisation.static` | All matplotlib-based functions |
+> | `missingly.visualisation.interactive` | All Plotly backends (called when `interactive=True`) |
+> | `missingly.visualisation._base` | Shared helpers: `_rtl_safe`, `_safe_labels`, `_nullity`, `_pct_labels` |
+> | `missingly.visualise` | Thin re-export facade — use this in application code |
 
 #### Basic
 
@@ -112,41 +114,45 @@ df = pd.DataFrame({
     "city":   ["A", "B", np.nan, "A", "C"],
 })
 
-mi.vis_miss(df)          # tile matrix: present=dark, missing=light
-mi.matrix(df)            # sparkline-style matrix with completeness sidebar
-mi.bar(df)               # horizontal bar chart: % missing per column
-mi.miss_case(df)         # histogram of missing count per row
-mi.miss_var_pct(df)      # dot plot: % missing per variable
+mi.vis_miss(df)          # annotated tile matrix with per-column % labels
+mi.matrix(df)            # raw presence/absence heatmap
+mi.bar(df)               # bar chart: count of missing per column
+mi.miss_case(df)         # bar chart: count of missing per row
+mi.miss_var_pct(df)      # horizontal bars: % missing per variable, sorted
 ```
 
 #### Patterns
 
 ```python
-mi.miss_patterns(df)     # heatmap of distinct missingness patterns
-mi.miss_cooccurrence(df) # symmetric matrix: how often two columns miss together
+mi.miss_patterns(df)     # horizontal bars: top-N most frequent missingness patterns
+mi.miss_cooccurrence(df) # symmetric heatmap: how often two columns miss together
 mi.upset(df)             # UpSet plot of intersecting missingness sets
+                         # returns dict of Axes: {"intersections", "matrix", "totals"}
 ```
 
 #### Correlation / Clustering
 
 ```python
-# heatmap: Pearson correlation of missingness indicators
-# (delegates to data_quality_toolkit.visualization.correlation_heatmap)
+# Nullity-correlation heatmap (Pearson on binary missingness indicators).
+# Delegates to data_quality_toolkit.visualization.correlation_heatmap when
+# that package is installed; falls back to a pure-seaborn renderer otherwise.
 mi.heatmap(df)
+mi.heatmap(df, mask_insignificant=True)  # grey out non-significant cells
 
-# miss_cluster: hierarchical clustering of rows by missingness pattern.
-# Returns a dict with keys: 'heatmap' (Axes), 'dendrogram' (Axes),
-# 'colorbar' (Axes).  Pass ax=... to supply your own Axes.
-axes = mi.miss_cluster(df)
-axes["heatmap"].set_title("My title")
+# Hierarchical clustering of rows by missingness pattern.
+# Returns a single matplotlib.axes.Axes (not a dict).
+ax = mi.miss_cluster(df)
+
+# Dendrogram of variables clustered by nullity correlation.
+mi.dendrogram(df)
 ```
 
 #### Interactive
 
-Pass `interactive=True` to any of the functions below to get a Plotly figure
+Pass `interactive=True` to any function below to get a Plotly figure
 that can be panned, zoomed, and exported to HTML.
-When Plotly is not installed the function falls back to the static backend
-silently.
+When Plotly is not installed the function silently falls back to the
+static backend.
 
 ```python
 mi.vis_miss(df, interactive=True)

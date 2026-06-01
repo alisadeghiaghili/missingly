@@ -4,8 +4,10 @@ Implementation has been moved to the :mod:`missingly.visualisation`
 sub-package:
 
 * :mod:`missingly.visualisation._base`       – shared helpers
+  (``_rtl_safe``, ``_safe_labels``, ``_nullity``, ``_pct_labels``)
 * :mod:`missingly.visualisation.static`      – all matplotlib-based functions
-* :mod:`missingly.visualisation.interactive` – all Plotly backends
+* :mod:`missingly.visualisation.interactive` – all Plotly backends and public
+  wrappers (called when ``interactive=True``)
 
 This module re-exports every public name unchanged so that existing code
 continues to work without modification::
