@@ -94,6 +94,15 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         * ``"median"`` — fill numeric with median, categorical with mode.
         * ``"mode"``   — fill all columns with most frequent value.
         * ``"knn"``    — k-Nearest Neighbours (default k=5).
+
+          - ``metric="euclidean"`` (default) — ordinal-encode categorical
+            columns then apply sklearn KNNImputer.  Fast; best for
+            purely numeric datasets.
+          - ``metric="mixed"`` — use Gower distance for mixed
+            numeric+categorical data.  More statistically sound for
+            heavy-categorical datasets, but **O(n²)** in memory and
+            runtime.  Not recommended for ``n > 10 000``.
+
         * ``"mice"``   — Multiple Imputation by Chained Equations.
         * ``"rf"``     — Random Forest (regressor for numeric,
           classifier for categorical).
@@ -103,6 +112,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Default is ``"mean"``.
     n_neighbors : int, optional
         Number of neighbours for ``strategy="knn"``.  Default 5.
+    metric : str, optional
+        Distance metric for ``strategy="knn"``.  One of
+        ``"euclidean"`` (default) or ``"mixed"``.
+        Ignored for all other strategies.
     max_iter : int, optional
         Maximum EM/MICE/RF/GB iterations.  Default 10.
     random_state : int, optional
@@ -115,6 +128,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     ----------
     strategy : str
     n_neighbors : int
+    metric : str
     max_iter : int
     random_state : int
     feature_names_in_ : list[str] or None
@@ -154,6 +168,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self,
         strategy: str = "mean",
         n_neighbors: int = 5,
+        metric: str = "euclidean",
         max_iter: int = 10,
         random_state: int = 0,
         **estimator_kwargs,
@@ -166,6 +181,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
         self.strategy = strategy
         self.n_neighbors = n_neighbors
+        self.metric = metric
         self.max_iter = max_iter
         self.random_state = random_state
         self.estimator_kwargs = estimator_kwargs
@@ -185,6 +201,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.rf_reg_models_: Dict[str, object] = {}
         self.rf_clf_models_: Dict[str, object] = {}
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
+        # For metric="mixed" KNN: store the training DataFrame for Gower
+        self._knn_train_df_: Optional[pd.DataFrame] = None
 
     # ------------------------------------------------------------------
     # sklearn fitted-state contract
@@ -307,7 +325,18 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self.cat_imputer_.fit(X[self.cat_cols_])
 
     def _fit_knn(self, X: pd.DataFrame) -> None:
-        """Fit ordinal encoder + KNNImputer on the full encoded DataFrame."""
+        """Fit KNN imputer — euclidean or mixed metric.
+
+        For ``metric="mixed"``, the training DataFrame is stored so that
+        ``transform`` can compute Gower distances from test rows to
+        the (complete) training pool.
+        """
+        if self.metric == "mixed":
+            # Store train data; Gower imputation is done lazily in transform.
+            self._knn_train_df_ = X.copy()
+            return
+
+        # euclidean path
         if self.cat_cols_:
             self.encoder_ = OrdinalEncoder(
                 handle_unknown="use_encoded_value",
@@ -470,7 +499,27 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             arr = self.imputer_.transform(X)
             result = pd.DataFrame(arr, index=X.index, columns=X.columns)
 
-        elif strategy in ("knn", "mice"):
+        elif strategy == "knn":
+            if self.metric == "mixed":
+                from .impute import _impute_knn_gower
+                # Combine train (donors) and test, impute, return only test rows.
+                train_df = self._knn_train_df_
+                n_train = len(train_df)
+                combined = pd.concat(
+                    [train_df, X], ignore_index=True
+                )
+                imputed_combined = _impute_knn_gower(
+                    combined, n_neighbors=self.n_neighbors
+                )
+                result = imputed_combined.iloc[n_train:].copy()
+                result.index = X.index
+            else:
+                X_enc = self._encode_cats(X)
+                arr = self.imputer_.transform(X_enc)
+                df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
+                result = self._decode_cats(df_enc)
+
+        elif strategy == "mice":
             X_enc = self._encode_cats(X)
             arr = self.imputer_.transform(X_enc)
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)

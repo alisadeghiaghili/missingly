@@ -335,9 +335,102 @@ def impute_mode(
     return result
 
 
+# ---------------------------------------------------------------------------
+# KNN imputation helpers
+# ---------------------------------------------------------------------------
+
+_SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
+
+
+def _impute_knn_gower(
+    df: pd.DataFrame,
+    n_neighbors: int,
+) -> pd.DataFrame:
+    """KNN imputation using Gower distance for mixed-type data.
+
+    This two-step approach bypasses sklearn's ``KNNImputer`` (which only
+    supports numeric Euclidean distance) by computing pairwise Gower
+    distances over the full mixed DataFrame and then manually aggregating
+    neighbours for each missing cell.
+
+    Algorithm
+    ---------
+    For every missing cell ``(row i, col c)``:
+
+    1. Identify *donor* rows — rows where column *c* is observed.
+    2. From the pre-computed Gower distance matrix, extract the row of
+       distances from row *i* to all donor rows (using only features
+       that are jointly observed between *i* and each donor).
+    3. Select the *k* closest donors.
+    4. Aggregate:
+       - **Numeric column**: mean of the *k* donor values.
+       - **Categorical column**: plurality vote (mode) of the *k* donor
+         values.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with missing values.  May contain any mix of numeric
+        and object/category columns.
+    n_neighbors : int
+        Number of nearest neighbours to use.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+
+    Notes
+    -----
+    The Gower distance matrix is O(n²) to compute and store.  For
+    ``n > 10 000`` a ``UserWarning`` is emitted by
+    :func:`~missingly._distance.gower_distance`.
+    """
+    from missingly._distance import gower_distance
+
+    result = df.copy()
+    cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
+    num_cols = set(df.select_dtypes(include=[np.number]).columns)
+
+    # Compute the full n×n Gower distance matrix once.
+    dist_matrix = gower_distance(df)
+    n = len(df)
+
+    for col in df.columns:
+        missing_idx = np.where(df[col].isna())[0]
+        if len(missing_idx) == 0:
+            continue
+
+        # Rows that have an observed value in this column → candidate donors.
+        donor_idx = np.where(df[col].notna())[0]
+        if len(donor_idx) == 0:
+            continue
+
+        for i in missing_idx:
+            # Distance from row i to each donor row.
+            dists = dist_matrix[i, donor_idx]
+
+            k = min(n_neighbors, len(donor_idx))
+            nearest = donor_idx[np.argsort(dists)[:k]]
+
+            if col in num_cols:
+                fill_val = float(np.nanmean(df.iloc[nearest][col].values))
+            else:
+                # Plurality vote — use pandas mode for tie-breaking
+                mode_series = df.iloc[nearest][col].dropna()
+                if len(mode_series) == 0:
+                    continue
+                fill_val = mode_series.mode().iloc[0]
+
+            result.iat[i, df.columns.get_loc(col)] = fill_val
+
+    return result
+
+
 def impute_knn(
     df: pd.DataFrame,
     n_neighbors: int = 5,
+    metric: str = "euclidean",
 ) -> pd.DataFrame:
     """Impute missing values using k-Nearest Neighbours.
 
@@ -347,15 +440,69 @@ def impute_knn(
         Input DataFrame.
     n_neighbors : int, default 5
         Number of nearest neighbours to use.
+    metric : {"euclidean", "mixed"}, default "euclidean"
+        Distance metric to use.
+
+        * ``"euclidean"`` — Ordinal-encode categorical columns and apply
+          sklearn's :class:`~sklearn.impute.KNNImputer` with Euclidean
+          distance.  Fast and works well for purely numeric data.
+        * ``"mixed"`` — Use Gower distance
+          (:func:`~missingly._distance.gower_distance`) which handles
+          numeric and categorical columns natively.  Produces more
+          statistically sound neighbours for heavy-categorical datasets,
+          but is **O(n²)** in memory and runtime.  Not recommended for
+          ``n > 10 000``.
 
     Returns
     -------
     pd.DataFrame
         Copy of *df* with missing values imputed via KNN.
+
+    Raises
+    ------
+    ValueError
+        If *metric* is not one of the supported values.
+
+    Notes
+    -----
+    **Limitations of ``metric="euclidean"``** — Ordinal encoding assigns
+    integer codes to categories, which implies an ordering and magnitude
+    that may not exist.  For datasets with many categorical columns
+    consider ``metric="mixed"`` or a tree-based imputer
+    (``impute_rf`` / ``impute_gb``).
+
+    **Limitations of ``metric="mixed"``** — Gower distance is O(n²) in
+    time and memory.  For ``n > 10 000`` a ``UserWarning`` is emitted.
+    Consider sub-sampling or switching to ``impute_rf`` / ``impute_mice``
+    for very large datasets.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({
+    ...     "age": [25.0, np.nan, 35.0, 40.0],
+    ...     "city": ["A", "B", np.nan, "A"],
+    ... })
+    >>> impute_knn(df, n_neighbors=2, metric="mixed")  # doctest: +NORMALIZE_WHITESPACE
+       age city
+    0  25.0    A
+    1  30.0    B
+    2  35.0    A
+    3  40.0    A
     """
+    if metric not in _SUPPORTED_KNN_METRICS:
+        raise ValueError(
+            f"metric must be one of {sorted(_SUPPORTED_KNN_METRICS)}; got {metric!r}"
+        )
+
     _warn_if_large(df, "impute_knn")
-    _warn_if_knn_heavy_categorical(df, n_neighbors)
     df = _normalize_missing(df)
+
+    if metric == "mixed":
+        return _impute_knn_gower(df, n_neighbors=n_neighbors)
+
+    # Default: euclidean path
+    _warn_if_knn_heavy_categorical(df, n_neighbors)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     imputer = KNNImputer(n_neighbors=n_neighbors)
     imputed_array = imputer.fit_transform(df_work)
