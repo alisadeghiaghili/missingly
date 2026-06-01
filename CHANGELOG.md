@@ -8,13 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - Unreleased
 
 ### Added
-- Stabilised time-series API (`miss_ts_summary`, `gap_table`, `vis_ts_miss`, `vis_gap_lengths`, `vis_miss_over_time`, `impute_ts`) with dedicated tests (`test_timeseries_summary.py`, `test_timeseries_visuals.py`, `test_impute_ts.py`) and documentation. No Kalman/ARIMA yet.
-- Added MI pooling utilities (`pool_scalar_estimates`, `pool_linear_regression_results`) implementing Rubin's Rules, plus end-to-end examples and tests.
-- Defined v1 public API surface (`df.miss.*`, `MissinglyImputer`, `create_report`,
-  core visualisation & diagnosis functions).
-- Marked advanced utilities (`simulate_*`, performance helpers, extra statistical tests)
-  as experimental with `FutureWarning` via new `@deprecated_api` decorator
-  (`missingly/_deprecation.py`).
+- **KNN with Gower distance** (`metric="mixed"`) for `impute_knn` and
+  `MissinglyImputer(strategy="knn", metric="mixed")`: statistically sound
+  imputation for mixed numeric + categorical datasets using Gower similarity.
+  Numeric columns are normalised by their observed range; nominal columns use
+  exact-match comparison.  The Euclidean path (`metric="euclidean"`, default)
+  is unchanged.  O(n²) complexity — not recommended for `n > 10 000`.
+- Stabilised time-series API (`miss_ts_summary`, `gap_table`, `vis_ts_miss`,
+  `vis_gap_lengths`, `vis_miss_over_time`, `impute_ts`) with dedicated tests
+  (`test_timeseries_summary.py`, `test_timeseries_visuals.py`,
+  `test_impute_ts.py`) and documentation. No Kalman/ARIMA yet.
+- Added MI pooling utilities (`pool_scalar_estimates`,
+  `pool_linear_regression_results`) implementing Rubin's Rules, plus
+  end-to-end examples and tests.
+- Defined v1 public API surface (`df.miss.*`, `MissinglyImputer`,
+  `create_report`, core visualisation & diagnosis functions).
+- Marked advanced utilities (`simulate_*`, performance helpers, extra
+  statistical tests) as experimental with `FutureWarning` via new
+  `@deprecated_api` decorator (`missingly/_deprecation.py`).
 - Extended Plotly interactive mode to `bar`, `miss_case`, `upset`, and
   `miss_patterns`; static matplotlib behaviour remains unchanged.
 - New test file `tests/test_visualise_interactive.py` covering all nine

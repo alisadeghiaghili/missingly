@@ -166,13 +166,53 @@ mi.miss_patterns(df, interactive=True)
 mi.impute_mean(df)           # mean imputation
 mi.impute_median(df)         # median imputation
 mi.impute_mode(df)           # mode imputation
-mi.impute_knn(df)            # k-NN imputation
+mi.impute_knn(df)            # k-NN imputation (Euclidean distance, numeric-safe)
 mi.impute_mice(df)           # MICE (IterativeImputer + BayesianRidge)
 mi.impute_rf(df)             # Random Forest imputation
 mi.impute_gb(df)             # Gradient Boosting imputation
 
 # Multiple Imputation — generate m datasets for Rubin pooling
 dfs = mi.impute_mice(df, n_imputations=5)
+```
+
+#### KNN with Gower distance (mixed numeric + categorical)
+
+By default `impute_knn` ordinal-encodes categorical columns and uses
+Euclidean distance — fast and suitable for mostly-numeric datasets.
+
+For datasets dominated by categorical columns, pass `metric="mixed"` to
+use **Gower distance** instead.  Gower treats numeric and categorical
+columns correctly: numeric columns are normalised by their range, nominal
+columns are compared by exact match.
+
+```python
+df_mixed = pd.DataFrame({
+    "age":    [25, np.nan, 35, 40],
+    "city":   ["London", "Paris", None, "Berlin"],
+    "grade":  ["A", "B", "A", None],
+})
+
+# Euclidean KNN (default) — fast, ordinal-encodes categoricals
+result = mi.impute_knn(df_mixed, n_neighbors=3)
+
+# Gower KNN — statistically sound for heavy-categorical data
+result = mi.impute_knn(df_mixed, n_neighbors=3, metric="mixed")
+```
+
+> **Performance note:** Gower distance is **O(n²)** in both memory and
+> runtime.  Avoid `metric="mixed"` for datasets with more than ~10 000 rows.
+
+The same `metric` parameter is available on `MissinglyImputer`:
+
+```python
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+
+pipe = Pipeline([
+    ("impute", mi.MissinglyImputer(strategy="knn", metric="mixed", n_neighbors=5)),
+    ("model",  LogisticRegression()),
+])
+pipe.fit(X_train, y_train)
 ```
 
 ### Time-series missingness
