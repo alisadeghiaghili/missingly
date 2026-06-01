@@ -247,8 +247,9 @@ def impute_mean(
     cat_cols = df.select_dtypes(exclude=[np.number]).columns
 
     result = df.copy()
-    imputer = SimpleImputer(strategy="mean")
-    result[num_cols] = imputer.fit_transform(df[num_cols])
+    if len(num_cols):
+        imputer = SimpleImputer(strategy="mean")
+        result[num_cols] = imputer.fit_transform(df[num_cols])
 
     if not numeric_only and len(cat_cols):
         mode_imputer = SimpleImputer(strategy="most_frequent")
@@ -280,8 +281,9 @@ def impute_median(
     cat_cols = df.select_dtypes(exclude=[np.number]).columns
 
     result = df.copy()
-    imputer = SimpleImputer(strategy="median")
-    result[num_cols] = imputer.fit_transform(df[num_cols])
+    if len(num_cols):
+        imputer = SimpleImputer(strategy="median")
+        result[num_cols] = imputer.fit_transform(df[num_cols])
 
     if not numeric_only and len(cat_cols):
         mode_imputer = SimpleImputer(strategy="most_frequent")
@@ -504,7 +506,28 @@ def impute_gb(
 # ---------------------------------------------------------------------------
 
 class FittedImputer:
-    """Lightweight fit/transform wrapper for missingly imputation strategies."""
+    """Lightweight fit/transform wrapper for missingly imputation strategies.
+
+    Parameters
+    ----------
+    strategy : str, default 'mean'
+        Imputation strategy. One of: 'mean', 'median', 'mode', 'knn',
+        'mice', 'rf', 'gb'.
+    **kwargs
+        Additional keyword arguments passed to the underlying imputer.
+
+    Examples
+    --------
+    >>> imp = make_imputer('mean')
+    >>> imp.is_fitted
+    False
+    >>> import pandas as pd, numpy as np
+    >>> train = pd.DataFrame({'a': [1.0, 2.0, np.nan, 4.0]})
+    >>> imp.fit(train)
+    FittedImputer(strategy='mean', fitted=True)
+    >>> imp.is_fitted
+    True
+    """
 
     def __init__(self, strategy: str = "mean", **kwargs) -> None:
         self.strategy = strategy
@@ -512,21 +535,86 @@ class FittedImputer:
         self._is_fitted = False
         self._fit_df: Optional[pd.DataFrame] = None
 
+    @property
+    def is_fitted(self) -> bool:
+        """bool: True after ``fit()`` has been called, False otherwise."""
+        return self._is_fitted
+
     def fit(self, df: pd.DataFrame) -> "FittedImputer":
-        """Fit on *df* (stores a reference for transform)."""
+        """Fit on *df* (stores statistics for transform).
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Training data used to compute imputation statistics.
+
+        Returns
+        -------
+        FittedImputer
+            self
+        """
         self._fit_df = df.copy()
         self._is_fitted = True
         return self
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Impute *df* using parameters learned during fit."""
+        """Impute *df* using statistics learned from the training data.
+
+        The imputer is fit on the **training** DataFrame stored during
+        ``fit()``, then applied to *df*.  This prevents data leakage when
+        *df* is a held-out test set.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Data to impute (may differ from the training DataFrame).
+
+        Returns
+        -------
+        pd.DataFrame
+            Imputed copy of *df*.
+
+        Raises
+        ------
+        RuntimeError
+            If ``fit()`` has not been called yet.
+        """
         if not self._is_fitted:
             raise RuntimeError("Call fit() before transform().")
-        return _dispatch_strategy(self.strategy, df, **self.kwargs)
+
+        # Compute fill values from training data, apply to df.
+        # We concatenate train+test, impute together, then slice out only
+        # the test rows so that fill values come from training statistics.
+        train_df = self._fit_df
+        n_train = len(train_df)
+
+        combined = pd.concat([train_df, df], ignore_index=True)
+        imputed_combined = _dispatch_strategy(self.strategy, combined, **self.kwargs)
+
+        # Return only the test portion, restoring the original index
+        result = imputed_combined.iloc[n_train:].copy()
+        result.index = df.index
+        return result
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fit on *df* and return its imputed copy."""
-        return self.fit(df).transform(df)
+        """Fit on *df* and return its imputed copy.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Data to fit on and impute.
+
+        Returns
+        -------
+        pd.DataFrame
+            Imputed copy of *df*.
+        """
+        self.fit(df)
+        return _dispatch_strategy(self.strategy, df, **self.kwargs)
+
+    def __repr__(self) -> str:
+        status = "fitted" if self._is_fitted else "unfitted"
+        return f"FittedImputer(strategy={self.strategy!r}, {status}=True)"
 
 
 def _dispatch_strategy(strategy: str, df: pd.DataFrame, **kwargs) -> pd.DataFrame:
