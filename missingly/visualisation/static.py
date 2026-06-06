@@ -414,9 +414,8 @@ def upset(
     -------
     dict
         Static mode: ``{"intersections": ax_bar, "matrix": ax_mat,
-        "totals": ax_tot}`` — three Axes in a shared figure.
-        When there are no missing values an empty-state figure is returned
-        with the same dict shape so callers never need to branch on ``{}``.
+        "totals": ax_tot}`` — three Axes in a shared figure when missing
+        values exist; empty dict ``{}`` when no missing values are found.
     plotly.graph_objects.Figure
         Interactive mode.
 
@@ -443,16 +442,8 @@ def upset(
     null_mat = _nullity(df, missing_values)
     missing_cols = list(null_mat.columns[null_mat.any()])
     if not missing_cols:
-        fig, ax_empty = plt.subplots(figsize=(6, 3))
-        ax_empty.text(
-            0.5, 0.5, "No missing values to plot.",
-            ha="center", va="center", fontsize=13, color="#888888",
-            transform=ax_empty.transAxes,
-        )
-        ax_empty.set_axis_off()
-        fig.suptitle("UpSet Plot: Missing-Data Patterns", y=1.01)
-        plt.tight_layout()
-        return {"intersections": ax_empty, "matrix": ax_empty, "totals": ax_empty}
+        print("No missing values to plot.")
+        return {}
     null_mat = null_mat[missing_cols].astype(bool)
     n_rows_total = len(df)
     n_cols = len(missing_cols)
@@ -462,16 +453,8 @@ def upset(
         combos[key] = combos.get(key, 0) + 1
     combos = {k: v for k, v in combos.items() if any(k)}
     if not combos:
-        fig, ax_empty = plt.subplots(figsize=(6, 3))
-        ax_empty.text(
-            0.5, 0.5, "No missing combinations to plot.",
-            ha="center", va="center", fontsize=13, color="#888888",
-            transform=ax_empty.transAxes,
-        )
-        ax_empty.set_axis_off()
-        fig.suptitle("UpSet Plot: Missing-Data Patterns", y=1.01)
-        plt.tight_layout()
-        return {"intersections": ax_empty, "matrix": ax_empty, "totals": ax_empty}
+        print("No missing combinations to plot.")
+        return {}
     sorted_combos = sorted(combos.items(), key=lambda x: x[1], reverse=True)[:max_patterns]
     combo_keys = [c[0] for c in sorted_combos]
     combo_counts = [c[1] for c in sorted_combos]
