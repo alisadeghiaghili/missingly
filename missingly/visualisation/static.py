@@ -415,6 +415,8 @@ def upset(
     dict
         Static mode: ``{"intersections": ax_bar, "matrix": ax_mat,
         "totals": ax_tot}`` — three Axes in a shared figure.
+        When there are no missing values an empty-state figure is returned
+        with the same dict shape so callers never need to branch on ``{}``.
     plotly.graph_objects.Figure
         Interactive mode.
 
@@ -434,13 +436,23 @@ def upset(
     >>> axes = visualise.upset(df)           # static → dict of Axes
     >>> fig  = visualise.upset(df, interactive=True)
     """
+    # NOTE: show_pct, color, and max_patterns are explicit params;
+    # do NOT forward them (or any remaining kwargs) to matplotlib bar().
     if interactive:
         return _upset_plotly(df, missing_values, max_patterns, show_pct, color)
     null_mat = _nullity(df, missing_values)
     missing_cols = list(null_mat.columns[null_mat.any()])
     if not missing_cols:
-        print("No missing values to plot.")
-        return {}
+        fig, ax_empty = plt.subplots(figsize=(6, 3))
+        ax_empty.text(
+            0.5, 0.5, "No missing values to plot.",
+            ha="center", va="center", fontsize=13, color="#888888",
+            transform=ax_empty.transAxes,
+        )
+        ax_empty.set_axis_off()
+        fig.suptitle("UpSet Plot: Missing-Data Patterns", y=1.01)
+        plt.tight_layout()
+        return {"intersections": ax_empty, "matrix": ax_empty, "totals": ax_empty}
     null_mat = null_mat[missing_cols].astype(bool)
     n_rows_total = len(df)
     n_cols = len(missing_cols)
@@ -450,14 +462,22 @@ def upset(
         combos[key] = combos.get(key, 0) + 1
     combos = {k: v for k, v in combos.items() if any(k)}
     if not combos:
-        print("No missing combinations to plot.")
-        return {}
+        fig, ax_empty = plt.subplots(figsize=(6, 3))
+        ax_empty.text(
+            0.5, 0.5, "No missing combinations to plot.",
+            ha="center", va="center", fontsize=13, color="#888888",
+            transform=ax_empty.transAxes,
+        )
+        ax_empty.set_axis_off()
+        fig.suptitle("UpSet Plot: Missing-Data Patterns", y=1.01)
+        plt.tight_layout()
+        return {"intersections": ax_empty, "matrix": ax_empty, "totals": ax_empty}
     sorted_combos = sorted(combos.items(), key=lambda x: x[1], reverse=True)[:max_patterns]
     combo_keys = [c[0] for c in sorted_combos]
     combo_counts = [c[1] for c in sorted_combos]
     n_combos = len(combo_keys)
     col_totals = [null_mat[c].sum() for c in missing_cols]
-    fig = plt.figure(figsize=(max(8, n_combos * 1.2), max(6, n_cols * 0.9 + 3)))
+    fig = plt.figure(figsize=(max(10, n_combos * 1.2), max(6, n_cols * 0.9 + 3)))
     gs = gridspec.GridSpec(
         2, 2,
         width_ratios=[1, n_combos],
@@ -473,7 +493,7 @@ def upset(
     bars = ax_bar.bar(x_pos, combo_counts, color=color, edgecolor="white")
     ax_bar.set_xlim(-0.5, n_combos - 0.5)
     ax_bar.set_xticks([])
-    ax_bar.set_ylabel("Intersection size")
+    ax_bar.set_ylabel("Frequency")
     ax_bar.spines["top"].set_visible(False)
     ax_bar.spines["right"].set_visible(False)
     if show_pct:
@@ -513,7 +533,7 @@ def upset(
     ax_tot.invert_xaxis()
     ax_tot.spines["top"].set_visible(False)
     ax_tot.spines["left"].set_visible(False)
-    fig.suptitle("UpSet Plot of Missing Value Combinations", y=1.01)
+    fig.suptitle("UpSet Plot: Missing-Data Patterns", y=1.01)
     plt.tight_layout()
     return {"intersections": ax_bar, "matrix": ax_mat, "totals": ax_tot}
 
@@ -755,6 +775,7 @@ def heatmap(
     vmax = kwargs.pop("vmax", 1)
     center = kwargs.pop("center", 0)
     linewidths = kwargs.pop("linewidths", 0.5)
+    method_label = "Phi" if method == "phi" else "Pearson"
     # --- single DQT glue point ---
     try:
         from data_quality_toolkit.visualization import correlation_heatmap as _dqt_hm
@@ -777,7 +798,7 @@ def heatmap(
             vmin=vmin, vmax=vmax, center=center, linewidths=linewidths,
             **kwargs,
         )
-    method_label = "Phi" if method == "phi" else "Pearson"
+    # Always set title after the rendering call (DQT may not set it)
     ax.set_title(f"Nullity Correlation Heatmap ({method_label})")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
@@ -868,6 +889,8 @@ def miss_cluster(
     yticklabels = _safe_labels(null_df.index) if null_df.shape[0] < 50 else False
     cmap = kwargs.pop("cmap", ["#f0f0f0", "#d62728"])
     cbar = kwargs.pop("cbar", False)
+    # 'method' is consumed above; must NOT be forwarded to sns.heatmap
+    kwargs.pop("method", None)
     sns.heatmap(null_df, ax=ax, cmap=cmap, cbar=cbar, yticklabels=yticklabels, **kwargs)
     ax.set_xticklabels(_safe_labels(df.columns), rotation=45, ha="right")
     ax.set_title("Clustered Missing Data Matrix")
@@ -1032,20 +1055,76 @@ def vis_miss_by_group(
 def vis_impute_dist(
     original_df: pd.DataFrame,
     imputed_df: pd.DataFrame,
-    column: str,
+    column: Optional[str] = None,
     ax=None,
+    missing_values: Optional[List] = None,
     **kwargs,
 ):
-    """KDE comparison of original vs. imputed distribution for one column."""
-    if ax is None:
-        _, ax = plt.subplots(figsize=(10, 6))
-    sns.kdeplot(original_df[column].dropna(), ax=ax, label="Original", **kwargs)
-    sns.kdeplot(imputed_df[column], ax=ax, label="Imputed", **kwargs)
-    ax.set_title(
-        f"Distribution of Original vs. Imputed Data for {_rtl_safe(column)}"
+    """KDE comparison of original vs. imputed distribution.
+
+    When *column* is given, plots a single-column KDE overlay on *ax*.
+    When *column* is ``None``, plots a grid of KDEs for every numeric column
+    that had missing values in *original_df* and returns a
+    :class:`matplotlib.figure.Figure`.
+
+    Parameters
+    ----------
+    original_df : pd.DataFrame
+        Pre-imputation DataFrame (contains ``NaN`` values).
+    imputed_df : pd.DataFrame
+        Post-imputation DataFrame.
+    column : str, optional
+        A single column to compare.  When ``None`` all numeric columns with
+        missing values are plotted in a grid (same as
+        :func:`miss_impute_compare`).
+    ax : matplotlib.axes.Axes, optional
+        Target axes for the single-column mode.  Ignored in multi-column mode.
+    missing_values : list, optional
+        Extra sentinel values for :func:`_nullity`.
+    **kwargs
+        Forwarded to :func:`seaborn.kdeplot`.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        Single-column mode.
+    matplotlib.figure.Figure
+        Multi-column mode (``column=None``).
+
+    Raises
+    ------
+    ValueError
+        Multi-column mode: no numeric columns with missing values found.
+    KeyError
+        Single-column mode: *column* not present in either DataFrame.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> from missingly import visualise, impute
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, np.nan, 5.0],
+    ...                    "b": [np.nan, 2.0, 3.0, 4.0, np.nan]})
+    >>> imputed = impute.impute_mean(df)
+    >>> ax  = visualise.vis_impute_dist(df, imputed, column="a")  # single col
+    >>> fig = visualise.vis_impute_dist(df, imputed)              # all cols
+    """
+    if column is not None:
+        # --- single-column mode ---
+        if ax is None:
+            _, ax = plt.subplots(figsize=(10, 6))
+        sns.kdeplot(original_df[column].dropna(), ax=ax, label="Original", **kwargs)
+        sns.kdeplot(imputed_df[column], ax=ax, label="Imputed", **kwargs)
+        ax.set_title(
+            f"Distribution of Original vs. Imputed Data for {_rtl_safe(column)}"
+        )
+        ax.legend()
+        return ax
+
+    # --- multi-column mode (column=None): delegate to miss_impute_compare ---
+    return miss_impute_compare(
+        original_df, imputed_df,
+        columns=None, missing_values=missing_values, **kwargs,
     )
-    ax.legend()
-    return ax
 
 
 def miss_impute_compare(
@@ -1098,7 +1177,34 @@ def scatter_miss(
     missing_values: Optional[List] = None,
     **kwargs,
 ):
-    """Scatter plot highlighting missing values in either axis variable."""
+    """Scatter plot highlighting missing values in either axis variable.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    x : str
+        Column name for the horizontal axis.
+    y : str
+        Column name for the vertical axis.
+    ax : matplotlib.axes.Axes, optional
+    missing_values : list, optional
+    **kwargs
+        Forwarded to :func:`seaborn.scatterplot`.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> from missingly import visualise
+    >>> df = pd.DataFrame({
+    ...     "A": [1, 2, np.nan, 4, 5],
+    ...     "B": [5, np.nan, 3, 4, 5],
+    ... })
+    >>> ax = visualise.scatter_miss(df, x="A", y="B")
+    """
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 8))
     plot_df = df[[x, y]].copy()
@@ -1123,6 +1229,8 @@ def scatter_miss(
         hue = plot_df[f"{y}_NA"]
         hue.name = f"Missing {_rtl_safe(y)}"
     sns.scatterplot(data=plot_df, x=x, y=y, hue=hue, ax=ax, **kwargs)
+    ax.set_xlabel(_rtl_safe(x))
+    ax.set_ylabel(_rtl_safe(y))
     ax.set_title(f"Scatter Plot of {_rtl_safe(x)} vs {_rtl_safe(y)} with Missing Values")
     return ax
 
