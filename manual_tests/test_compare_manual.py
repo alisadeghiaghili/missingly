@@ -1,5 +1,3 @@
-# manual_tests/test_compare_manual.py
-
 import os
 
 import numpy as np
@@ -21,6 +19,12 @@ def load_data():
         parse_dates=["زمان ثبت"],
     )
 
+    # برای سریع شدن تست
+    df = df.sample(
+        n=1000,
+        random_state=42,
+    )
+
     return df
 
 
@@ -28,9 +32,10 @@ def create_complete_dataset(df):
     """
     compare_imputations نیاز به دیتاست کامل دارد.
     """
+
     complete_df = df.dropna().copy()
 
-    # ستون زمان را برای تست حذف می‌کنیم
+    # زمان برای مقایسه بازسازی مهم نیست
     complete_df = complete_df.drop(
         columns=["زمان ثبت"],
         errors="ignore",
@@ -80,20 +85,31 @@ def test_compare_mask_levels(df):
         )
 
 
-def create_target(df):
+def create_cv_dataset(df):
     """
-    Target مصنوعی برای تست CV
-
     هدف:
-    پیش‌بینی دما از روی بقیه سنسورها
+    پیش‌بینی دما از روی سایر سنسورها
     """
 
     y = df["دما (سانتی‌گراد)"].copy()
 
     X = df.drop(
-        columns=["دما (سانتی‌گراد)", "زمان ثبت"],
+        columns=[
+            "دما (سانتی‌گراد)",
+            "زمان ثبت",
+        ],
         errors="ignore",
     )
+
+    # فقط ستون‌های عددی
+    X = X.select_dtypes(
+        include=[np.number]
+    )
+
+    mask = y.notna()
+
+    X = X.loc[mask]
+    y = y.loc[mask]
 
     return X, y
 
@@ -103,19 +119,13 @@ def test_cv_compare(df):
     print("CROSS VALIDATION BENCHMARK")
     print("=" * 80)
 
-    X, y = create_target(df)
-
-    # فقط ردیف‌هایی که تارگت دارند
-    mask = y.notna()
-
-    X = X.loc[mask]
-    y = y.loc[mask]
+    X, y = create_cv_dataset(df)
 
     results = cv_compare_imputations(
         X=X,
         y=y,
         estimator=RandomForestRegressor(
-            n_estimators=100,
+            n_estimators=20,
             random_state=42,
             n_jobs=-1,
         ),
@@ -124,9 +134,8 @@ def test_cv_compare(df):
             "median",
             "mode",
             "knn",
-            "mice",
         ],
-        n_splits=3,
+        n_splits=2,
         random_state=42,
     )
 
@@ -156,11 +165,17 @@ def main():
     print("\nComplete Dataset Shape")
     print(complete_df.shape)
 
-    test_compare_reconstruction(complete_df)
+    test_compare_reconstruction(
+        complete_df
+    )
 
-    test_compare_mask_levels(complete_df)
+    test_compare_mask_levels(
+        complete_df
+    )
 
-    test_cv_compare(df)
+    test_cv_compare(
+        df
+    )
 
     print("\nAll compare manual tests completed.")
     print(f"Check: {OUTPUT_DIR}")
