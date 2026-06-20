@@ -23,6 +23,7 @@ from missingly.visualisation._base import (
     _nullity,
     _pct_labels,
     _require_plotly,
+    _rtl_plotly_layout,
     _rtl_safe,
     _safe_labels,
 )
@@ -63,6 +64,7 @@ def _vis_miss_plotly(
         template="plotly_white",
         margin=dict(l=80, r=40, t=60, b=120),
     )
+    fig.update_layout(**_rtl_plotly_layout(col_labels))
     return fig
 
 
@@ -98,11 +100,6 @@ def _heatmap_plotly(
     z[nan_mask | sig_mask] = None
     labels = _safe_labels(corr.columns)
     method_label = "Phi" if method == "phi" else "Pearson"
-    text = np.where(
-        np.isnan(np.nan_to_num(z, nan=float("nan"))),
-        "",
-        np.vectorize(lambda v: f"{v:.2f}" if v is not None else "")(z),
-    )
     fig = go.Figure(
         data=go.Heatmap(
             z=z,
@@ -110,7 +107,7 @@ def _heatmap_plotly(
             y=labels,
             colorscale="RdBu",
             zmin=-1, zmax=1,
-            hovertemplate="%{y} × %{x}: %{z:.2f}<extra></extra>",
+            hovertemplate="%{y} \u00d7 %{x}: %{z:.2f}<extra></extra>",
         )
     )
     fig.update_layout(
@@ -120,6 +117,7 @@ def _heatmap_plotly(
         template="plotly_white",
         margin=dict(l=100, r=40, t=60, b=120),
     )
+    fig.update_layout(**_rtl_plotly_layout(labels))
     return fig
 
 
@@ -148,6 +146,7 @@ def _matrix_plotly(
         template="plotly_white",
         margin=dict(l=80, r=40, t=60, b=120),
     )
+    fig.update_layout(**_rtl_plotly_layout(labels))
     return fig
 
 
@@ -179,6 +178,7 @@ def _miss_var_pct_plotly(
         template="plotly_white",
         margin=dict(l=120, r=60, t=60, b=60),
     )
+    fig.update_layout(**_rtl_plotly_layout(labels))
     return fig
 
 
@@ -208,7 +208,7 @@ def _miss_cooccurrence_plotly(
             colorscale="Blues",
             text=text,
             texttemplate="%{text}",
-            hovertemplate="%{y} × %{x}: %{z}<extra></extra>",
+            hovertemplate="%{y} \u00d7 %{x}: %{z}<extra></extra>",
         )
     )
     fig.update_layout(
@@ -218,6 +218,7 @@ def _miss_cooccurrence_plotly(
         template="plotly_white",
         margin=dict(l=100, r=40, t=60, b=120),
     )
+    fig.update_layout(**_rtl_plotly_layout(labels))
     return fig
 
 
@@ -248,6 +249,7 @@ def _bar_plotly(
         template="plotly_white",
         margin=dict(l=60, r=40, t=60, b=120),
     )
+    fig.update_layout(**_rtl_plotly_layout(labels))
     return fig
 
 
@@ -282,6 +284,7 @@ def _miss_case_plotly(
         template="plotly_white",
         margin=dict(l=60, r=40, t=60, b=100),
     )
+    fig.update_layout(**_rtl_plotly_layout(row_labels))
     return fig
 
 
@@ -402,6 +405,7 @@ def _upset_plotly(
         autorange="reversed",
         row=2, col=1,
     )
+    fig.update_layout(**_rtl_plotly_layout(col_labels))
     return fig
 
 
@@ -421,10 +425,11 @@ def _miss_patterns_plotly(
     patterns = null_mat.apply(_pattern_label, axis=1)
     counts = patterns.value_counts().head(top_n).sort_values(ascending=True)
     pct = counts / len(df) * 100
+    pattern_labels = counts.index.tolist()
     fig = go.Figure(
         data=go.Bar(
             x=counts.values,
-            y=counts.index.tolist(),
+            y=pattern_labels,
             orientation="h",
             marker_color="#4C72B0",
             text=[f"{p:.1f}%" for p in pct.values],
@@ -439,4 +444,5 @@ def _miss_patterns_plotly(
         margin=dict(l=200, r=80, t=60, b=60),
         height=max(300, top_n * 40 + 100),
     )
+    fig.update_layout(**_rtl_plotly_layout(pattern_labels))
     return fig

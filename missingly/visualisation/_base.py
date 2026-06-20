@@ -11,6 +11,9 @@ _safe_labels
     Apply :func:`_rtl_safe` to every label in a sequence.
 _apply_rtl_font
     Configure matplotlib to use a Persian-capable font when RTL text is present.
+_rtl_plotly_layout
+    Return a dict of Plotly layout kwargs that enable RTL rendering when any
+    of the supplied labels contain Persian/Arabic characters.
 _nullity
     Return a boolean DataFrame marking missing positions.
 _pct_labels
@@ -39,11 +42,15 @@ If either library is absent a best-effort fallback is used (character reversal)
 which is better than raw isolated glyphs.  Install both for correct output::
 
     pip install arabic-reshaper python-bidi
+
+For Plotly figures, :func:`_rtl_plotly_layout` injects a RTL-capable font
+family and sets ``automargin=True`` on axes that carry Persian/Arabic labels.
+No additional libraries are required for the Plotly path.
 """
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -72,6 +79,18 @@ except ImportError:
 _RTL_PATTERN = re.compile(
     r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
 )
+
+# Preferred fonts for RTL rendering, ordered by quality/availability.
+_RTL_FONT_CANDIDATES = [
+    "Vazirmatn",
+    "Vazir",
+    "B Nazanin",
+    "Iranian Sans",
+    "Tahoma",
+    "Arial Unicode MS",
+    "Noto Sans Arabic",
+    "DejaVu Sans",
+]
 
 
 def _is_rtl(text: str) -> bool:
@@ -167,23 +186,61 @@ def _apply_rtl_font(labels: Sequence) -> None:
     import matplotlib as mpl
     import matplotlib.font_manager as fm
 
-    _RTL_FONT_CANDIDATES = [
-        "Vazirmatn",
-        "Vazir",
-        "B Nazanin",
-        "Iranian Sans",
-        "Tahoma",
-        "Arial Unicode MS",
-        "Noto Sans Arabic",
-        "DejaVu Sans",
-    ]
-
     available = {f.name for f in fm.fontManager.ttflist}
     for font in _RTL_FONT_CANDIDATES:
         if font in available:
             mpl.rcParams["font.family"] = font
             return
     # No candidate found – DejaVu Sans is already the default, nothing to do.
+
+
+def _rtl_plotly_layout(labels: Sequence) -> Dict[str, Any]:
+    """Return Plotly layout kwargs that enable correct RTL rendering.
+
+    Plotly's WebGL/SVG renderer does handle Unicode Bidi to some extent,
+    but still needs an explicit RTL-capable font to display connected
+    Persian/Arabic glyph forms correctly.  This helper detects whether any
+    label in *labels* is RTL and, if so, returns layout overrides that:
+
+    * Set ``font.family`` to the best available RTL-capable web-safe font.
+    * Enable ``automargin`` on both axes so long RTL tick labels are not
+      clipped.
+
+    The returned dict is meant to be passed directly to
+    ``fig.update_layout(**_rtl_plotly_layout(labels))``.
+
+    Parameters
+    ----------
+    labels : sequence
+        Any iterable of strings that will appear as axis labels or tick text
+        in the figure.
+
+    Returns
+    -------
+    dict
+        Empty dict when no RTL text is detected (no-op).  Otherwise a dict
+        with ``font``, ``xaxis``, and ``yaxis`` keys.
+
+    Examples
+    --------
+    >>> fig.update_layout(**_rtl_plotly_layout(df.columns))
+    """
+    if not any(_is_rtl(str(lbl)) for lbl in labels):
+        return {}
+
+    # Ordered preference: open-source web fonts first, then widely pre-installed.
+    # Plotly renders in the browser, so web fonts from Google Fonts are available
+    # when the user has internet access.  Fall back gracefully otherwise.
+    rtl_font_family = (
+        "Vazirmatn, Vazir, Tahoma, Arial Unicode MS, "
+        "Noto Sans Arabic, sans-serif"
+    )
+
+    return {
+        "font": {"family": rtl_font_family},
+        "xaxis": {"automargin": True},
+        "yaxis": {"automargin": True},
+    }
 
 
 # ---------------------------------------------------------------------------
