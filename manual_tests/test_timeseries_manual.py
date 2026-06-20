@@ -28,7 +28,7 @@ def save_plot(name):
 
 def load_data():
     df = pd.read_csv(
-        "./manual_tests/petrochemical_tank_sensors.csv",
+        "./manual_tests/timeseries_duplicate_index.csv",
         parse_dates=["زمان ثبت"],
     )
 
