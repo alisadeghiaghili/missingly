@@ -77,3 +77,12 @@ dmypy.json
 # Generated reports (output files)
 missing_data_report.html
 *.html.bak
+
+# Data files
+*.csv
+*.npy
+
+# Manual test outputs
+manual_tests/output_*/
+manual_tests/*.csv
+manual_tests/*.npy
