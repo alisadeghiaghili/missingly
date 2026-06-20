@@ -294,8 +294,25 @@ pipe.fit(X_train, y_train)
 ## Installation
 
 ```bash
+# Core package
 pip install missingly
+
+# With interactive Plotly charts
+pip install missingly[interactive]
+
+# With Persian / Arabic (RTL) support for static matplotlib plots
+# Required when column names or labels contain Persian/Arabic characters
+pip install missingly[rtl]
+
+# Everything (interactive + RTL)
+pip install missingly[all]
 ```
+
+> **Persian/Arabic users:** static matplotlib plots require `missingly[rtl]`
+> (installs `arabic-reshaper` and `python-bidi`) **plus** a compatible font
+> such as [Vazirmatn](https://fonts.google.com/specimen/Vazirmatn) installed
+> on your system.  Interactive Plotly charts (`interactive=True`) work
+> correctly out of the box with no extra dependencies.
 
 ---
 
