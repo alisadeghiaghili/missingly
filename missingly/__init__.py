@@ -35,6 +35,10 @@ Public API
 
     miss_ts_summary, vis_ts_miss, vis_miss_over_time, impute_ts
 
+**MI Workflow (R-style mice::with / mice::pool)**::
+
+    mi_with, mi_fit, pool_linear_models
+
 **Evaluation**::
 
     compare_imputations, cv_compare_imputations
@@ -139,6 +143,15 @@ from missingly.transformer import (
 from missingly.mi import (
     pool_scalar_estimates,
     pool_linear_regression_results,
+)
+
+# ---------------------------------------------------------------------------
+# MI Workflow (R-style mice::with / mice::pool)
+# ---------------------------------------------------------------------------
+from missingly.mi_workflow import (
+    mi_with,
+    mi_fit,
+    pool_linear_models,
 )
 
 # ---------------------------------------------------------------------------
@@ -295,9 +308,13 @@ __all__ = [
     # sklearn-style
     "MissinglyImputer",
     "FittedImputer",
-    # MI pooling
+    # MI pooling (low-level Rubin's Rules)
     "pool_scalar_estimates",
     "pool_linear_regression_results",
+    # MI Workflow (high-level R-style)
+    "mi_with",
+    "mi_fit",
+    "pool_linear_models",
     # Comparison / Evaluation
     "compare_imputations",
     "cv_compare_imputations",
