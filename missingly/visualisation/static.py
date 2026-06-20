@@ -35,6 +35,7 @@ from scipy.cluster.hierarchy import linkage, dendrogram as scipy_dendrogram, lea
 from scipy.spatial.distance import squareform, pdist
 
 from missingly.visualisation._base import (
+    _apply_rtl_font,
     _nullity,
     _pct_labels,
     _rtl_safe,
@@ -105,6 +106,7 @@ def matrix(
     """
     if interactive:
         return _matrix_plotly(df, missing_values)
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     null_mat = _nullity(df, missing_values)
@@ -170,6 +172,7 @@ def vis_miss(
     """
     if interactive:
         return _vis_miss_plotly(df, missing_values, show_pct, cluster)
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(max(8, df.shape[1] * 1.2), 6))
     null_df = _nullity(df, missing_values).astype(float)
@@ -228,6 +231,7 @@ def bar(
     """
     if interactive:
         return _bar_plotly(df, missing_values)
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     miss_counts = _nullity(df, missing_values).sum()
@@ -278,6 +282,7 @@ def miss_case(
     """
     if interactive:
         return _miss_case_plotly(df, missing_values)
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     miss_counts = _nullity(df, missing_values).sum(axis=1)
@@ -329,6 +334,7 @@ def miss_var_pct(
     """
     if interactive:
         return _miss_var_pct_plotly(df, missing_values, sort)
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(8, max(4, df.shape[1] * 0.5)))
     pct = _nullity(df, missing_values).mean() * 100
@@ -356,6 +362,7 @@ def miss_which(
     **kwargs,
 ):
     """Binary tile plot: which variables contain *any* missing values?"""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(max(6, df.shape[1] * 0.8), 2.5))
     null_df = _nullity(df, missing_values)
@@ -437,6 +444,7 @@ def upset(
     """
     # NOTE: show_pct, color, and max_patterns are explicit params;
     # do NOT forward them (or any remaining kwargs) to matplotlib bar().
+    _apply_rtl_font(df.columns)
     if interactive:
         return _upset_plotly(df, missing_values, max_patterns, show_pct, color)
     null_mat = _nullity(df, missing_values)
@@ -564,6 +572,7 @@ def miss_patterns(
     """
     if interactive:
         return _miss_patterns_plotly(df, missing_values, top_n)
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(9, max(4, top_n * 0.55)))
     null_mat = _nullity(df, missing_values)
@@ -638,6 +647,7 @@ def miss_cooccurrence(
     """
     if interactive:
         return _miss_cooccurrence_plotly(df, missing_values, normalize)
+    _apply_rtl_font(df.columns)
     null_mat = _nullity(df, missing_values).astype(int)
     if ax is None:
         n = null_mat.shape[1]
@@ -727,6 +737,7 @@ def heatmap(
     """
     if interactive:
         return _heatmap_plotly(df, missing_values, method, mask_insignificant, significance)
+    _apply_rtl_font(df.columns)
     if ax is None:
         n = df.shape[1]
         _, ax = plt.subplots(figsize=(max(6, n), max(5, n - 1)))
@@ -797,6 +808,7 @@ def dendrogram(
     **kwargs,
 ):
     """Dendrogram clustering variables by their nullity correlation."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     null_mat = _nullity(df, missing_values).astype(int)
@@ -862,6 +874,7 @@ def miss_cluster(
     >>> ax = visualise.miss_cluster(df)
     >>> # ax is a single matplotlib.axes.Axes (not a dict)
     """
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(max(8, df.shape[1] * 1.2), 6))
     null_df = _nullity(df, missing_values).astype(float)
@@ -894,6 +907,7 @@ def miss_row_profile(
     **kwargs,
 ):
     """Histogram of per-row missing-value counts."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 5))
     row_miss = _nullity(df, missing_values).sum(axis=1)
@@ -929,6 +943,7 @@ def shadow_scatter(
     **kwargs,
 ):
     """Scatter plot coloured by whether a third variable is missing."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 6))
     null_col = _nullity(df[[shadow_col]], missing_values)[shadow_col]
@@ -973,6 +988,7 @@ def vis_miss_fct(
     **kwargs,
 ):
     """Stacked bar chart of missing values per factor level."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     null_indicator = _nullity(df, missing_values)
@@ -1002,6 +1018,7 @@ def vis_miss_by_group(
     **kwargs,
 ):
     """Per-group missingness heatmap."""
+    _apply_rtl_font(df.columns)
     null_mat = _nullity(df, missing_values)
     miss_pct = (
         null_mat
@@ -1091,6 +1108,7 @@ def vis_impute_dist(
     >>> ax  = visualise.vis_impute_dist(df, imputed, column="a")  # single col
     >>> fig = visualise.vis_impute_dist(df, imputed)              # all cols
     """
+    _apply_rtl_font(original_df.columns)
     if column is not None:
         # --- single-column mode ---
         if ax is None:
@@ -1118,6 +1136,7 @@ def miss_impute_compare(
     **kwargs,
 ):
     """Multi-column grid comparing original and imputed distributions."""
+    _apply_rtl_font(original_df.columns)
     null_mat = _nullity(original_df, missing_values)
     if columns is None:
         num_cols = original_df.select_dtypes(include=[np.number]).columns
@@ -1188,6 +1207,7 @@ def scatter_miss(
     ... })
     >>> ax = visualise.scatter_miss(df, x="A", y="B")
     """
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 8))
     plot_df = df[[x, y]].copy()
@@ -1229,6 +1249,7 @@ def vis_miss_cumsum_var(
     **kwargs,
 ):
     """Cumulative sum of missing values across variables."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     cumsum = _nullity(df, missing_values).sum().cumsum()
@@ -1248,6 +1269,7 @@ def vis_miss_cumsum_case(
     **kwargs,
 ):
     """Cumulative sum of missing values across cases (rows)."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 8))
     cumsum = _nullity(df, missing_values).sum(axis=1).cumsum()
@@ -1269,6 +1291,7 @@ def vis_miss_span(
     **kwargs,
 ):
     """Rolling-window missingness rate for a single column."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 5))
     null_series = _nullity(df[[column]], missing_values)[column].astype(float)
@@ -1297,6 +1320,7 @@ def vis_parallel_coords(
     **kwargs,
 ):
     """Parallel coordinates plot coloured by row-level missingness."""
+    _apply_rtl_font(df.columns)
     if ax is None:
         _, ax = plt.subplots(figsize=(max(8, df.shape[1] * 1.2), 6))
     num_df = df.select_dtypes(include=[np.number])
