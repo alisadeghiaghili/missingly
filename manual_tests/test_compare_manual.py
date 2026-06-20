@@ -15,19 +15,8 @@ OUTPUT_DIR = "manual_tests/output_compare"
 
 def load_data():
     df = pd.read_csv(
-        "./manual_tests/petrochemical_tank_sensors.csv",
+        "./manual_tests/timeseries_duplicate_index.csv",
         parse_dates=["زمان ثبت"],
-    )
-
-    # برای سریع شدن تست
-    df = df.sample(
-        n=1000,
-        random_state=42,
-    )
-
-    return df
-
-
 def create_complete_dataset(df):
     """
     compare_imputations نیاز به دیتاست کامل دارد.
