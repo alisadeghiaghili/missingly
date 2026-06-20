@@ -38,17 +38,23 @@ The fix uses two optional libraries:
 * ``python-bidi`` (``bidi.algorithm``) – applies the UBA so the visual order
   is right-to-left.
 
-If either library is absent a best-effort fallback is used (character reversal)
-which is imperfect but still far better than the default isolated-glyph
-rendering.  Install both for correct output::
+Both libraries must be present for fully correct output.  The fallback
+behaviour when one or both are missing is:
+
+* **Neither** installed → character reversal (imperfect but readable).
+* **Only reshaper** installed → glyphs are shaped but order is still LTR
+  (partially broken); reversal applied as a best-effort order fix.
+* **Only bidi** installed → order is corrected but glyphs may be isolated
+  forms (partially broken); no extra fallback possible beyond bidi itself.
+* **Both** installed → fully correct output.
+
+A ``UserWarning`` is emitted **once per Python session** when Persian/Arabic
+labels are detected but the required libraries (or a suitable system font) are
+not available, so users know exactly what to install::
 
     pip install missingly[rtl]
     # or explicitly:
     pip install arabic-reshaper python-bidi
-
-A ``UserWarning`` is emitted **once per Python session** when Persian/Arabic
-labels are detected but the required libraries (or a suitable system font) are
-not available, so users know exactly what to install.
 
 For Plotly figures, :func:`_rtl_plotly_layout` injects a RTL-capable font
 family and sets ``automargin=True`` on axes that carry Persian/Arabic labels.
@@ -115,9 +121,12 @@ def _rtl_safe(text: str) -> str:
     ``python-bidi`` so that matplotlib – which has no built-in BiDi support –
     renders Persian and Arabic labels correctly.
 
-    If the optional libraries are not installed a fallback is applied:
-    the string is reversed character-by-character, which is imperfect but
-    still far better than the default left-to-right isolated-glyph rendering.
+    Fallback behaviour when libraries are missing:
+
+    * **Both** installed → fully correct output.
+    * **Only reshaper** → glyphs shaped, then string reversed for display order.
+    * **Only bidi** → bidi reordering applied (glyphs may be isolated forms).
+    * **Neither** → string reversed as a last-resort order fix.
 
     Latin text is returned unchanged.
 
@@ -143,14 +152,19 @@ def _rtl_safe(text: str) -> str:
     if not _is_rtl(s):
         return s
 
-    # Step 1 – glyph shaping
-    if _HAVE_RESHAPER:
+    if _HAVE_RESHAPER and _HAVE_BIDI:
+        # Fully correct path: shape glyphs then apply UBA visual order.
         s = _ar_reshaper.reshape(s)
-    # Step 2 – visual (display) order
-    if _HAVE_BIDI:
         s = _bidi_get_display(s)
-    elif not _HAVE_RESHAPER:
-        # last-resort fallback: reverse the whole string
+    elif _HAVE_RESHAPER:
+        # Glyphs shaped but bidi unavailable: reverse for display order.
+        s = _ar_reshaper.reshape(s)
+        s = s[::-1]
+    elif _HAVE_BIDI:
+        # Bidi available but no reshaping: UBA reorders, glyphs may be isolated.
+        s = _bidi_get_display(s)
+    else:
+        # Last-resort fallback: reverse the whole string.
         s = s[::-1]
 
     return s
