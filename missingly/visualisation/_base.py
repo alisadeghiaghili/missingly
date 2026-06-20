@@ -39,9 +39,16 @@ The fix uses two optional libraries:
   is right-to-left.
 
 If either library is absent a best-effort fallback is used (character reversal)
-which is better than raw isolated glyphs.  Install both for correct output::
+which is imperfect but still far better than the default isolated-glyph
+rendering.  Install both for correct output::
 
+    pip install missingly[rtl]
+    # or explicitly:
     pip install arabic-reshaper python-bidi
+
+A ``UserWarning`` is emitted **once per Python session** when Persian/Arabic
+labels are detected but the required libraries (or a suitable system font) are
+not available, so users know exactly what to install.
 
 For Plotly figures, :func:`_rtl_plotly_layout` injects a RTL-capable font
 family and sets ``automargin=True`` on axes that carry Persian/Arabic labels.
@@ -50,6 +57,7 @@ No additional libraries are required for the Plotly path.
 from __future__ import annotations
 
 import re
+import warnings
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -71,6 +79,8 @@ try:
 except ImportError:
     _HAVE_BIDI = False
 
+# Emitted at most once per session to avoid spamming the user.
+_RTL_WARNED: bool = False
 
 # ---------------------------------------------------------------------------
 # RTL / Persian helpers
@@ -127,7 +137,7 @@ def _rtl_safe(text: str) -> str:
     >>> _rtl_safe("age")   # Latin – unchanged
     'age'
     >>> _rtl_safe("سن")   # Persian – reshaped and reordered
-    '\u0646\u0633'
+    '\\u0646\\u0633'
     """
     s = str(text)
     if not _is_rtl(s):
@@ -170,6 +180,11 @@ def _apply_rtl_font(labels: Sequence) -> None:
     preference; matplotlib's default (DejaVu Sans) is kept as the final
     fallback.
 
+    When no RTL-capable font is found **and** ``arabic-reshaper`` /
+    ``python-bidi`` are not installed, a :class:`UserWarning` is emitted
+    **once per Python session** with actionable install instructions.  This
+    prevents silent broken output while avoiding warning spam on every plot.
+
     This function is a **side-effect helper** – call it once before drawing
     a figure that may contain RTL labels.  It modifies ``matplotlib.rcParams``
     temporarily; callers that need per-Axes control should restore rcParams
@@ -180,6 +195,8 @@ def _apply_rtl_font(labels: Sequence) -> None:
     labels : sequence
         Any iterable of strings (column names, tick labels, title, …).
     """
+    global _RTL_WARNED
+
     if not any(_is_rtl(str(lbl)) for lbl in labels):
         return
 
@@ -191,7 +208,25 @@ def _apply_rtl_font(labels: Sequence) -> None:
         if font in available:
             mpl.rcParams["font.family"] = font
             return
-    # No candidate found – DejaVu Sans is already the default, nothing to do.
+
+    # No RTL-capable font found on this system.
+    # If the reshaper/bidi libraries are also absent, the output will be
+    # visually broken (isolated glyphs, wrong order).  Warn once.
+    if not _RTL_WARNED and not (_HAVE_RESHAPER and _HAVE_BIDI):
+        _RTL_WARNED = True
+        warnings.warn(
+            "Persian/Arabic labels detected, but missingly cannot render them "
+            "correctly in matplotlib.\n\n"
+            "To fix this, install the RTL support libraries:\n\n"
+            "    pip install missingly[rtl]\n\n"
+            "These libraries (arabic-reshaper, python-bidi) reshape glyphs and "
+            "apply the Unicode Bidi Algorithm so that Persian text displays "
+            "correctly in static plots.\n\n"
+            "For interactive Plotly plots (interactive=True) no extra install "
+            "is needed — they already render Persian correctly.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _rtl_plotly_layout(labels: Sequence) -> Dict[str, Any]:
