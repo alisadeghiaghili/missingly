@@ -50,6 +50,18 @@ behaviour when one or both are missing is:
   forms (partially broken); no extra fallback possible beyond bidi itself.
 * **Both** installed → fully correct output.
 
+Font fallback stack
+-------------------
+When an RTL font is registered, ``font.family`` is set to a **list**
+(font stack) rather than a single name::
+
+    ["Vazirmatn", "DejaVu Sans", "sans-serif"]
+
+This allows matplotlib to fall back to DejaVu Sans for any glyph not
+present in Vazirmatn – for example Greek letters (``μ``) or obscure Latin
+Extended characters that commonly appear in scientific column names.
+Without the fallback, those glyphs render as empty boxes ("tofu").
+
 Font auto-download
 ------------------
 On systems without a Persian/Arabic-capable font (common on macOS and Linux),
@@ -125,6 +137,10 @@ _RTL_FONT_CANDIDATES = [
     "Noto Sans Arabic",
 ]
 
+# Fallback fonts for non-RTL glyphs (Greek letters, obscure Latin Extended,
+# mathematical symbols like μ that may be absent from Vazirmatn).
+_FALLBACK_FONTS = ["DejaVu Sans", "sans-serif"]
+
 # Direct TTF download from the official Vazirmatn GitHub repository.
 # Using the raw file URL avoids dealing with zip extraction and is more
 # robust across releases.  Pinned to the master branch for latest stable.
@@ -174,8 +190,19 @@ def _ensure_vazirmatn() -> Optional[Path]:
 def _register_font(font_path: Path) -> bool:
     """Register *font_path* with matplotlib's font manager.
 
-    Calls :func:`matplotlib.font_manager.fontManager.addfont` and updates
-    ``matplotlib.rcParams["font.family"]`` to the registered font name.
+    Calls :func:`matplotlib.font_manager.fontManager.addfont` and sets
+    ``matplotlib.rcParams["font.family"]`` to a **font stack** that starts
+    with the registered RTL font and falls back to DejaVu Sans for any
+    glyph not present in the RTL font (e.g. Greek letters such as ``μ``).
+
+    The stack is equivalent to the CSS ``font-family`` cascade::
+
+        ["Vazirmatn", "DejaVu Sans", "sans-serif"]
+
+    Parameters
+    ----------
+    font_path : pathlib.Path
+        Path to the TTF/OTF file to register.
 
     Returns
     -------
@@ -188,7 +215,10 @@ def _register_font(font_path: Path) -> bool:
 
         fm.fontManager.addfont(str(font_path))
         prop = fm.FontProperties(fname=str(font_path))
-        mpl.rcParams["font.family"] = prop.get_name()
+        rtl_name = prop.get_name()
+        # Build a stack: RTL font first, then generic fallbacks for non-RTL
+        # glyphs (Greek, obscure Latin Extended, mathematical symbols, etc.)
+        mpl.rcParams["font.family"] = [rtl_name] + _FALLBACK_FONTS
         return True
     except Exception:
         return False
@@ -265,8 +295,9 @@ def _apply_rtl_font(labels: Sequence) -> None:
     """Set a Persian/Arabic-capable font in matplotlib rcParams if needed.
 
     Checks whether any of *labels* contain RTL characters and, if so,
-    attempts to configure ``font.family`` with a font that supports the
-    Arabic/Persian Unicode range.
+    attempts to configure ``font.family`` with a **font stack** that puts
+    the RTL font first and falls back to DejaVu Sans for glyphs missing
+    from the RTL font (e.g. Greek letters such as ``μ``).
 
     Resolution order
     ~~~~~~~~~~~~~~~~
@@ -278,7 +309,7 @@ def _apply_rtl_font(labels: Sequence) -> None:
        ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf``.  Register it
        with matplotlib and set it as the active font family.
     3. If the download fails (no network, permission error, etc.), fall back
-       to matplotlib’s default (DejaVu Sans) and emit a :class:`UserWarning`
+       to matplotlib's default (DejaVu Sans) and emit a :class:`UserWarning`
        **once per session** with actionable install instructions.
 
     Parameters
@@ -298,7 +329,8 @@ def _apply_rtl_font(labels: Sequence) -> None:
     available = {f.name for f in fm.fontManager.ttflist}
     for font in _RTL_FONT_CANDIDATES:
         if font in available:
-            mpl.rcParams["font.family"] = font
+            # Set as a stack so non-RTL glyphs fall back to DejaVu Sans
+            mpl.rcParams["font.family"] = [font] + _FALLBACK_FONTS
             return
 
     # Step 2: auto-download Vazirmatn (once per session)
@@ -332,7 +364,7 @@ def _apply_rtl_font(labels: Sequence) -> None:
 def _rtl_plotly_layout(labels: Sequence) -> Dict[str, Any]:
     """Return Plotly layout kwargs that enable correct RTL rendering.
 
-    Plotly’s WebGL/SVG renderer handles Unicode Bidi to some extent, but
+    Plotly's WebGL/SVG renderer handles Unicode Bidi to some extent, but
     still needs an explicit RTL-capable font to display connected
     Persian/Arabic glyph forms correctly.  This helper detects whether any
     label in *labels* is RTL and, if so, returns layout overrides that:
