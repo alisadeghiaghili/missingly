@@ -11,6 +11,8 @@ _safe_labels
     Apply :func:`_rtl_safe` to every label in a sequence.
 _apply_rtl_font
     Configure matplotlib to use a Persian-capable font when RTL text is present.
+    When no suitable font is found on the system, Vazirmatn is downloaded from
+    Google Fonts and cached in ``~/.cache/missingly/fonts/`` automatically.
 _rtl_plotly_layout
     Return a dict of Plotly layout kwargs that enable RTL rendering when any
     of the supplied labels contain Persian/Arabic characters.
@@ -48,6 +50,17 @@ behaviour when one or both are missing is:
   forms (partially broken); no extra fallback possible beyond bidi itself.
 * **Both** installed → fully correct output.
 
+Font auto-download
+------------------
+On systems without a Persian/Arabic-capable font (common on macOS and Linux),
+:func:`_apply_rtl_font` will silently download **Vazirmatn** (a high-quality
+open-source Persian font by Saber Rastikerdar) from Google Fonts and cache it
+at ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf``.  The download happens
+at most once per machine; subsequent calls use the cached file.
+
+If the download fails (no network, permission error, etc.) the function falls
+back gracefully and emits a :class:`UserWarning` with install instructions.
+
 A ``UserWarning`` is emitted **once per Python session** when Persian/Arabic
 labels are detected but the required libraries (or a suitable system font) are
 not available, so users know exactly what to install::
@@ -62,8 +75,10 @@ No additional libraries are required for the Plotly path.
 """
 from __future__ import annotations
 
+import os
 import re
 import warnings
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -88,6 +103,9 @@ except ImportError:
 # Emitted at most once per session to avoid spamming the user.
 _RTL_WARNED: bool = False
 
+# Set to True once a font has been successfully registered this session.
+_RTL_FONT_REGISTERED: bool = False
+
 # ---------------------------------------------------------------------------
 # RTL / Persian helpers
 # ---------------------------------------------------------------------------
@@ -105,13 +123,81 @@ _RTL_FONT_CANDIDATES = [
     "Tahoma",
     "Arial Unicode MS",
     "Noto Sans Arabic",
-    "DejaVu Sans",
 ]
+
+# Vazirmatn Regular from Google Fonts (pinned to a stable release URL).
+_VAZIRMATN_URL = (
+    "https://github.com/rastikerdar/vazirmatn/releases/download/v33.003/"
+    "Vazirmatn-fonts.zip"
+)
+_VAZIRMATN_FONT_NAME = "Vazirmatn-Regular.ttf"
+_FONT_CACHE_DIR = Path.home() / ".cache" / "missingly" / "fonts"
 
 
 def _is_rtl(text: str) -> bool:
     """Return ``True`` when *text* contains Arabic/Persian characters."""
     return bool(_RTL_PATTERN.search(str(text)))
+
+
+def _ensure_vazirmatn() -> Optional[Path]:
+    """Download and cache Vazirmatn-Regular.ttf if not already present.
+
+    Returns the path to the cached font file, or ``None`` if the download
+    fails for any reason (no network, permission error, etc.).
+
+    The font is stored at ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf``
+    and is downloaded at most once per machine.
+    """
+    font_path = _FONT_CACHE_DIR / _VAZIRMATN_FONT_NAME
+    if font_path.exists():
+        return font_path
+
+    try:
+        import urllib.request
+        import zipfile
+        import io
+
+        _FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Download the zip release
+        with urllib.request.urlopen(_VAZIRMATN_URL, timeout=10) as resp:
+            zip_data = resp.read()
+
+        # Extract only the Regular TTF from the zip
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            # Find the Regular TTF inside the zip (path may vary by release)
+            candidates = [
+                n for n in zf.namelist()
+                if _VAZIRMATN_FONT_NAME in n and not n.startswith("__MACOSX")
+            ]
+            if not candidates:
+                return None
+            with zf.open(candidates[0]) as src, open(font_path, "wb") as dst:
+                dst.write(src.read())
+
+        return font_path
+
+    except Exception:  # network error, permission, bad zip, etc.
+        return None
+
+
+def _register_font(font_path: Path) -> bool:
+    """Register *font_path* with matplotlib's font manager.
+
+    Returns ``True`` on success, ``False`` on any error.
+    """
+    try:
+        import matplotlib as mpl
+        import matplotlib.font_manager as fm
+
+        fm.fontManager.addfont(str(font_path))
+        # Rebuild the font cache entry for the newly added font
+        prop = fm.FontProperties(fname=str(font_path))
+        font_name = prop.get_name()
+        mpl.rcParams["font.family"] = font_name
+        return True
+    except Exception:
+        return False
 
 
 def _rtl_safe(text: str) -> str:
@@ -190,26 +276,31 @@ def _apply_rtl_font(labels: Sequence) -> None:
 
     Checks whether any of *labels* contain RTL characters and, if so,
     attempts to configure ``font.family`` with a font that supports the
-    Arabic/Persian Unicode range.  Common fonts are tried in order of
-    preference; matplotlib's default (DejaVu Sans) is kept as the final
-    fallback.
+    Arabic/Persian Unicode range.
 
-    When no RTL-capable font is found **and** ``arabic-reshaper`` /
-    ``python-bidi`` are not installed, a :class:`UserWarning` is emitted
-    **once per Python session** with actionable install instructions.  This
-    prevents silent broken output while avoiding warning spam on every plot.
+    Resolution order
+    ~~~~~~~~~~~~~~~~
+    1. Scan fonts already registered with matplotlib (system fonts + any
+       previously added custom fonts).  Use the first match from
+       ``_RTL_FONT_CANDIDATES``.
+    2. If none found, silently download **Vazirmatn-Regular.ttf** from
+       Google Fonts and cache it at
+       ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf``.  Register it
+       with matplotlib and set it as the active font family.
+    3. If the download fails (no network, permission error, etc.), fall back
+       to matplotlib's default (DejaVu Sans) and emit a :class:`UserWarning`
+       **once per session** with actionable install instructions.
 
     This function is a **side-effect helper** – call it once before drawing
     a figure that may contain RTL labels.  It modifies ``matplotlib.rcParams``
-    temporarily; callers that need per-Axes control should restore rcParams
-    afterwards.
+    for the remainder of the Python session.
 
     Parameters
     ----------
     labels : sequence
         Any iterable of strings (column names, tick labels, title, …).
     """
-    global _RTL_WARNED
+    global _RTL_WARNED, _RTL_FONT_REGISTERED
 
     if not any(_is_rtl(str(lbl)) for lbl in labels):
         return
@@ -217,25 +308,41 @@ def _apply_rtl_font(labels: Sequence) -> None:
     import matplotlib as mpl
     import matplotlib.font_manager as fm
 
+    # ------------------------------------------------------------------
+    # Step 1: check fonts already known to matplotlib
+    # ------------------------------------------------------------------
     available = {f.name for f in fm.fontManager.ttflist}
     for font in _RTL_FONT_CANDIDATES:
         if font in available:
             mpl.rcParams["font.family"] = font
             return
 
-    # No RTL-capable font found on this system.
-    # If the reshaper/bidi libraries are also absent, the output will be
-    # visually broken (isolated glyphs, wrong order).  Warn once.
-    if not _RTL_WARNED and not (_HAVE_RESHAPER and _HAVE_BIDI):
+    # ------------------------------------------------------------------
+    # Step 2: try to download + register Vazirmatn (once per session)
+    # ------------------------------------------------------------------
+    if not _RTL_FONT_REGISTERED:
+        font_path = _ensure_vazirmatn()
+        if font_path is not None:
+            if _register_font(font_path):
+                _RTL_FONT_REGISTERED = True
+                return  # rcParams already set inside _register_font
+
+    # ------------------------------------------------------------------
+    # Step 3: nothing worked – warn once and let matplotlib use its default
+    # ------------------------------------------------------------------
+    if not _RTL_WARNED:
         _RTL_WARNED = True
         warnings.warn(
-            "Persian/Arabic labels detected, but missingly cannot render them "
-            "correctly in matplotlib.\n\n"
-            "To fix this, install the RTL support libraries:\n\n"
+            "Persian/Arabic labels detected, but missingly could not load a "
+            "suitable font for matplotlib.\n\n"
+            "For best results, install the RTL support libraries:\n\n"
             "    pip install missingly[rtl]\n\n"
             "These libraries (arabic-reshaper, python-bidi) reshape glyphs and "
             "apply the Unicode Bidi Algorithm so that Persian text displays "
             "correctly in static plots.\n\n"
+            "Alternatively, install a Persian font such as Vazirmatn on your "
+            "system, or ensure internet access so missingly can download it "
+            "automatically.\n\n"
             "For interactive Plotly plots (interactive=True) no extra install "
             "is needed — they already render Persian correctly.",
             UserWarning,
