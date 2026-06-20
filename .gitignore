@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.pyo
 *.pyd
+*.csv
 
 # Distribution / packaging
 .Python
