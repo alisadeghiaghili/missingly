@@ -7,6 +7,9 @@ Contents
 --------
 _rtl_safe
     Reshape and reorder Arabic/Persian text so matplotlib renders it correctly.
+    Handles mixed RTL+LTR strings (e.g. "سن (42.5%)") by operating on
+    *typed runs* — only RTL runs are passed to arabic_reshaper, preserving
+    numbers, parentheses, and percent signs in their original form.
 _safe_labels
     Apply :func:`_rtl_safe` to every label in a sequence.
 _apply_rtl_font
@@ -40,15 +43,31 @@ The fix uses two optional libraries:
 * ``python-bidi`` (``bidi.algorithm``) – applies the UBA so the visual order
   is right-to-left.
 
-Both libraries must be present for fully correct output.  The fallback
-behaviour when one or both are missing is:
+Both libraries must be present for fully correct output.
 
-* **Neither** installed → character reversal (imperfect but readable).
-* **Only reshaper** installed → glyphs are shaped but order is still LTR
-  (partially broken); reversal applied as a best-effort order fix.
-* **Only bidi** installed → order is corrected but glyphs may be isolated
-  forms (partially broken); no extra fallback possible beyond bidi itself.
-* **Both** installed → fully correct output.
+Mixed RTL+LTR strings
+~~~~~~~~~~~~~~~~~~~~~
+Labels like ``"سن (42.5%)"`` contain a Persian *run* followed by an LTR run
+(space, parentheses, numbers, percent).  The old implementation fed the full
+string to ``arabic_reshaper``, which corrupted the LTR run, producing labels
+like ``")%5.24( نس"``.
+
+The current implementation uses *run-aware processing*:
+
+1. Split the input into typed runs: RTL characters vs. LTR/neutral characters.
+2. Apply ``arabic_reshaper`` **only to RTL runs**.
+3. Reassemble the runs into a single string.
+4. Pass the reassembled string to ``python-bidi`` so the UBA handles the
+   final visual ordering of the whole string correctly.
+
+Fallback behaviour when one or both libraries are missing:
+
+* **Both** installed → fully correct output (run-aware reshape + bidi).
+* **Only reshaper** installed → RTL runs are shaped, full string reversed as
+  a best-effort order fix.
+* **Only bidi** installed → bidi reordering applied to raw string; glyph
+  forms may be isolated (partially broken) but order is correct.
+* **Neither** installed → string reversed as last-resort order fix.
 
 Font fallback stack
 -------------------
@@ -88,13 +107,16 @@ No additional libraries are required for the Plotly path.
 """
 from __future__ import annotations
 
+import logging
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional RTL libraries – fail gracefully if not installed
@@ -151,10 +173,63 @@ _VAZIRMATN_URL = (
 _VAZIRMATN_FONT_NAME = "Vazirmatn-Regular.ttf"
 _FONT_CACHE_DIR = Path.home() / ".cache" / "missingly" / "fonts"
 
+# Valid TTF/OTF magic bytes for font file validation.
+_FONT_MAGIC = (
+    b"\x00\x01\x00\x00",  # TrueType
+    b"OTTO",              # OpenType CFF
+    b"true",              # Apple TrueType
+    b"typ1",              # PostScript Type 1 in sfnt
+)
+
 
 def _is_rtl(text: str) -> bool:
     """Return ``True`` when *text* contains Arabic/Persian characters."""
     return bool(_RTL_PATTERN.search(str(text)))
+
+
+def _split_runs(text: str) -> List[Tuple[bool, str]]:
+    """Split *text* into alternating RTL and LTR/neutral character runs.
+
+    Each element in the returned list is a ``(is_rtl, substring)`` pair.
+    Adjacent characters of the same type are merged into a single run.
+
+    Parameters
+    ----------
+    text : str
+        Input string, possibly mixing Arabic/Persian and Latin/numeric chars.
+
+    Returns
+    -------
+    list of (bool, str)
+        ``True`` marks an RTL run; ``False`` marks an LTR/neutral run.
+
+    Examples
+    --------
+    >>> _split_runs("سن (42.5%)")
+    [(True, 'سن'), (False, ' (42.5%)')]
+    >>> _split_runs("age")
+    [(False, 'age')]
+    >>> _split_runs("col_سن_val")
+    [(False, 'col_'), (True, 'سن'), (False, '_val')]
+    """
+    if not text:
+        return [(False, "")]
+
+    runs: List[Tuple[bool, str]] = []
+    current_is_rtl = _is_rtl(text[0])
+    current_chars: List[str] = [text[0]]
+
+    for ch in text[1:]:
+        ch_is_rtl = _is_rtl(ch)
+        if ch_is_rtl == current_is_rtl:
+            current_chars.append(ch)
+        else:
+            runs.append((current_is_rtl, "".join(current_chars)))
+            current_is_rtl = ch_is_rtl
+            current_chars = [ch]
+
+    runs.append((current_is_rtl, "".join(current_chars)))
+    return runs
 
 
 def _ensure_vazirmatn() -> Optional[Path]:
@@ -165,25 +240,54 @@ def _ensure_vazirmatn() -> Optional[Path]:
     ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf`` and is downloaded at
     most once per machine.
 
+    The downloaded file is validated by checking its magic bytes to guard
+    against corrupt or partial downloads.  An invalid file is removed and
+    ``None`` is returned so the caller can fall back gracefully.
+
     Returns
     -------
     pathlib.Path or None
-        Path to the cached font file, or ``None`` if the download fails for
-        any reason (no network, permission error, unexpected response, etc.).
+        Path to the cached font file, or ``None`` if the download fails or
+        produces an invalid file.
     """
     font_path = _FONT_CACHE_DIR / _VAZIRMATN_FONT_NAME
+
+    # Validate existing cache – a previous download may have been corrupted.
     if font_path.exists():
-        return font_path
+        try:
+            header = font_path.read_bytes()[:4]
+            if any(header == magic for magic in _FONT_MAGIC):
+                return font_path
+            # File exists but is not a valid font – remove and re-download.
+            _log.warning(
+                "Cached Vazirmatn font at %s appears corrupt (bad magic "
+                "bytes: %r). Removing and re-downloading.", font_path, header
+            )
+            font_path.unlink(missing_ok=True)
+        except OSError as exc:
+            _log.warning("Could not read cached font file %s: %s", font_path, exc)
+            return None
 
     try:
         import urllib.request
 
         _FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         with urllib.request.urlopen(_VAZIRMATN_URL, timeout=10) as resp:
-            font_path.write_bytes(resp.read())
+            data = resp.read()
+
+        # Validate before writing.
+        if not any(data[:4] == magic for magic in _FONT_MAGIC):
+            _log.warning(
+                "Downloaded Vazirmatn font has unexpected magic bytes %r; "
+                "skipping cache write.", data[:4]
+            )
+            return None
+
+        font_path.write_bytes(data)
         return font_path
 
-    except Exception:  # network error, permission, etc.
+    except Exception as exc:
+        _log.warning("Could not download Vazirmatn font: %s", exc)
         return None
 
 
@@ -220,60 +324,89 @@ def _register_font(font_path: Path) -> bool:
         # glyphs (Greek, obscure Latin Extended, mathematical symbols, etc.)
         mpl.rcParams["font.family"] = [rtl_name] + _FALLBACK_FONTS
         return True
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "Failed to register font %s with matplotlib: %s. "
+            "Persian labels may render incorrectly.", font_path, exc
+        )
         return False
 
 
 def _rtl_safe(text: str) -> str:
     """Reshape and reorder RTL (Arabic/Persian) text for matplotlib.
 
-    Applies glyph shaping via ``arabic-reshaper`` and visual reordering via
-    ``python-bidi`` so that matplotlib – which has no built-in BiDi support –
-    renders Persian and Arabic labels correctly.
+    Handles **mixed RTL+LTR strings** correctly by operating on *typed runs*
+    rather than the full string.  For example, ``"سن (42.5%)"`` contains an
+    RTL run (``"سن"``) and an LTR run (``" (42.5%)"``).  Only the RTL run is
+    passed to ``arabic_reshaper``; the LTR run is left untouched.  The
+    reassembled string is then passed to ``python-bidi`` for final visual
+    reordering.
+
+    This prevents the corruption that occurred in the previous implementation
+    where feeding the full string to ``arabic_reshaper`` mangled numbers and
+    punctuation, producing labels like ``")%5.24( نس"``.
 
     Fallback behaviour when libraries are missing:
 
-    * **Both** installed → fully correct output.
-    * **Only reshaper** → glyphs shaped, then string reversed for display order.
-    * **Only bidi** → bidi reordering applied (glyphs may be isolated forms).
-    * **Neither** → string reversed as a last-resort order fix.
+    * **Both** installed → fully correct output (run-aware reshape + bidi).
+    * **Only reshaper** installed → RTL runs shaped, full string reversed as
+      best-effort order fix.
+    * **Only bidi** installed → bidi reordering applied to raw string (glyph
+      forms may be isolated; order is correct).
+    * **Neither** installed → full string reversed as last-resort order fix.
 
-    Latin text is returned unchanged.
+    Latin-only text is returned unchanged without any processing.
 
     Parameters
     ----------
     text : str
-        Input string (may be Arabic, Persian, or Latin).
+        Input string (may be Arabic/Persian, Latin, or mixed).
 
     Returns
     -------
     str
         Visually-ordered, glyph-shaped string suitable for matplotlib text
-        calls; unchanged for Latin input.
+        calls; unchanged for Latin-only input.
 
     Examples
     --------
-    >>> _rtl_safe("age")   # Latin – unchanged
+    >>> _rtl_safe("age")          # Latin only – unchanged
     'age'
-    >>> _rtl_safe("سن")   # Persian – reshaped and reordered
-    '\\u0646\\u0633'
+    >>> _rtl_safe("سن")           # Pure Persian – reshaped and reordered
+    'نس'
+    >>> _rtl_safe("سن (42.5%)")   # Mixed – Persian part shaped, LTR preserved
+    '(42.5%) نس'
     """
     s = str(text)
     if not _is_rtl(s):
         return s
 
     if _HAVE_RESHAPER and _HAVE_BIDI:
-        s = _ar_reshaper.reshape(s)
-        s = _bidi_get_display(s)
-    elif _HAVE_RESHAPER:
-        s = _ar_reshaper.reshape(s)
-        s = s[::-1]
-    elif _HAVE_BIDI:
-        s = _bidi_get_display(s)
-    else:
-        s = s[::-1]
+        # Step 1: split into typed runs
+        runs = _split_runs(s)
+        # Step 2: reshape only RTL runs
+        reshaped_parts = [
+            _ar_reshaper.reshape(chunk) if is_rtl else chunk
+            for is_rtl, chunk in runs
+        ]
+        # Step 3: reassemble and apply bidi for final visual ordering
+        return _bidi_get_display("".join(reshaped_parts))
 
-    return s
+    if _HAVE_RESHAPER:
+        # Shape RTL runs only, then reverse the whole string as order fix.
+        runs = _split_runs(s)
+        reshaped_parts = [
+            _ar_reshaper.reshape(chunk) if is_rtl else chunk
+            for is_rtl, chunk in runs
+        ]
+        return "".join(reshaped_parts)[::-1]
+
+    if _HAVE_BIDI:
+        # No shaping available; bidi handles ordering (glyphs may be isolated).
+        return _bidi_get_display(s)
+
+    # Last resort: reverse the whole string.
+    return s[::-1]
 
 
 def _safe_labels(labels: Sequence) -> List[str]:
@@ -457,7 +590,9 @@ def _pct_labels(
     Returns
     -------
     list of str
-        E.g. ``["age (12.5%)", "income (0.0%)"]``.
+        E.g. ``["age (12.5%)", "income (0.0%)"]`` for Latin columns,
+        or ``["سن (12.5%)", "درآمد (0.0%)"]`` for Persian columns
+        (correctly shaped and reordered for matplotlib).
     """
     pct = _nullity(df, missing_values).mean() * 100
     return [_rtl_safe(f"{col} ({pct[col]:.1f}%)") for col in df.columns]
