@@ -9,6 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![API stability](https://img.shields.io/badge/API-v1.0.0%20stable-brightgreen)](https://github.com/alisadeghiaghili/missingly/releases/tag/v1.0.0)
 
+🌐 English | [Deutsch](README_DE.md) | [فارسی](README_FA.md)
+
 missingly is a Python package for **diagnosing, visualising, and imputing
 missing data** in pandas DataFrames. It provides:
 
