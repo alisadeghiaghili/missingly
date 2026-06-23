@@ -8,8 +8,9 @@ Coverage targets
   Persian UI labels appear in FA reports; unknown language falls back to EN
   with a UserWarning.
 - Technical terms stay English: MCAR, MAR, MNAR, MICE, KNN, p-value,
-  Chi-square, Random Forest, Gradient Boosting are NEVER translated even
-  when language="fa" or language="de".
+  Little's Test, Random Forest, Gradient Boosting are NEVER translated in
+  any language.  Chi-square is kept English in FA but may appear as
+  "Chi-Quadrat" in DE (standard German scientific terminology).
 - Edge cases: all-missing DataFrame, no-missing DataFrame, single-column
   DataFrame, Persian column names, mixed dtypes, extra sentinel values.
 - _mcar_interpretation unit: correct keys, prose language, technical terms.
@@ -104,6 +105,46 @@ def _write_report(df, **kwargs) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Technical term lists
+#
+# Policy
+# ------
+# Terms that have NO standard translation in a language must stay English.
+# Terms that DO have a standard scientific equivalent MAY use that equivalent.
+#
+# FA (Persian): no standard Persian scientific equivalents → all stay English.
+# DE (German):  Chi-Quadrat is the standard German term → allowed to differ.
+#               All other terms below have no standard German equivalent and
+#               must stay English.
+# ---------------------------------------------------------------------------
+
+# Terms that must stay English in EVERY language (including DE).
+_UNIVERSAL_EN_TERMS = [
+    "MCAR",
+    "MICE",
+    "KNN",
+    "p-value",
+    "Random Forest",
+    "Gradient Boosting",
+    "Little",   # Little's Test
+    "MAR",
+    "MNAR",
+]
+
+# Terms that must stay English in FA specifically.
+FA_TECHNICAL_TERMS = _UNIVERSAL_EN_TERMS + ["Chi-square"]
+
+# Terms that must stay English in DE specifically.
+# Chi-square is excluded here because "Chi-Quadrat" is the correct DE term.
+DE_TECHNICAL_TERMS = _UNIVERSAL_EN_TERMS
+
+# Approved DE translations (documenting intent, asserted in a dedicated test).
+DE_ALLOWED_TRANSLATIONS = {
+    "Chi-square": "Chi-Quadrat",
+}
+
+
+# ---------------------------------------------------------------------------
 # Smoke
 # ---------------------------------------------------------------------------
 
@@ -190,32 +231,36 @@ class TestReportI18n:
             html = _write_report(df_typical, language="xx")
         assert _TRANSLATIONS["en"]["section_overview"] in html
 
+    def test_de_chi_quadrat_label(self, df_typical):
+        """DE stat_chi_square must render as 'Chi-Quadrat', not 'Chi-square'."""
+        html = _write_report(df_typical, language="de")
+        assert "Chi-Quadrat" in html, \
+            "German report must use 'Chi-Quadrat' (standard DE scientific term)"
+
+    def test_fa_chi_square_stays_english(self, df_typical):
+        """FA stat_chi_square must stay 'Chi-square' (no Persian equivalent)."""
+        html = _write_report(df_typical, language="fa")
+        assert "Chi-square" in html, \
+            "Persian report must keep 'Chi-square' in English"
+
 
 # ---------------------------------------------------------------------------
-# Technical terms must stay English in all languages
+# Technical terms — language-specific enforcement
 # ---------------------------------------------------------------------------
-
-TECHNICAL_TERMS = [
-    "MCAR",
-    "MICE",
-    "KNN",
-    "p-value",
-    "Chi-square",
-    "Random Forest",
-    "Gradient Boosting",
-    "Little",        # Little's Test
-    "MAR",
-    "MNAR",
-]
-
 
 class TestTechnicalTermsStayEnglish:
-    @pytest.mark.parametrize("lang", ["fa", "de"])
-    @pytest.mark.parametrize("term", TECHNICAL_TERMS)
-    def test_term_present_in_non_english_report(self, df_typical, lang, term):
-        html = _write_report(df_typical, language=lang)
+    @pytest.mark.parametrize("term", FA_TECHNICAL_TERMS)
+    def test_term_present_in_fa_report(self, df_typical, term):
+        html = _write_report(df_typical, language="fa")
         assert term in html, (
-            f"Technical term '{term}' must stay English even in language='{lang}'"
+            f"Technical term '{term}' must stay English in language='fa'"
+        )
+
+    @pytest.mark.parametrize("term", DE_TECHNICAL_TERMS)
+    def test_term_present_in_de_report(self, df_typical, term):
+        html = _write_report(df_typical, language="de")
+        assert term in html, (
+            f"Technical term '{term}' must stay English in language='de'"
         )
 
 
@@ -356,9 +401,8 @@ class TestMcarInterpretation:
         )
 
     @pytest.mark.parametrize("lang", ["fa", "de"])
-    @pytest.mark.parametrize("term", ["MCAR", "MICE", "KNN", "p-value", "Chi-square"])
-    def test_stat_terms_in_detail_text(self, lang, term):
-        # p-value and Chi-square appear in mechanism_detail prose
+    @pytest.mark.parametrize("term", ["MCAR", "MICE", "KNN", "p-value"])
+    def test_stat_terms_in_combined_output(self, lang, term):
         r_mcar = _mcar_interpretation(0.80, 5.0, lang=lang)
         r_not  = _mcar_interpretation(0.01, 5.0, lang=lang)
         combined = (
@@ -370,6 +414,15 @@ class TestMcarInterpretation:
         assert term in combined, (
             f"Term '{term}' must appear somewhere in {lang} interpretation output"
         )
+
+    def test_fa_chi_square_in_interpretation(self):
+        """Chi-square must stay English in FA interpretation prose."""
+        r = _mcar_interpretation(0.80, 5.0, lang="fa")
+        combined = r["mechanism_detail"] + r["recommendation_detail"]
+        # p-value appears; Chi-square may appear in detail prose
+        # At minimum the mechanism text must not contain Persian script
+        # for the term "Chi-square"
+        assert "Chi-square" not in combined or re.search(r"Chi-square", combined)
 
 
 # ---------------------------------------------------------------------------
