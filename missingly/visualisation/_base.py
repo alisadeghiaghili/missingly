@@ -120,18 +120,26 @@ _log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional RTL libraries – fail gracefully if not installed
+#
+# _ar_reshaper and _bidi_get_display are always defined at module scope so
+# that tests can monkeypatch them with patch.object(_base, "_ar_reshaper", ...)
+# regardless of whether the underlying libraries are installed.  When a
+# library is absent the name is set to None; _rtl_safe checks _HAVE_RESHAPER /
+# _HAVE_BIDI before calling through these names.
 # ---------------------------------------------------------------------------
 
 try:
     import arabic_reshaper as _ar_reshaper  # type: ignore
     _HAVE_RESHAPER = True
 except ImportError:
+    _ar_reshaper = None  # type: ignore[assignment]
     _HAVE_RESHAPER = False
 
 try:
     from bidi.algorithm import get_display as _bidi_get_display  # type: ignore
     _HAVE_BIDI = True
 except ImportError:
+    _bidi_get_display = None  # type: ignore[assignment]
     _HAVE_BIDI = False
 
 # Emitted at most once per session to avoid spamming the user.
@@ -384,26 +392,27 @@ def _rtl_safe(text: str) -> str:
     if _HAVE_RESHAPER and _HAVE_BIDI:
         # Step 1: split into typed runs
         runs = _split_runs(s)
-        # Step 2: reshape only RTL runs
+        # Step 2: reshape only RTL runs (use module-level _ar_reshaper so
+        # tests can monkeypatch it)
         reshaped_parts = [
-            _ar_reshaper.reshape(chunk) if is_rtl else chunk
+            _ar_reshaper.reshape(chunk) if is_rtl else chunk  # type: ignore[union-attr]
             for is_rtl, chunk in runs
         ]
         # Step 3: reassemble and apply bidi for final visual ordering
-        return _bidi_get_display("".join(reshaped_parts))
+        return _bidi_get_display("".join(reshaped_parts))  # type: ignore[misc]
 
     if _HAVE_RESHAPER:
         # Shape RTL runs only, then reverse the whole string as order fix.
         runs = _split_runs(s)
         reshaped_parts = [
-            _ar_reshaper.reshape(chunk) if is_rtl else chunk
+            _ar_reshaper.reshape(chunk) if is_rtl else chunk  # type: ignore[union-attr]
             for is_rtl, chunk in runs
         ]
         return "".join(reshaped_parts)[::-1]
 
     if _HAVE_BIDI:
         # No shaping available; bidi handles ordering (glyphs may be isolated).
-        return _bidi_get_display(s)
+        return _bidi_get_display(s)  # type: ignore[misc]
 
     # Last resort: reverse the whole string.
     return s[::-1]
