@@ -69,6 +69,9 @@ Fallback behaviour when one or both libraries are missing:
   forms may be isolated (partially broken) but order is correct.
 * **Neither** installed → string reversed as last-resort order fix.
 
+In all RTL cases the result is prefixed with U+200F RIGHT-TO-LEFT MARK so
+matplotlib places the text in the correct visual slot.
+
 Font fallback stack
 -------------------
 When an RTL font is registered, ``font.family`` is set to a **list**
@@ -124,8 +127,9 @@ _log = logging.getLogger(__name__)
 # _ar_reshaper and _bidi_get_display are always defined at module scope so
 # that tests can monkeypatch them with patch.object(_base, "_ar_reshaper", ...)
 # regardless of whether the underlying libraries are installed.  When a
-# library is absent the name is set to None; _rtl_safe checks _HAVE_RESHAPER /
-# _HAVE_BIDI before calling through these names.
+# library is absent the name is set to None; _rtl_safe checks these names
+# directly (``is not None``) rather than the _HAVE_* flags so that
+# monkeypatching in tests works correctly.
 # ---------------------------------------------------------------------------
 
 try:
@@ -350,9 +354,14 @@ def _rtl_safe(text: str) -> str:
     reassembled string is then passed to ``python-bidi`` for final visual
     reordering.
 
-    This prevents the corruption that occurred in the previous implementation
-    where feeding the full string to ``arabic_reshaper`` mangled numbers and
-    punctuation, producing labels like ``")%5.24( نس"``.
+    RTL text is always prefixed with U+200F RIGHT-TO-LEFT MARK (RLM) so
+    that matplotlib anchors the string at the correct visual edge.
+
+    Availability is determined by checking the module-level ``_ar_reshaper``
+    and ``_bidi_get_display`` names directly (``is not None``) rather than
+    the ``_HAVE_*`` import-time flags.  This allows tests to monkeypatch
+    these names via ``patch.object`` and have the function pick up the
+    patched versions correctly.
 
     Fallback behaviour when libraries are missing:
 
@@ -362,6 +371,8 @@ def _rtl_safe(text: str) -> str:
     * **Only bidi** installed → bidi reordering applied to raw string (glyph
       forms may be isolated; order is correct).
     * **Neither** installed → full string reversed as last-resort order fix.
+
+    In all RTL cases the result is prefixed with ``\u200f`` (RLM).
 
     Latin-only text is returned unchanged without any processing.
 
@@ -381,41 +392,45 @@ def _rtl_safe(text: str) -> str:
     >>> _rtl_safe("age")          # Latin only – unchanged
     'age'
     >>> _rtl_safe("سن")           # Pure Persian – reshaped and reordered
-    'نس'
+    '\u200fنس'
     >>> _rtl_safe("سن (42.5%)")   # Mixed – Persian part shaped, LTR preserved
-    '(42.5%) نس'
+    '\u200f(42.5%) نس'
     """
     s = str(text)
     if not _is_rtl(s):
         return s
 
-    if _HAVE_RESHAPER and _HAVE_BIDI:
+    # Use the module-level names directly so monkeypatching works in tests.
+    have_reshaper = _ar_reshaper is not None
+    have_bidi = _bidi_get_display is not None
+
+    if have_reshaper and have_bidi:
         # Step 1: split into typed runs
         runs = _split_runs(s)
-        # Step 2: reshape only RTL runs (use module-level _ar_reshaper so
-        # tests can monkeypatch it)
+        # Step 2: reshape only RTL runs
         reshaped_parts = [
             _ar_reshaper.reshape(chunk) if is_rtl else chunk  # type: ignore[union-attr]
             for is_rtl, chunk in runs
         ]
         # Step 3: reassemble and apply bidi for final visual ordering
-        return _bidi_get_display("".join(reshaped_parts))  # type: ignore[misc]
+        out = _bidi_get_display("".join(reshaped_parts))  # type: ignore[misc]
+        return "\u200f" + out
 
-    if _HAVE_RESHAPER:
+    if have_reshaper:
         # Shape RTL runs only, then reverse the whole string as order fix.
         runs = _split_runs(s)
         reshaped_parts = [
             _ar_reshaper.reshape(chunk) if is_rtl else chunk  # type: ignore[union-attr]
             for is_rtl, chunk in runs
         ]
-        return "".join(reshaped_parts)[::-1]
+        return "\u200f" + "".join(reshaped_parts)[::-1]
 
-    if _HAVE_BIDI:
+    if have_bidi:
         # No shaping available; bidi handles ordering (glyphs may be isolated).
-        return _bidi_get_display(s)  # type: ignore[misc]
+        return "\u200f" + _bidi_get_display(s)  # type: ignore[misc]
 
     # Last resort: reverse the whole string.
-    return s[::-1]
+    return "\u200f" + s[::-1]
 
 
 def _safe_labels(labels: Sequence) -> List[str]:
