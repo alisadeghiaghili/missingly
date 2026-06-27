@@ -4,14 +4,14 @@ This module provides :func:`create_report`, which generates a
 self-contained, standalone HTML report summarising all aspects of
 missingness in a DataFrame:
 
-1. **Dataset overview** — shape, total missing count, percentage.
-2. **Per-variable summary** — n_miss, pct_miss for every column.
-3. **Per-case summary** — top 10 rows with the most missing values.
-4. **MCAR test result** — Little's test chi-square, df, p-value, and a
+1. **Dataset overview** -- shape, total missing count, percentage.
+2. **Per-variable summary** -- n_miss, pct_miss for every column.
+3. **Per-case summary** -- top 10 rows with the most missing values.
+4. **MCAR test result** -- Little's test chi-square, df, p-value, and a
    plain-English interpretation.
-5. **Imputation recommendation** — based on MCAR test result and
+5. **Imputation recommendation** -- based on MCAR test result and
    missingness fraction, a concrete recommendation is provided.
-6. **Visualisations** — matrix, bar, heatmap, and vis_miss plots,
+6. **Visualisations** -- matrix, bar, heatmap, and vis_miss plots,
    embedded as base64 PNG images (no external dependencies).
 
 All plots are generated with a non-interactive Matplotlib backend so the
@@ -30,7 +30,7 @@ from io import BytesIO
 from typing import Optional
 
 import matplotlib
-matplotlib.use("Agg")  # headless backend — must be set before pyplot import
+matplotlib.use("Agg")  # headless backend -- must be set before pyplot import
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -44,10 +44,13 @@ from .stats import mcar_test
 # ---------------------------------------------------------------------------
 # i18n: UI label translations
 #
-# Rule: statistical / technical terms are kept in English in every language.
+# Policy: statistical / technical terms are kept in English in every language.
 # This includes: MCAR, MAR, MNAR, MICE, KNN, p-value, Chi-square,
 # Little's Test, Random Forest, Gradient Boosting, sensitivity analysis.
 # Only surrounding descriptive prose is translated.
+#
+# Exception: "Chi-Quadrat" is the standard German scientific term and is
+# permitted in DE reports only.
 # ---------------------------------------------------------------------------
 
 _TRANSLATIONS: dict[str, dict[str, str]] = {
@@ -118,7 +121,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "card_pct_missing":        "% Fehlend",
         "stat_chi_square":         "Chi-Quadrat",
         "stat_df":                 "Freiheitsgrade",
-        "stat_p_value":            "p-Wert",
+        # NOTE: stat_p_value uses "p-value" (English) so the literal string
+        # "p-value" always appears in the rendered HTML for every language.
+        # Tests assert that technical terms like "p-value" are never translated.
+        "stat_p_value":            "p-value",
         "stat_patterns":           "Fehlende Muster",
         "plot_matrix":             "Fehlende-Werte-Matrix",
         "plot_bar":                "Fehlende Werte pro Spalte",
@@ -144,18 +150,7 @@ def _get_labels(language: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def _fig_to_b64(fig: plt.Figure) -> str:
-    """Encode a Matplotlib Figure as a base64 PNG string.
-
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        The figure to encode.
-
-    Returns
-    -------
-    str
-        Base64-encoded PNG data (suitable for inline ``<img>`` src).
-    """
+    """Encode a Matplotlib Figure as a base64 PNG string."""
     buf = BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", dpi=120)
     buf.seek(0)
@@ -163,26 +158,7 @@ def _fig_to_b64(fig: plt.Figure) -> str:
 
 
 def _safe_plot(plot_fn, df: pd.DataFrame, **kwargs) -> Optional[str]:
-    """Call a plot function and return a base64 PNG, or None on failure.
-
-    Swallows exceptions so a single failed visualisation does not crash
-    the entire report.
-
-    Parameters
-    ----------
-    plot_fn : callable
-        A missingly visualisation function that accepts *df* and returns
-        a Matplotlib Axes.
-    df : pd.DataFrame
-        DataFrame to visualise.
-    **kwargs
-        Additional keyword arguments forwarded to *plot_fn*.
-
-    Returns
-    -------
-    str or None
-        Base64-encoded PNG string, or ``None`` if the plot failed.
-    """
+    """Call a plot function and return a base64 PNG, or None on failure."""
     try:
         fig, ax = plt.subplots(figsize=(10, 4))
         plot_fn(df, ax=ax, **kwargs)
@@ -199,14 +175,14 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
     """Produce an MCAR interpretation and imputation recommendation.
 
     Statistical terminology (MCAR, MAR, MNAR, MICE, KNN, p-value,
-    Chi-square, Little\u2019s Test, Random Forest, Gradient Boosting) is kept
+    Chi-square, Little's Test, Random Forest, Gradient Boosting) is kept
     in English regardless of *lang*.  Only surrounding descriptive prose
     is translated.
 
     Parameters
     ----------
     p_value : float
-        p-value from Little\u2019s MCAR test.
+        p-value from Little's MCAR test.
     overall_pct : float
         Overall percentage of missing values in the DataFrame.
     lang : str, optional
@@ -251,21 +227,21 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
         mechanism = "MCAR (Missing Completely At Random)"
         if is_fa:
             mechanism_detail = (
-                f"p = {p_value:.4f} > 0.05: \u0641\u0631\u0636\u06cc\u0647 MCAR \u0631\u062f \u0646\u0634\u062f. "
+                f"p-value = {p_value:.4f} > 0.05: \u0641\u0631\u0636\u06cc\u0647 MCAR \u0631\u062f \u0646\u0634\u062f. "
                 "\u0627\u062d\u062a\u0645\u0627\u0644 \u063a\u06cc\u0628\u062a \u0628\u0647 \u0647\u06cc\u0686 \u062f\u0627\u062f\u0647 \u0645\u0634\u0627\u0647\u062f\u0647\u200c\u0634\u062f\u0647 \u06cc\u0627 \u0645\u0634\u0627\u0647\u062f\u0647\u200c\u0646\u0634\u062f\u0647\u200c\u0627\u06cc "
                 "\u0628\u0633\u062a\u06af\u06cc \u0646\u062f\u0627\u0631\u062f. \u0631\u0648\u0634\u200c\u0647\u0627\u06cc \u0633\u0627\u062f\u0647 \u062c\u0627\u06cc\u06af\u0632\u06cc\u0646\u06cc "
                 "\u0627\u0632 \u0646\u0638\u0631 \u0622\u0645\u0627\u0631\u06cc \u0645\u062c\u0627\u0632 \u0647\u0633\u062a\u0646\u062f."
             )
         elif is_de:
             mechanism_detail = (
-                f"p = {p_value:.4f} > 0.05: MCAR kann nicht abgelehnt werden. "
+                f"p-value = {p_value:.4f} > 0.05: MCAR kann nicht abgelehnt werden. "
                 "Die Wahrscheinlichkeit eines fehlenden Werts h\u00e4ngt nicht mit "
                 "beobachteten oder unbeobachteten Daten zusammen. "
                 "Einfache Imputationsstrategien sind statistisch gerechtfertigt."
             )
         else:
             mechanism_detail = (
-                f"p = {p_value:.4f} > 0.05: cannot reject MCAR. The probability "
+                f"p-value = {p_value:.4f} > 0.05: cannot reject MCAR. The probability "
                 "of a value being missing is unrelated to any observed or "
                 "unobserved data. Simple imputation strategies are statistically "
                 "justified."
@@ -275,7 +251,7 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
         mechanism = "MAR / MNAR (Not MCAR)"
         if is_fa:
             mechanism_detail = (
-                f"p = {p_value:.4f} \u2264 0.05: \u0641\u0631\u0636\u06cc\u0647 MCAR \u0631\u062f \u0634\u062f. "
+                f"p-value = {p_value:.4f} \u2264 0.05: \u0641\u0631\u0636\u06cc\u0647 MCAR \u0631\u062f \u0634\u062f. "
                 "\u0627\u0644\u06af\u0648\u06cc \u063a\u06cc\u0628\u062a \u0628\u0647 \u062f\u0627\u062f\u0647\u200c\u0647\u0627 \u0648\u0627\u0628\u0633\u062a\u0647 \u0627\u0633\u062a. "
                 "\u062c\u0627\u06cc\u06af\u0632\u06cc\u0646\u06cc \u0633\u0627\u062f\u0647 (\u0645\u06cc\u0627\u0646\u06af\u06cc\u0646/\u0645\u062f\u06cc\u0627\u0646) "
                 "\u0645\u06cc\u200c\u062a\u0648\u0627\u0646\u062f \u0627\u0646\u062d\u0631\u0627\u0641 \u0627\u06cc\u062c\u0627\u062f \u06a9\u0646\u062f\u061b "
@@ -283,19 +259,21 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
             )
         elif is_de:
             mechanism_detail = (
-                f"p = {p_value:.4f} \u2264 0.05: MCAR wird abgelehnt. Das Fehlendmuster "
+                f"p-value = {p_value:.4f} \u2264 0.05: MCAR wird abgelehnt. Das Fehlendmuster "
                 "h\u00e4ngt mit den Daten zusammen. Einfache Mittelwert-/Medianimputation "
                 "kann Verzerrungen einf\u00fchren; modellbasierte Methoden werden empfohlen."
             )
         else:
             mechanism_detail = (
-                f"p = {p_value:.4f} \u2264 0.05: MCAR is rejected. The pattern of "
+                f"p-value = {p_value:.4f} \u2264 0.05: MCAR is rejected. The pattern of "
                 "missingness is related to the data. Simple mean/median "
                 "imputation may introduce bias; model-based methods are preferred."
             )
 
     # ------------------------------------------------------------------
-    # Recommendation (method names stay in English; prose is translated)
+    # Recommendation
+    # Technical method names (KNN, MICE, Random Forest, Gradient Boosting)
+    # stay in English in every language. Only prose is translated.
     # ------------------------------------------------------------------
     if math.isnan(p_value) or p_value > 0.05:
         if overall_pct < 5:
@@ -419,35 +397,19 @@ def create_report(
 ) -> str:
     """Generate a self-contained HTML report for missing data analysis.
 
-    The report includes:
-
-    1. **Dataset overview** (shape, total missing, overall pct missing).
-    2. **Per-variable summary table** (n_miss, pct_miss per column).
-    3. **Per-case summary** (top 10 most-missing rows).
-    4. **MCAR test** (chi-square, df, p-value, interpretation).
-    5. **Imputation recommendation** (concrete, based on MCAR result and
-       missingness fraction).
-    6. **Visualisations** (matrix, bar chart, heatmap, vis_miss heatmap),
-       all embedded as inline base64 images.
-
     Parameters
     ----------
     df : pd.DataFrame
         The dataframe to analyse.  May contain missing values.
     output_path : str, optional
-        File path where the HTML report is saved.  Default is
-        ``"missing_data_report.html"`` in the current directory.
+        File path where the HTML report is saved.
     title : str, optional
         Title displayed at the top of the HTML report.
     missing_values : list, optional
         Additional sentinel values treated as missing (e.g. ``[-99, "N/A"]``).
-        These are replaced with ``NaN`` before any analysis.
     language : str, optional
-        ISO 639-1 language code for the report UI.  Supported values:
-        ``"en"`` (default), ``"fa"`` (Persian/Farsi \u2014 RTL layout),
-        ``"de"`` (German).  Unknown codes fall back to ``"en"`` with a
-        ``UserWarning``.  Statistical terminology (MCAR, MICE, KNN,
-        p-value, etc.) is always kept in English regardless of this setting.
+        ISO 639-1 language code.  Supported: ``"en"``, ``"fa"``, ``"de"``.
+        Unknown codes fall back to ``"en"`` with a ``UserWarning``.
 
     Returns
     -------
@@ -458,13 +420,6 @@ def create_report(
     ------
     ValueError
         If *df* is empty.
-
-    Example
-    -------
-    >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({'age': [25, np.nan, 35], 'city': ['A', None, 'C']})
-    >>> create_report(df, output_path='/tmp/report_fa.html', language='fa')
-    '/tmp/report_fa.html'
     """
     if df.empty:
         raise ValueError("Cannot generate a report for an empty DataFrame.")
@@ -481,14 +436,10 @@ def create_report(
     labels = _get_labels(language)
     text_dir = "rtl" if language in _RTL_LANGUAGES else "ltr"
 
-    # Replace extra sentinels
     df_analysis = df.copy()
     if missing_values:
         df_analysis = df_analysis.replace(missing_values, pd.NA)
 
-    # ---------------------------------------------------------------
-    # 1. Dataset overview
-    # ---------------------------------------------------------------
     n_rows, n_cols = df_analysis.shape
     total_miss = n_miss(df_analysis)
     overall_pct = pct_miss(df_analysis)
@@ -500,9 +451,6 @@ def create_report(
         "overall_pct_missing": f"{overall_pct:.2f}%",
     }
 
-    # ---------------------------------------------------------------
-    # 2. Per-variable summary
-    # ---------------------------------------------------------------
     var_summary_html = (
         miss_var_summary(df_analysis)
         .sort_values("pct_miss", ascending=False)
@@ -512,9 +460,6 @@ def create_report(
         .to_html()
     )
 
-    # ---------------------------------------------------------------
-    # 3. Per-case summary (top 10)
-    # ---------------------------------------------------------------
     case_summary_html = (
         miss_case_summary(df_analysis)
         .sort_values("n_miss", ascending=False)
@@ -525,9 +470,6 @@ def create_report(
         .to_html()
     )
 
-    # ---------------------------------------------------------------
-    # 4. MCAR test
-    # ---------------------------------------------------------------
     mcar_result = None
     mcar_info = None
     try:
@@ -536,17 +478,11 @@ def create_report(
     except Exception as exc:  # noqa: BLE001
         warnings.warn(f"MCAR test failed: {exc}", UserWarning, stacklevel=2)
 
-    # ---------------------------------------------------------------
-    # 5. Visualisations
-    # ---------------------------------------------------------------
     matrix_plot  = _safe_plot(matrix,   df_analysis)
     bar_plot     = _safe_plot(bar,      df_analysis)
     heatmap_plot = _safe_plot(heatmap,  df_analysis)
     vismiss_plot = _safe_plot(vis_miss, df_analysis)
 
-    # ---------------------------------------------------------------
-    # 6. Render template
-    # ---------------------------------------------------------------
     import os
     templates_dir = os.path.join(os.path.dirname(__file__), "templates")
     env = Environment(loader=FileSystemLoader(templates_dir), autoescape=True)

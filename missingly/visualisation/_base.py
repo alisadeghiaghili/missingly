@@ -7,9 +7,6 @@ Contents
 --------
 _rtl_safe
     Reshape and reorder Arabic/Persian text so matplotlib renders it correctly.
-    Handles mixed RTL+LTR strings (e.g. "سن (42.5%)") by operating on
-    *typed runs* — only RTL runs are passed to arabic_reshaper, preserving
-    numbers, parentheses, and percent signs in their original form.
 _safe_labels
     Apply :func:`_rtl_safe` to every label in a sequence.
 _apply_rtl_font
@@ -43,31 +40,15 @@ The fix uses two optional libraries:
 * ``python-bidi`` (``bidi.algorithm``) – applies the UBA so the visual order
   is right-to-left.
 
-Both libraries must be present for fully correct output.
+Both libraries must be present for fully correct output.  The fallback
+behaviour when one or both are missing is:
 
-Mixed RTL+LTR strings
-~~~~~~~~~~~~~~~~~~~~~
-Labels like ``"سن (42.5%)"`` contain a Persian *run* followed by an LTR run
-(space, parentheses, numbers, percent).  The old implementation fed the full
-string to ``arabic_reshaper``, which corrupted the LTR run, producing labels
-like ``")%5.24( نس"``.
-
-The current implementation uses *run-aware processing*:
-
-1. Split the input into typed runs: RTL characters vs. LTR/neutral characters.
-2. Apply ``arabic_reshaper`` **only to RTL runs**.
-3. Reassemble the runs into a single string.
-4. Pass the reassembled string to ``python-bidi`` so the UBA handles the
-   final visual ordering of the whole string correctly.
-
-Fallback behaviour when one or both libraries are missing:
-
-* **Both** installed → fully correct output (run-aware reshape + bidi).
-* **Only reshaper** installed → RTL runs are shaped, full string reversed as
-  a best-effort order fix.
-* **Only bidi** installed → bidi reordering applied to raw string; glyph
-  forms may be isolated (partially broken) but order is correct.
-* **Neither** installed → string reversed as last-resort order fix.
+* **Neither** installed → character reversal (imperfect but readable).
+* **Only reshaper** installed → glyphs are shaped but order is still LTR
+  (partially broken); reversal applied as a best-effort order fix.
+* **Only bidi** installed → order is corrected but glyphs may be isolated
+  forms (partially broken); no extra fallback possible beyond bidi itself.
+* **Both** installed → fully correct output.
 
 Font fallback stack
 -------------------
@@ -111,21 +92,18 @@ import logging
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
 
-_log = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Optional RTL libraries – fail gracefully if not installed
-#
-# _ar_reshaper and _bidi_get_display are always defined at module scope so
-# that tests can monkeypatch them with patch.object(_base, "_ar_reshaper", ...)
-# regardless of whether the underlying libraries are installed.  When a
-# library is absent the name is set to None; _rtl_safe checks _HAVE_RESHAPER /
-# _HAVE_BIDI before calling through these names.
+# Optional RTL libraries – fail gracefully if not installed.
+# IMPORTANT: _ar_reshaper and _bidi_get_display are ALWAYS defined at module
+# level (as None when the library is absent) so that tests can use
+# patch.object(_base, '_ar_reshaper', ...) unconditionally.
 # ---------------------------------------------------------------------------
 
 try:
@@ -168,12 +146,10 @@ _RTL_FONT_CANDIDATES = [
 ]
 
 # Fallback fonts for non-RTL glyphs (Greek letters, obscure Latin Extended,
-# mathematical symbols like μ that may be absent from Vazirmatn).
+# mathematical symbols like \u03bc that may be absent from Vazirmatn).
 _FALLBACK_FONTS = ["DejaVu Sans", "sans-serif"]
 
 # Direct TTF download from the official Vazirmatn GitHub repository.
-# Using the raw file URL avoids dealing with zip extraction and is more
-# robust across releases.  Pinned to the master branch for latest stable.
 _VAZIRMATN_URL = (
     "https://github.com/rastikerdar/vazirmatn/raw/master/"
     "fonts/ttf/Vazirmatn-Regular.ttf"
@@ -181,13 +157,10 @@ _VAZIRMATN_URL = (
 _VAZIRMATN_FONT_NAME = "Vazirmatn-Regular.ttf"
 _FONT_CACHE_DIR = Path.home() / ".cache" / "missingly" / "fonts"
 
-# Valid TTF/OTF magic bytes for font file validation.
-_FONT_MAGIC = (
-    b"\x00\x01\x00\x00",  # TrueType
-    b"OTTO",              # OpenType CFF
-    b"true",              # Apple TrueType
-    b"typ1",              # PostScript Type 1 in sfnt
-)
+# Minimum size of a valid TTF file (magic bytes check).
+_TTF_MAGIC = b"\x00\x01\x00\x00"
+_OTF_MAGIC = b"OTTO"
+_MIN_FONT_SIZE = 16
 
 
 def _is_rtl(text: str) -> bool:
@@ -195,236 +168,114 @@ def _is_rtl(text: str) -> bool:
     return bool(_RTL_PATTERN.search(str(text)))
 
 
-def _split_runs(text: str) -> List[Tuple[bool, str]]:
-    """Split *text* into alternating RTL and LTR/neutral character runs.
+def _split_runs(text: str) -> list[tuple[bool, str]]:
+    """Split *text* into alternating RTL/LTR runs.
 
-    Each element in the returned list is a ``(is_rtl, substring)`` pair.
-    Adjacent characters of the same type are merged into a single run.
+    Each element is a ``(is_rtl, chunk)`` tuple.  Joining all chunks
+    reproduces the original string exactly.
 
     Parameters
     ----------
     text : str
-        Input string, possibly mixing Arabic/Persian and Latin/numeric chars.
+        Input string (may be empty or purely one script).
 
     Returns
     -------
     list of (bool, str)
-        ``True`` marks an RTL run; ``False`` marks an LTR/neutral run.
+        ``is_rtl`` is ``True`` when the chunk contains Arabic/Persian chars.
 
     Examples
     --------
-    >>> _split_runs("سن (42.5%)")
-    [(True, 'سن'), (False, ' (42.5%)')]
     >>> _split_runs("age")
     [(False, 'age')]
-    >>> _split_runs("col_سن_val")
-    [(False, 'col_'), (True, 'سن'), (False, '_val')]
+    >>> _split_runs("\u0633\u0646 (42.5%)")
+    [(True, '\u0633\u0646'), (False, ' (42.5%)')]
     """
     if not text:
         return [(False, "")]
 
-    runs: List[Tuple[bool, str]] = []
-    current_is_rtl = _is_rtl(text[0])
-    current_chars: List[str] = [text[0]]
+    runs: list[tuple[bool, str]] = []
+    current_is_rtl: bool = _is_rtl(text[0])
+    current_chunk: list[str] = [text[0]]
 
     for ch in text[1:]:
-        ch_is_rtl = _is_rtl(ch)
+        ch_is_rtl = bool(_RTL_PATTERN.match(ch))
         if ch_is_rtl == current_is_rtl:
-            current_chars.append(ch)
+            current_chunk.append(ch)
         else:
-            runs.append((current_is_rtl, "".join(current_chars)))
+            runs.append((current_is_rtl, "".join(current_chunk)))
             current_is_rtl = ch_is_rtl
-            current_chars = [ch]
+            current_chunk = [ch]
 
-    runs.append((current_is_rtl, "".join(current_chars)))
+    runs.append((current_is_rtl, "".join(current_chunk)))
     return runs
 
 
-def _ensure_vazirmatn() -> Optional[Path]:
-    """Download and cache Vazirmatn-Regular.ttf if not already present.
-
-    Downloads the TTF file directly from the official Vazirmatn GitHub
-    repository.  The file is cached at
-    ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf`` and is downloaded at
-    most once per machine.
-
-    The downloaded file is validated by checking its magic bytes to guard
-    against corrupt or partial downloads.  An invalid file is removed and
-    ``None`` is returned so the caller can fall back gracefully.
-
-    Returns
-    -------
-    pathlib.Path or None
-        Path to the cached font file, or ``None`` if the download fails or
-        produces an invalid file.
-    """
-    font_path = _FONT_CACHE_DIR / _VAZIRMATN_FONT_NAME
-
-    # Validate existing cache – a previous download may have been corrupted.
-    if font_path.exists():
-        try:
-            header = font_path.read_bytes()[:4]
-            if any(header == magic for magic in _FONT_MAGIC):
-                return font_path
-            # File exists but is not a valid font – remove and re-download.
-            _log.warning(
-                "Cached Vazirmatn font at %s appears corrupt (bad magic "
-                "bytes: %r). Removing and re-downloading.", font_path, header
-            )
-            font_path.unlink(missing_ok=True)
-        except OSError as exc:
-            _log.warning("Could not read cached font file %s: %s", font_path, exc)
-            return None
-
-    try:
-        import urllib.request
-
-        _FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(_VAZIRMATN_URL, timeout=10) as resp:
-            data = resp.read()
-
-        # Validate before writing.
-        if not any(data[:4] == magic for magic in _FONT_MAGIC):
-            _log.warning(
-                "Downloaded Vazirmatn font has unexpected magic bytes %r; "
-                "skipping cache write.", data[:4]
-            )
-            return None
-
-        font_path.write_bytes(data)
-        return font_path
-
-    except Exception as exc:
-        _log.warning("Could not download Vazirmatn font: %s", exc)
-        return None
-
-
-def _register_font(font_path: Path) -> bool:
-    """Register *font_path* with matplotlib's font manager.
-
-    Calls :func:`matplotlib.font_manager.fontManager.addfont` and sets
-    ``matplotlib.rcParams["font.family"]`` to a **font stack** that starts
-    with the registered RTL font and falls back to DejaVu Sans for any
-    glyph not present in the RTL font (e.g. Greek letters such as ``μ``).
-
-    The stack is equivalent to the CSS ``font-family`` cascade::
-
-        ["Vazirmatn", "DejaVu Sans", "sans-serif"]
-
-    Parameters
-    ----------
-    font_path : pathlib.Path
-        Path to the TTF/OTF file to register.
-
-    Returns
-    -------
-    bool
-        ``True`` on success, ``False`` on any error.
-    """
-    try:
-        import matplotlib as mpl
-        import matplotlib.font_manager as fm
-
-        fm.fontManager.addfont(str(font_path))
-        prop = fm.FontProperties(fname=str(font_path))
-        rtl_name = prop.get_name()
-        # Build a stack: RTL font first, then generic fallbacks for non-RTL
-        # glyphs (Greek, obscure Latin Extended, mathematical symbols, etc.)
-        mpl.rcParams["font.family"] = [rtl_name] + _FALLBACK_FONTS
-        return True
-    except Exception as exc:
-        _log.warning(
-            "Failed to register font %s with matplotlib: %s. "
-            "Persian labels may render incorrectly.", font_path, exc
-        )
-        return False
-
-
 def _rtl_safe(text: str) -> str:
-    """Reshape and reorder RTL (Arabic/Persian) text for matplotlib.
+    """Reshape and reorder *text* for correct matplotlib rendering.
 
-    Handles **mixed RTL+LTR strings** correctly by operating on *typed runs*
-    rather than the full string.  For example, ``"سن (42.5%)"`` contains an
-    RTL run (``"سن"``) and an LTR run (``" (42.5%)"``).  Only the RTL run is
-    passed to ``arabic_reshaper``; the LTR run is left untouched.  The
-    reassembled string is then passed to ``python-bidi`` for final visual
-    reordering.
-
-    This prevents the corruption that occurred in the previous implementation
-    where feeding the full string to ``arabic_reshaper`` mangled numbers and
-    punctuation, producing labels like ``")%5.24( نس"``.
-
-    Fallback behaviour when libraries are missing:
-
-    * **Both** installed → fully correct output (run-aware reshape + bidi).
-    * **Only reshaper** installed → RTL runs shaped, full string reversed as
-      best-effort order fix.
-    * **Only bidi** installed → bidi reordering applied to raw string (glyph
-      forms may be isolated; order is correct).
-    * **Neither** installed → full string reversed as last-resort order fix.
-
-    Latin-only text is returned unchanged without any processing.
+    Processes the string **run by run** so that embedded LTR segments
+    (e.g. percentages, numbers, parentheses) are never passed through the
+    Arabic reshaper and are preserved exactly.
 
     Parameters
     ----------
     text : str
-        Input string (may be Arabic/Persian, Latin, or mixed).
+        Label text, possibly containing Arabic/Persian characters.
 
     Returns
     -------
     str
-        Visually-ordered, glyph-shaped string suitable for matplotlib text
-        calls; unchanged for Latin-only input.
-
-    Examples
-    --------
-    >>> _rtl_safe("age")          # Latin only – unchanged
-    'age'
-    >>> _rtl_safe("سن")           # Pure Persian – reshaped and reordered
-    'نس'
-    >>> _rtl_safe("سن (42.5%)")   # Mixed – Persian part shaped, LTR preserved
-    '(42.5%) نس'
+        Processed string suitable for use as a matplotlib axis label.
     """
-    s = str(text)
-    if not _is_rtl(s):
-        return s
+    text = str(text)
 
-    if _HAVE_RESHAPER and _HAVE_BIDI:
-        # Step 1: split into typed runs
-        runs = _split_runs(s)
-        # Step 2: reshape only RTL runs (use module-level _ar_reshaper so
-        # tests can monkeypatch it)
-        reshaped_parts = [
-            _ar_reshaper.reshape(chunk) if is_rtl else chunk  # type: ignore[union-attr]
-            for is_rtl, chunk in runs
-        ]
-        # Step 3: reassemble and apply bidi for final visual ordering
-        return _bidi_get_display("".join(reshaped_parts))  # type: ignore[misc]
+    # Fast-path: purely Latin/numeric – no RTL processing needed.
+    if not _is_rtl(text):
+        return text
 
-    if _HAVE_RESHAPER:
-        # Shape RTL runs only, then reverse the whole string as order fix.
-        runs = _split_runs(s)
-        reshaped_parts = [
-            _ar_reshaper.reshape(chunk) if is_rtl else chunk  # type: ignore[union-attr]
-            for is_rtl, chunk in runs
-        ]
-        return "".join(reshaped_parts)[::-1]
+    runs = _split_runs(text)
 
-    if _HAVE_BIDI:
-        # No shaping available; bidi handles ordering (glyphs may be isolated).
-        return _bidi_get_display(s)  # type: ignore[misc]
+    processed_parts: list[str] = []
+    for is_rtl_run, chunk in runs:
+        if not is_rtl_run:
+            # LTR segment: never touch it.
+            processed_parts.append(chunk)
+            continue
 
-    # Last resort: reverse the whole string.
-    return s[::-1]
+        # RTL segment: apply reshaper then bidi (if available).
+        part = chunk
+        if _HAVE_RESHAPER and _ar_reshaper is not None:
+            try:
+                part = _ar_reshaper.reshape(part)
+            except Exception:  # noqa: BLE001
+                pass
+
+        if _HAVE_BIDI and _bidi_get_display is not None:
+            try:
+                part = _bidi_get_display(part)
+            except Exception:  # noqa: BLE001
+                pass
+        elif not _HAVE_BIDI:
+            # No bidi: reverse as last-resort order fix.
+            part = part[::-1]
+
+        processed_parts.append(part)
+
+    # When there are multiple runs, rejoin. For single pure-RTL strings,
+    # the whole string went through one RTL run above.
+    return "".join(processed_parts)
 
 
-def _safe_labels(labels: Sequence) -> List[str]:
-    """Apply :func:`_rtl_safe` to every label in *labels*.
+def _safe_labels(labels: Sequence, missing_values: Optional[list] = None) -> list:
+    """Apply :func:`_rtl_safe` to every element in *labels*.
 
     Parameters
     ----------
     labels : sequence
-        Column names, index values, or any string-like sequence.
+        Column names or any sequence of label values.
+    missing_values : list, optional
+        Unused; accepted for API symmetry with :func:`_pct_labels`.
 
     Returns
     -------
@@ -433,202 +284,238 @@ def _safe_labels(labels: Sequence) -> List[str]:
     return [_rtl_safe(str(lbl)) for lbl in labels]
 
 
+def _ensure_vazirmatn() -> Optional[Path]:
+    """Download and cache Vazirmatn-Regular.ttf if not already present.
+
+    Validates the cached file with a TTF/OTF magic-byte check and
+    re-downloads if the cached copy is corrupt.
+
+    Returns
+    -------
+    pathlib.Path or None
+        Path to the cached font file, or ``None`` if the download fails.
+    """
+    font_path = _FONT_CACHE_DIR / _VAZIRMATN_FONT_NAME
+
+    def _is_valid_font(path: Path) -> bool:
+        if not path.exists() or path.stat().st_size < _MIN_FONT_SIZE:
+            return False
+        magic = path.read_bytes()[:4]
+        return magic in (_TTF_MAGIC, _OTF_MAGIC)
+
+    if font_path.exists():
+        if _is_valid_font(font_path):
+            return font_path
+        # Corrupt cache: remove and re-download.
+        try:
+            font_path.unlink()
+        except OSError:
+            pass
+
+    try:
+        import urllib.request
+
+        _FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(_VAZIRMATN_URL, timeout=10) as resp:
+            data = resp.read()
+
+        # Validate before saving.
+        if len(data) < _MIN_FONT_SIZE or data[:4] not in (_TTF_MAGIC, _OTF_MAGIC):
+            return None
+
+        font_path.write_bytes(data)
+        return font_path
+
+    except Exception:  # network error, permission, etc.
+        return None
+
+
+def _register_font(font_path: Path) -> bool:
+    """Register *font_path* with matplotlib's font manager.
+
+    Parameters
+    ----------
+    font_path : pathlib.Path
+        Path to the TTF/OTF font file to register.
+
+    Returns
+    -------
+    bool
+        ``True`` if registration succeeded, ``False`` otherwise.
+    """
+    try:
+        import matplotlib.font_manager as fm
+
+        fm.fontManager.addfont(str(font_path))
+        # Build font stack: RTL font first, then Latin fallbacks.
+        font_name = Path(font_path).stem.split("-")[0]  # e.g. "Vazirmatn"
+        stack = [font_name] + _FALLBACK_FONTS
+        import matplotlib as mpl
+        mpl.rcParams["font.family"] = stack
+        return True
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Failed to register font %s: %s", font_path, exc)
+        return False
+
+
 def _apply_rtl_font(labels: Sequence) -> None:
-    """Set a Persian/Arabic-capable font in matplotlib rcParams if needed.
+    """Configure matplotlib to use a Persian-capable font when needed.
 
-    Checks whether any of *labels* contain RTL characters and, if so,
-    attempts to configure ``font.family`` with a **font stack** that puts
-    the RTL font first and falls back to DejaVu Sans for glyphs missing
-    from the RTL font (e.g. Greek letters such as ``μ``).
-
-    Resolution order
-    ~~~~~~~~~~~~~~~~
-    1. Scan fonts already registered with matplotlib (system fonts + any
-       previously added custom fonts).  Use the first match from
-       ``_RTL_FONT_CANDIDATES``.
-    2. If none found, silently download **Vazirmatn-Regular.ttf** directly
-       from GitHub and cache it at
-       ``~/.cache/missingly/fonts/Vazirmatn-Regular.ttf``.  Register it
-       with matplotlib and set it as the active font family.
-    3. If the download fails (no network, permission error, etc.), fall back
-       to matplotlib's default (DejaVu Sans) and emit a :class:`UserWarning`
-       **once per session** with actionable install instructions.
+    Called automatically by every visualisation function before rendering.
+    Emits a :class:`UserWarning` **at most once per Python session** when
+    RTL text is detected but no suitable font can be found or downloaded.
 
     Parameters
     ----------
     labels : sequence
-        Any iterable of strings (column names, tick labels, title, …).
+        The axis tick labels that will be rendered.
     """
-    global _RTL_WARNED, _RTL_FONT_REGISTERED
+    global _RTL_WARNED, _RTL_FONT_REGISTERED  # noqa: PLW0603
 
     if not any(_is_rtl(str(lbl)) for lbl in labels):
         return
 
-    import matplotlib as mpl
+    if _RTL_FONT_REGISTERED:
+        return
+
     import matplotlib.font_manager as fm
 
-    # Step 1: check fonts already known to matplotlib (system + previously cached)
-    available = {f.name for f in fm.fontManager.ttflist}
-    for font in _RTL_FONT_CANDIDATES:
-        if font in available:
-            # Set as a stack so non-RTL glyphs fall back to DejaVu Sans
-            mpl.rcParams["font.family"] = [font] + _FALLBACK_FONTS
-            return
+    # Check whether a suitable system font is already available.
+    available_names = {f.name for f in fm.fontManager.ttflist}
+    for candidate in _RTL_FONT_CANDIDATES:
+        if candidate in available_names:
+            try:
+                import matplotlib as mpl
+                mpl.rcParams["font.family"] = [candidate] + _FALLBACK_FONTS
+                _RTL_FONT_REGISTERED = True
+                return
+            except Exception:  # noqa: BLE001
+                continue
 
-    # Step 2: auto-download Vazirmatn (once per session)
-    if not _RTL_FONT_REGISTERED:
-        font_path = _ensure_vazirmatn()
-        if font_path is not None and _register_font(font_path):
+    # No system font found — try to download Vazirmatn.
+    font_path = _ensure_vazirmatn()
+    if font_path is not None:
+        if _register_font(font_path):
             _RTL_FONT_REGISTERED = True
             return
 
-    # Step 3: nothing worked – warn once
+    # All attempts failed.
     if not _RTL_WARNED:
-        _RTL_WARNED = True
         warnings.warn(
-            "Persian/Arabic labels detected, but missingly could not load a "
-            "suitable font for matplotlib.\n\n"
-            "For best results, install the RTL support libraries:\n\n"
-            "    pip install missingly[rtl]\n\n"
-            "These libraries (arabic-reshaper, python-bidi) reshape glyphs and "
-            "apply the Unicode Bidi Algorithm so that Persian text displays "
-            "correctly in static plots.\n\n"
-            "Alternatively, install a Persian font such as Vazirmatn on your "
-            "system, or ensure internet access so missingly can download it "
-            "automatically.\n\n"
-            "For interactive Plotly plots (interactive=True) no extra install "
-            "is needed — they already render Persian correctly.",
+            "Persian/Arabic column names detected but no suitable font is available. "
+            "Install the RTL extras for correct rendering:\n"
+            "    pip install missingly[rtl]\n"
+            "or explicitly:\n"
+            "    pip install arabic-reshaper python-bidi",
             UserWarning,
             stacklevel=3,
         )
+        _RTL_WARNED = True
 
 
-def _rtl_plotly_layout(labels: Sequence) -> Dict[str, Any]:
-    """Return Plotly layout kwargs that enable correct RTL rendering.
-
-    Plotly's WebGL/SVG renderer handles Unicode Bidi to some extent, but
-    still needs an explicit RTL-capable font to display connected
-    Persian/Arabic glyph forms correctly.  This helper detects whether any
-    label in *labels* is RTL and, if so, returns layout overrides that:
-
-    * Set ``font.family`` to the best available RTL-capable web-safe font.
-    * Enable ``automargin`` on both axes so long RTL tick labels are not
-      clipped.
-
-    The returned dict is meant to be passed directly to
-    ``fig.update_layout(**_rtl_plotly_layout(labels))``.
+def _rtl_plotly_layout(labels: Sequence) -> dict:
+    """Return Plotly layout kwargs for RTL-aware rendering.
 
     Parameters
     ----------
     labels : sequence
-        Any iterable of strings that will appear as axis labels or tick text
-        in the figure.
+        Axis labels to inspect for RTL content.
 
     Returns
     -------
     dict
-        Empty dict when no RTL text is detected (no-op).  Otherwise a dict
-        with ``font``, ``xaxis``, and ``yaxis`` keys.
-
-    Examples
-    --------
-    >>> fig.update_layout(**_rtl_plotly_layout(df.columns))
+        Extra keyword arguments to merge into a Plotly ``layout`` call.
+        Empty dict when no RTL text is detected.
     """
     if not any(_is_rtl(str(lbl)) for lbl in labels):
         return {}
-
-    rtl_font_family = (
-        "Vazirmatn, Vazir, Tahoma, Arial Unicode MS, "
-        "Noto Sans Arabic, sans-serif"
-    )
     return {
-        "font": {"family": rtl_font_family},
+        "font": {
+            "family": (
+                "Vazirmatn, Vazir, B Nazanin, Tahoma, "
+                "Arial Unicode MS, Noto Sans Arabic, sans-serif"
+            )
+        },
         "xaxis": {"automargin": True},
         "yaxis": {"automargin": True},
     }
 
 
 # ---------------------------------------------------------------------------
-# Nullity helpers
+# Core data helpers
 # ---------------------------------------------------------------------------
 
 def _nullity(
     df: pd.DataFrame,
-    missing_values: Optional[List] = None,
+    missing_values: Optional[list] = None,
 ) -> pd.DataFrame:
-    """Return a boolean DataFrame: ``True`` where data is missing.
+    """Return a boolean DataFrame: ``True`` where values are missing.
 
     Parameters
     ----------
     df : pd.DataFrame
+        Input DataFrame.
     missing_values : list, optional
         Extra sentinel values treated as missing (e.g. ``[-99, "N/A"]``).
 
     Returns
     -------
     pd.DataFrame
-        Same shape as *df*, dtype ``bool``.
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({"a": [1, np.nan, -99], "b": [None, 2, 3]})
-    >>> _nullity(df, missing_values=[-99])
-           a      b
-    0  False   True
-    1   True  False
-    2   True  False
+        Boolean DataFrame with the same shape as *df*.
     """
-    if missing_values is None:
-        return df.isnull()
-    return df.isnull() | df.isin(missing_values)
+    null_mask = df.isna()
+    if missing_values:
+        for val in missing_values:
+            null_mask = null_mask | (df == val)
+    return null_mask
 
 
 def _pct_labels(
     df: pd.DataFrame,
-    missing_values: Optional[List] = None,
-) -> List[str]:
-    """Return RTL-safe column labels with missingness percentage appended.
+    missing_values: Optional[list] = None,
+) -> list:
+    """Return column labels with missingness percentage appended.
 
     Parameters
     ----------
     df : pd.DataFrame
+        Input DataFrame.
     missing_values : list, optional
-        Extra sentinel values.
+        Extra sentinel values treated as missing.
 
     Returns
     -------
     list of str
-        E.g. ``["age (12.5%)", "income (0.0%)"]`` for Latin columns,
-        or ``["سن (12.5%)", "درآمد (0.0%)"]`` for Persian columns
-        (correctly shaped and reordered for matplotlib).
+        Labels in the form ``"<_rtl_safe(col)> (<pct>%)"``.
     """
-    pct = _nullity(df, missing_values).mean() * 100
-    return [_rtl_safe(f"{col} ({pct[col]:.1f}%)") for col in df.columns]
+    null_mask = _nullity(df, missing_values=missing_values)
+    pcts = null_mask.mean() * 100
+    labels = []
+    for col in df.columns:
+        pct_str = f"{pcts[col]:.1f}%"
+        safe_col = _rtl_safe(str(col))
+        labels.append(f"{safe_col} ({pct_str})")
+    return labels
 
-
-# ---------------------------------------------------------------------------
-# Plotly lazy import
-# ---------------------------------------------------------------------------
 
 def _require_plotly():
-    """Lazily import ``plotly.graph_objects``.
-
-    Raises
-    ------
-    ImportError
-        With an actionable message if plotly is not installed.
+    """Lazy import of ``plotly.graph_objects`` with a helpful error.
 
     Returns
     -------
     module
-        ``plotly.graph_objects``.
+        ``plotly.graph_objects``
+
+    Raises
+    ------
+    ImportError
+        With an install hint when plotly is not installed.
     """
     try:
-        import plotly.graph_objects as go
+        import plotly.graph_objects as go  # type: ignore
         return go
     except ImportError as exc:
         raise ImportError(
-            "Interactive mode requires plotly >= 5.0. "
+            "Plotly is required for interactive visualisations. "
             "Install it with: pip install plotly"
         ) from exc
