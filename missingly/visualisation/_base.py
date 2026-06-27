@@ -47,7 +47,7 @@ behaviour when one or both are missing is:
 * **Only reshaper** installed → glyphs are shaped but order is still LTR
   (partially broken); reversal applied as a best-effort order fix.
 * **Only bidi** installed → order is corrected but glyphs may be isolated
-  forms (partially broken); no extra fallback possible beyond bidi itself.
+  forms (partially broken); no extra fallback beyond bidi itself.
 * **Both** installed → fully correct output.
 
 Font fallback stack
@@ -58,9 +58,9 @@ When an RTL font is registered, ``font.family`` is set to a **list**
     ["Vazirmatn", "DejaVu Sans", "sans-serif"]
 
 This allows matplotlib to fall back to DejaVu Sans for any glyph not
-present in Vazirmatn – for example Greek letters (``μ``) or obscure Latin
+present in Vazirmatn – for example Greek letters (``\u03bc``) or obscure Latin
 Extended characters that commonly appear in scientific column names.
-Without the fallback, those glyphs render as empty boxes ("tofu").
+Without the fallback, those glyphs render as empty boxes (\"tofu\").
 
 Font auto-download
 ------------------
@@ -133,6 +133,10 @@ _RTL_FONT_REGISTERED: bool = False
 _RTL_PATTERN = re.compile(
     r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
 )
+
+# Unicode directional markers.
+_RLM = "\u200F"  # RIGHT-TO-LEFT MARK  – prepended to RTL strings
+_LRM = "\u200E"  # LEFT-TO-RIGHT MARK  – appended  to RTL strings
 
 # Preferred fonts for RTL rendering, ordered by quality/availability.
 _RTL_FONT_CANDIDATES = [
@@ -218,6 +222,11 @@ def _rtl_safe(text: str) -> str:
     (e.g. percentages, numbers, parentheses) are never passed through the
     Arabic reshaper and are preserved exactly.
 
+    For strings that contain any RTL characters the result is wrapped with
+    a RIGHT-TO-LEFT MARK (\\u200F) prefix and a LEFT-TO-RIGHT MARK (\\u200E)
+    suffix.  This signals to matplotlib's text renderer that the whole label
+    is RTL and prevents the surrounding layout from mirroring the LTR parts.
+
     Parameters
     ----------
     text : str
@@ -227,6 +236,8 @@ def _rtl_safe(text: str) -> str:
     -------
     str
         Processed string suitable for use as a matplotlib axis label.
+        Pure LTR strings are returned unchanged.
+        RTL-containing strings start with \\u200F and end with \\u200E.
     """
     text = str(text)
 
@@ -262,9 +273,9 @@ def _rtl_safe(text: str) -> str:
 
         processed_parts.append(part)
 
-    # When there are multiple runs, rejoin. For single pure-RTL strings,
-    # the whole string went through one RTL run above.
-    return "".join(processed_parts)
+    # Wrap the entire result with directional markers so matplotlib's layout
+    # engine treats the label as RTL regardless of which fallback path ran.
+    return _RLM + "".join(processed_parts) + _LRM
 
 
 def _safe_labels(labels: Sequence, missing_values: Optional[list] = None) -> list:

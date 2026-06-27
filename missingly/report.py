@@ -160,10 +160,23 @@ def _fig_to_b64(fig: plt.Figure) -> str:
 def _safe_plot(plot_fn, df: pd.DataFrame, **kwargs) -> Optional[str]:
     """Call a plot function and return a base64 PNG, or None on failure."""
     try:
-        fig, ax = plt.subplots(figsize=(10, 4))
-        plot_fn(df, ax=ax, **kwargs)
-        b64 = _fig_to_b64(fig)
-        plt.close(fig)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*set_bad.*",
+            )
+            try:
+                import matplotlib as _mpl
+                warnings.filterwarnings(
+                    "ignore",
+                    category=_mpl.MatplotlibDeprecationWarning,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            fig, ax = plt.subplots(figsize=(10, 4))
+            plot_fn(df, ax=ax, **kwargs)
+            b64 = _fig_to_b64(fig)
+            plt.close(fig)
         return b64
     except Exception as exc:  # noqa: BLE001
         warnings.warn(f"Plot {plot_fn.__name__!r} failed: {exc}", UserWarning, stacklevel=2)
