@@ -29,6 +29,19 @@ from missingly.visualisation._base import (
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_RLM = "\u200F"
+_LRM = "\u200E"
+
+
+def _strip_markers(s: str) -> str:
+    """Remove leading RLM and trailing LRM so assertions stay marker-agnostic."""
+    return s.lstrip(_RLM).rstrip(_LRM)
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -215,10 +228,10 @@ class TestRtlSafeMixed:
         assert "42.5%" in result
 
     def test_mixed_no_libraries_ltr_preserved(self):
-        """With neither library: reversed string must contain '42.5%' chars.
+        """With neither library: all original characters must be present.
 
-        Note: the *order* of chars will be wrong (it's the fallback path),
-        but the digit characters themselves must all be present.
+        The output is wrapped with _RLM/_LRM directional markers, so we
+        strip those before comparing character sets.
         """
         with (
             patch.object(_base, "_HAVE_RESHAPER", False),
@@ -226,8 +239,11 @@ class TestRtlSafeMixed:
         ):
             result = _rtl_safe("\u0633\u0646 (42.5%)")
 
-        # All characters must be present (just reversed order).
-        assert sorted(result) == sorted("\u0633\u0646 (42.5%)")
+        # Strip directional markers before comparing character content.
+        core = _strip_markers(result)
+        assert sorted(core) == sorted("\u0633\u0646 (42.5%)"), (
+            f"Character set mismatch after stripping markers. core={core!r}"
+        )
 
     def test_pure_latin_unaffected_by_any_flag_combo(self):
         """Latin-only strings bypass all processing regardless of flags."""
@@ -295,13 +311,21 @@ class TestRtlSafeFallbackPaths:
         mock_bidi.assert_called_once_with(self.PERSIAN)
 
     def test_neither_library_reverses_string(self):
+        """Neither-mode reverses the RTL run as last resort.
+
+        The output is wrapped with _RLM/_LRM directional markers; strip
+        those before comparing the core reversed content.
+        """
         with (
             patch.object(_base, "_HAVE_RESHAPER", False),
             patch.object(_base, "_HAVE_BIDI", False),
         ):
             result = _rtl_safe(self.PERSIAN)
 
-        assert result == self.PERSIAN[::-1]
+        assert _strip_markers(result) == self.PERSIAN[::-1], (
+            f"Neither-mode must reverse the RTL run (ignoring markers): "
+            f"got {result!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -516,8 +540,6 @@ class TestApplyRtlFont:
 
     def test_rtl_labels_trigger_font_lookup(self):
         """RTL labels must trigger the font resolution logic without crashing."""
-        # We don't assert which font was chosen (system-dependent),
-        # but the call must complete without exception.
         try:
             _base._apply_rtl_font(["\u0633\u0646", "\u062f\u0631\u0622\u0645\u062f"])
         except Exception as exc:
@@ -525,7 +547,6 @@ class TestApplyRtlFont:
 
     def test_warns_when_no_font_available(self):
         """When font resolution fails completely, a UserWarning is emitted."""
-        # Reset session-level flag so warning fires
         original_warned = _base._RTL_WARNED
         original_registered = _base._RTL_FONT_REGISTERED
         _base._RTL_WARNED = False
@@ -536,7 +557,6 @@ class TestApplyRtlFont:
                 patch("matplotlib.font_manager.fontManager") as mock_fm,
                 patch.object(_base, "_ensure_vazirmatn", return_value=None),
             ):
-                # No matching system fonts
                 mock_fm.ttflist = []
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always")
