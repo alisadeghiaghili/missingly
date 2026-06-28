@@ -32,6 +32,7 @@ import importlib
 import re
 import warnings
 from unittest import mock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -41,6 +42,19 @@ import matplotlib.pyplot as plt
 import pytest
 
 import missingly.visualisation._base as _base
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_RLM = "\u200F"
+_LRM = "\u200E"
+
+
+def _strip_markers(s: str) -> str:
+    """Remove leading RLM and trailing LRM so assertions stay marker-agnostic."""
+    return s.lstrip(_RLM).rstrip(_LRM)
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +95,18 @@ def reset_rtl_globals():
 # Helpers to force library-availability states via mock
 # ---------------------------------------------------------------------------
 
+def _make_reshaper_mock():
+    m = MagicMock()
+    m.reshape.side_effect = lambda s: s  # identity
+    return m
+
+
+def _make_bidi_mock():
+    m = MagicMock()
+    m.side_effect = lambda s, **kw: s  # identity
+    return m
+
+
 def _patch_both_missing():
     """Context manager: neither arabic_reshaper nor bidi available."""
     return mock.patch.multiple(
@@ -91,20 +117,30 @@ def _patch_both_missing():
 
 
 def _patch_reshaper_only():
-    """Context manager: only arabic_reshaper available."""
+    """Context manager: only arabic_reshaper available.
+
+    Also supplies a real mock for _ar_reshaper so _rtl_safe can call
+    .reshape() even when the library is not installed in the test env.
+    """
     return mock.patch.multiple(
         "missingly.visualisation._base",
         _HAVE_RESHAPER=True,
         _HAVE_BIDI=False,
+        _ar_reshaper=_make_reshaper_mock(),
     )
 
 
 def _patch_bidi_only():
-    """Context manager: only bidi available."""
+    """Context manager: only bidi available.
+
+    Also supplies a real mock for _bidi_get_display so _rtl_safe can call
+    it even when the library is not installed in the test env.
+    """
     return mock.patch.multiple(
         "missingly.visualisation._base",
         _HAVE_RESHAPER=False,
         _HAVE_BIDI=True,
+        _bidi_get_display=_make_bidi_mock(),
     )
 
 
@@ -131,8 +167,6 @@ class TestRtlSafeStateBoth:
         self._requires_both()
         raw = "\u0633\u0646"
         result = _base._rtl_safe(raw)
-        # After reshape+bidi, result must differ from raw (characters reordered)
-        # OR be shaped correctly. At minimum, it must not be the empty string.
         assert len(result) > 0
 
     def test_mixed_preserves_numbers(self):
@@ -160,15 +194,11 @@ class TestRtlSafeStateReshaperOnly:
             assert _base._rtl_safe("income") == "income"
 
     def test_persian_returns_non_empty(self):
-        if not _base._HAVE_RESHAPER:
-            pytest.skip("Requires arabic_reshaper")
         with _patch_reshaper_only():
             result = _base._rtl_safe("\u0633\u0646")
             assert len(result) > 0
 
     def test_mixed_preserves_numbers(self):
-        if not _base._HAVE_RESHAPER:
-            pytest.skip("Requires arabic_reshaper for this state")
         with _patch_reshaper_only():
             mixed = "\u0633\u0646 (42.5%)"
             result = _base._rtl_safe(mixed)
@@ -177,13 +207,12 @@ class TestRtlSafeStateReshaperOnly:
             )
 
     def test_mixed_preserves_percent(self):
-        if not _base._HAVE_RESHAPER:
-            pytest.skip("Requires arabic_reshaper")
         with _patch_reshaper_only():
             result = _base._rtl_safe("\u0633\u0646 (12.0%)")
             assert "%" in result
 
     def test_returns_str(self):
+        """Must return str regardless of whether the real library is installed."""
         with _patch_reshaper_only():
             result = _base._rtl_safe("\u0633\u0646")
             assert isinstance(result, str)
@@ -199,17 +228,17 @@ class TestRtlSafeStateBidiOnly:
             assert _base._rtl_safe("score") == "score"
 
     def test_persian_returns_non_empty(self):
-        if not _base._HAVE_BIDI:
-            pytest.skip("Requires python-bidi")
         with _patch_bidi_only():
             result = _base._rtl_safe("\u0633\u0646")
             assert len(result) > 0
 
     def test_returns_str(self):
+        """Must return str regardless of whether the real library is installed."""
         with _patch_bidi_only():
             assert isinstance(_base._rtl_safe("\u0633\u0646"), str)
 
     def test_does_not_raise(self):
+        """Must not raise even with a mixed RTL+LTR string."""
         with _patch_bidi_only():
             _base._rtl_safe("\u062f\u0631\u0622\u0645\u062f (0.0%)")
 
@@ -224,11 +253,29 @@ class TestRtlSafeStateNeither:
             assert _base._rtl_safe("city") == "city"
 
     def test_persian_is_reversed(self):
+        """Neither-mode reverses RTL runs as last resort.
+
+        The output may be wrapped in directional markers (_RLM prefix +
+        _LRM suffix) for correct matplotlib layout, so we strip those
+        before comparing the core content.
+        """
         with _patch_both_missing():
             raw = "\u0633\u0646"
             result = _base._rtl_safe(raw)
-            assert result == raw[::-1], (
-                f"Neither-mode must reverse string as last resort: got {result!r}"
+            assert _strip_markers(result) == raw[::-1], (
+                f"Neither-mode must reverse the RTL run (ignoring directional "
+                f"markers): got {result!r}"
+            )
+
+    def test_output_has_rtl_markers(self):
+        """Output for RTL text must be wrapped with _RLM prefix and _LRM suffix."""
+        with _patch_both_missing():
+            result = _base._rtl_safe("\u0633\u0646")
+            assert result.startswith(_RLM), (
+                f"Expected _RLM prefix, got {result!r}"
+            )
+            assert result.endswith(_LRM), (
+                f"Expected _LRM suffix, got {result!r}"
             )
 
     def test_pure_latin_not_reversed(self):
@@ -250,17 +297,6 @@ class TestRtlSafeStateNeither:
 # ---------------------------------------------------------------------------
 
 class TestApplyRtlFontWarning:
-    def _no_rtl_font_context(self):
-        """Force font resolution to fail and download to fail."""
-        # Make all system font candidates unavailable
-        empty_ttflist = mock.PropertyMock(return_value=[])
-        # Make the font download fail
-        return mock.patch.multiple(
-            "missingly.visualisation._base",
-            _RTL_FONT_REGISTERED=False,
-            _ensure_vazirmatn=mock.Mock(return_value=None),
-        )
-
     def test_warning_emitted_when_no_font(self):
         """UserWarning must be emitted when RTL labels are detected but no font
         is available."""
@@ -357,13 +393,18 @@ class TestSafeLabels:
         assert len(_base._safe_labels(labels)) == 3
 
     def test_none_mode_each_item_reversed(self):
-        """In neither-mode, each label must be processed (reversed or shaped)."""
+        """In neither-mode each RTL label's core content must be reversed.
+
+        Directional markers (_RLM / _LRM) are stripped before comparison
+        so the assertion is robust to wrapper presence.
+        """
         with _patch_both_missing():
             labels = ["\u0633\u0646", "\u0634\u0647\u0631"]
             result = _base._safe_labels(labels)
             for raw, processed in zip(labels, result):
-                assert processed == raw[::-1], (
-                    f"Expected {raw[::-1]!r}, got {processed!r}"
+                assert _strip_markers(processed) == raw[::-1], (
+                    f"Expected reversed core {raw[::-1]!r}, "
+                    f"got {processed!r} (stripped: {_strip_markers(processed)!r})"
                 )
 
 
