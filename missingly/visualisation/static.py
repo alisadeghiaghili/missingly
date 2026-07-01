@@ -682,7 +682,7 @@ def heatmap(
     mask_insignificant: bool = True,
     significance: float = 0.05,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Nullity correlation heatmap.
 
     Parameters
@@ -703,14 +703,15 @@ def heatmap(
 
     Returns
     -------
-    Figure
+    matplotlib.axes.Axes
+        The axes the heatmap was drawn into.
 
     Examples
     --------
     >>> import pandas as pd, numpy as np
     >>> from missingly.visualisation.static import heatmap
     >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan], "c": [1, 2, np.nan]})
-    >>> fig = heatmap(df)
+    >>> ax = heatmap(df)
     """
     if backend == "plotly":
         return _heatmap_plotly(df, **kwargs)
@@ -721,7 +722,7 @@ def heatmap(
         fig, ax_ = plt.subplots(figsize=figsize or (4, 3), constrained_layout=True)
         ax_.text(0.5, 0.5, "Not enough columns with missing values",
                  ha="center", va="center", transform=ax_.transAxes)
-        return fig
+        return ax_
 
     sub = null_mat[cols_with_missing].astype(float)
     corr = sub.corr(method="pearson")
@@ -766,7 +767,7 @@ def heatmap(
                 vmin=vmin, vmax=vmax, center=center, linewidths=linewidths,
                 **kwargs,
             )
-    return fig
+    return ax_
 
 
 # ===========================================================================
