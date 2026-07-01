@@ -26,7 +26,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
-from upsetplot import UpSet, from_indicators
 
 from missingly.visualisation._base import (
     _apply_rtl_font,
@@ -326,6 +325,12 @@ def upset(
         A dict with a single key ``"upset"`` mapped to the figure, or an
         empty dict when there are no missing values.
 
+    Raises
+    ------
+    ImportError
+        When the ``upsetplot`` package is not installed.  Install it with
+        ``pip install upsetplot`` or ``pip install missingly[upset]``.
+
     Examples
     --------
     >>> import pandas as pd, numpy as np
@@ -333,6 +338,15 @@ def upset(
     >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
     >>> figs = upset(df)
     """
+    try:
+        from upsetplot import UpSet, from_indicators  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "The 'upsetplot' package is required for upset plots.  "
+            "Install it with:  pip install upsetplot\n"
+            "or:               pip install missingly[upset]"
+        ) from exc
+
     null_mat = _null_matrix(df)
     if not null_mat.any(axis=None):
         return {}
