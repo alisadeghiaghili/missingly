@@ -16,6 +16,9 @@ _ensure_vazirmatn
     Download / validate Vazirmatn font to local cache.
 _register_font
     Register a font file with matplotlib's font manager.
+_require_plotly
+    Lazily import plotly.graph_objects; raise ImportError with install hint
+    when plotly is not available.
 """
 
 from __future__ import annotations
@@ -533,7 +536,45 @@ def _pct_labels(
 
 
 # ---------------------------------------------------------------------------
-# Plotly helpers
+# Plotly lazy-import helper
+# ---------------------------------------------------------------------------
+
+def _require_plotly() -> "types.ModuleType":  # type: ignore[name-defined]
+    """Lazily import and return ``plotly.graph_objects``.
+
+    This helper is called by every Plotly backend function instead of a
+    top-level ``import plotly`` so that the package can be imported without
+    plotly installed -- the error is raised only when an interactive backend
+    is actually requested.
+
+    Returns
+    -------
+    types.ModuleType
+        The ``plotly.graph_objects`` module.
+
+    Raises
+    ------
+    ImportError
+        When ``plotly`` is not installed, with a clear pip install hint.
+
+    Examples
+    --------
+    >>> go = _require_plotly()          # doctest: +SKIP
+    >>> fig = go.Figure()               # doctest: +SKIP
+    """
+    try:
+        import plotly.graph_objects as go  # noqa: PLC0415
+        return go
+    except ImportError as exc:
+        raise ImportError(
+            "The 'plotly' package is required for interactive visualisations.  "
+            "Install it with:  pip install plotly\n"
+            "or:               pip install missingly[interactive]"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Plotly layout helpers
 # ---------------------------------------------------------------------------
 
 def _rtl_plotly_layout(labels: Sequence) -> dict:
