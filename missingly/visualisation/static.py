@@ -1,6 +1,6 @@
 """Static (matplotlib / seaborn) visualisations for missing-data analysis.
 
-All public functions return a :class:`matplotlib.figure.Figure` unless
+All public functions return a :class:`matplotlib.axes.Axes` unless
 otherwise noted.  Every function accepts an optional *ax* keyword that,
 when provided, draws into that :class:`~matplotlib.axes.Axes` instead of
 creating a new figure.
@@ -31,21 +31,21 @@ from missingly.visualisation._base import (
     _rtl_safe,
     _rtl_safe_labels,
 )
-from missingly.visualisation.interactive import (
-    _bar_plotly,
-    _heatmap_plotly,
-    _matrix_plotly,
-    _miss_case_plotly,
-    _miss_cooccurrence_plotly,
-    _miss_patterns_plotly,
-    _miss_var_pct_plotly,
-    _upset_plotly,
-    _vis_miss_plotly,
-)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _require_plotly():
+    """Raise a helpful ImportError when plotly is not installed."""
+    try:
+        import plotly  # noqa: F401
+    except (ImportError, TypeError):
+        raise ImportError(
+            "Interactive plots require plotly.  "
+            "Install it with:  pip install plotly"
+        )
 
 
 def _null_matrix(df: pd.DataFrame) -> pd.DataFrame:
@@ -58,13 +58,19 @@ def _pct_missing(df: pd.DataFrame) -> pd.Series:
     return df.isnull().mean() * 100
 
 
+def _apply_sentinels(df: pd.DataFrame, missing_values=None) -> pd.DataFrame:
+    """Replace custom sentinel values with NaN."""
+    if missing_values:
+        df = df.replace(missing_values, np.nan)
+    return df
+
+
 def _set_datetime_yticks(
     ax: Any,
     index: pd.DatetimeIndex,
     freq: str,
     fontsize: int,
 ) -> None:
-    """Set y-axis ticks to period boundaries of *freq* for datetime indices."""
     boundaries = pd.date_range(index.min(), index.max(), freq=freq)
     tick_positions = [np.searchsorted(index, dt) for dt in boundaries]
     tick_labels = [dt.strftime("%Y-%m-%d") for dt in boundaries]
@@ -92,37 +98,22 @@ def matrix(
     freq: str | None = None,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
-    """Nullity matrix: a column-aligned grid of present / absent indicators.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    color : tuple
-        RGB for present cells.
-    fontsize : int
-    labels : bool
-    sparkline : bool
-    freq : str, optional
-    ax : Axes, optional
-    backend : str
+) -> Any:
+    """Nullity matrix.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import matrix
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = matrix(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _matrix_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _matrix_plotly
+        return _matrix_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     n_rows, n_cols = null_mat.shape
 
@@ -180,7 +171,7 @@ def matrix(
         for spine in spark_ax.spines.values():
             spine.set_visible(False)
 
-    return fig
+    return main_ax
 
 
 # ===========================================================================
@@ -198,36 +189,22 @@ def bar(
     sort: bool = False,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Bar chart of per-column missing-value counts.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    color : str
-    log : bool
-    labels : bool
-    fontsize : int
-    sort : bool
-    ax : Axes, optional
-    backend : str
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import bar
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = bar(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _bar_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _bar_plotly
+        return _bar_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     pct = _pct_missing(df)
     if sort:
         pct = pct.sort_values(ascending=False)
@@ -257,7 +234,7 @@ def bar(
         ax.set_yscale("log")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     _clean_ax(ax)
-    return fig
+    return ax
 
 
 # ===========================================================================
@@ -273,35 +250,22 @@ def miss_case(
     sort: bool = True,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Bar chart of missing-value counts per row (case).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    color : str
-    fontsize : int
-    sort : bool
-        Sort rows by descending missing count.
-    ax : Axes, optional
-    backend : str
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_case
-    >>> df = pd.DataFrame({"a": [1, np.nan], "b": [np.nan, 2]})
-    >>> fig = miss_case(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _miss_case_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _miss_case_plotly
+        return _miss_case_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     counts = df.isnull().sum(axis=1)
     if sort:
         counts = counts.sort_values(ascending=False)
@@ -325,7 +289,7 @@ def miss_case(
     else:
         ax.set_xticks([])
     _clean_ax(ax)
-    return fig
+    return ax
 
 
 # ===========================================================================
@@ -341,34 +305,22 @@ def miss_var_pct(
     sort: bool = True,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Horizontal bar chart of percentage missing per variable.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    color : str
-    fontsize : int
-    sort : bool
-    ax : Axes, optional
-    backend : str
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_var_pct
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = miss_var_pct(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _miss_var_pct_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _miss_var_pct_plotly
+        return _miss_var_pct_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     pct = df.isnull().mean() * 100
     if sort:
         pct = pct.sort_values(ascending=True)
@@ -391,7 +343,7 @@ def miss_var_pct(
     ax.set_xlim(0, 105)
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     _clean_ax(ax)
-    return fig
+    return ax
 
 
 # ===========================================================================
@@ -404,28 +356,16 @@ def miss_which(
     figsize: tuple[float, float] | None = None,
     fontsize: int = 10,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
-    """Heatmap showing *which* cells are missing (rows × columns).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    fontsize : int
-    ax : Axes, optional
+) -> Any:
+    """Heatmap showing *which* cells are missing (rows x columns).
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_which
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = miss_which(df)
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     cols_miss = [c for c in null_mat.columns if null_mat[c].any()]
     sub = null_mat[cols_miss] if cols_miss else null_mat
@@ -447,7 +387,7 @@ def miss_which(
     ax_.set_yticks(range(n_rows))
     ax_.set_yticklabels([str(i) for i in sub.index], fontsize=fontsize - 1)
     ax_.set_title("Which values are missing?")
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -460,37 +400,26 @@ def upset(
     figsize: tuple[float, float] | None = None,
     min_subset_size: int = 1,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> dict[str, Figure] | Any:
+) -> dict | Any:
     """UpSet plot of missing-value co-occurrence patterns.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    min_subset_size : int
-    backend : str
-    **kwargs
-        Forwarded to :class:`upsetplot.UpSet` (matplotlib) or plotly backend.
 
     Returns
     -------
-    dict[str, Figure] or plotly Figure
+    dict with keys 'intersections', 'matrix', 'totals'  (matplotlib backend)
+    or plotly Figure  (interactive backend).
 
     Raises
     ------
     ImportError
         When ``upsetplot`` is not installed (matplotlib backend only).
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import upset
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> figs = upset(df)
     """
-    if backend == "plotly":
-        return _upset_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _upset_plotly
+        return _upset_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
     try:
         from upsetplot import UpSet, from_indicators  # noqa: PLC0415
@@ -501,25 +430,32 @@ def upset(
             "or:               pip install missingly[upset]"
         ) from exc
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     if not null_mat.any(axis=None):
-        return {}
+        return {"intersections": None, "matrix": None, "totals": None}
 
     cols_with_missing = [c for c in null_mat.columns if null_mat[c].any()]
     if not cols_with_missing:
-        return {}
+        return {"intersections": None, "matrix": None, "totals": None}
 
     data = from_indicators(null_mat[cols_with_missing])
     data = data[data >= min_subset_size]
     if data.empty:
-        return {}
+        return {"intersections": None, "matrix": None, "totals": None}
 
     us = UpSet(data, **kwargs)
     if figsize:
         us.figure_width = figsize[0]
         us.figure_height = figsize[1]
     fig_dict = us.plot()
-    return {"upset": fig_dict["matrix"].figure}
+    # fig_dict from upsetplot has keys like 'matrix', 'intersections', 'totals'
+    result = {
+        "intersections": fig_dict.get("intersections"),
+        "matrix": fig_dict.get("matrix"),
+        "totals": fig_dict.get("totals"),
+    }
+    return result
 
 
 # ===========================================================================
@@ -535,34 +471,22 @@ def miss_patterns(
     fontsize: int = 11,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Bar chart of the most common missingness patterns.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    top_n : int
-    figsize : tuple, optional
-    color : str
-    fontsize : int
-    ax : Axes, optional
-    backend : str
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_patterns
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = miss_patterns(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _miss_patterns_plotly(df, top_n=top_n, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _miss_patterns_plotly
+        return _miss_patterns_plotly(_apply_sentinels(df, missing_values), top_n=top_n, **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
 
     def _label(row: pd.Series) -> str:
@@ -589,7 +513,7 @@ def miss_patterns(
     ax_.set_xlabel("Row count", fontsize=fontsize)
     ax_.set_title(f"Top-{top_n} missingness patterns")
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -607,37 +531,22 @@ def miss_cooccurrence(
     fmt: str = ".2f",
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Co-occurrence heatmap of column missingness.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    normalize : bool
-        Normalise counts to fractions of total rows.
-    figsize : tuple, optional
-    cmap : str
-    fontsize : int
-    annot : bool
-    fmt : str
-    ax : Axes, optional
-    backend : str
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_cooccurrence
-    >>> df = pd.DataFrame({"a": [1, np.nan, np.nan], "b": [np.nan, np.nan, 3]})
-    >>> fig = miss_cooccurrence(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _miss_cooccurrence_plotly(df, normalize=normalize, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _miss_cooccurrence_plotly
+        return _miss_cooccurrence_plotly(_apply_sentinels(df, missing_values), normalize=normalize, **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df).astype(int)
     cooc = null_mat.T.dot(null_mat)
     if normalize:
@@ -658,7 +567,7 @@ def miss_cooccurrence(
     cooc.index = col_labels
     sns.heatmap(cooc, ax=ax_, cmap=cmap, annot=annot, fmt=fmt, linewidths=0.4, **kwargs)
     ax_.set_title("Missingness co-occurrence" + (" (fraction)" if normalize else " (count)"))
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -679,43 +588,24 @@ def heatmap(
     linewidths: float = 0.5,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
     mask_insignificant: bool = True,
     significance: float = 0.05,
+    missing_values=None,
     **kwargs: Any,
 ) -> Any:
     """Nullity correlation heatmap.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    cmap : str
-    fontsize : int
-    annot : bool
-    fmt : str
-    vmin, vmax : float
-    center : float
-    linewidths : float
-    ax : Axes, optional
-    backend : str
-    mask_insignificant : bool
-    significance : float
-
     Returns
     -------
-    matplotlib.axes.Axes
-        The axes the heatmap was drawn into.
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import heatmap
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan], "c": [1, 2, np.nan]})
-    >>> ax = heatmap(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _heatmap_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _heatmap_plotly
+        return _heatmap_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     cols_with_missing = [c for c in null_mat.columns if null_mat[c].any()]
     if len(cols_with_missing) < 2:
@@ -781,45 +671,36 @@ def dendrogram(
     fontsize: int = 12,
     orientation: str = "bottom",
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Hierarchical-clustering dendrogram of column nullity correlation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple
-    fontsize : int
-    orientation : str
-    ax : Axes, optional
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import dendrogram
-    >>> df = pd.DataFrame({"a": [1, np.nan], "b": [np.nan, 2], "c": [1, np.nan]})
-    >>> fig = dendrogram(df)
+    matplotlib.axes.Axes
     """
     from scipy.cluster import hierarchy
     from scipy.spatial.distance import squareform
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     cols_with_missing = [c for c in null_mat.columns if null_mat[c].any()]
     if len(cols_with_missing) < 2:
         fig, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
         ax_.text(0.5, 0.5, "Not enough columns with missing values",
                  ha="center", va="center", transform=ax_.transAxes)
-        return fig
+        return ax_
 
     sub = null_mat[cols_with_missing].astype(float)
     corr = sub.corr(method="pearson").fillna(0)
     dist = 1 - corr.abs()
-    np.fill_diagonal(dist.values, 0)
-    linkage = hierarchy.linkage(squareform(np.clip(dist.values, 0, None)), method="average")
+    # copy to avoid read-only array issue
+    dist_values = np.array(dist.values, copy=True)
+    np.fill_diagonal(dist_values, 0)
+    linkage = hierarchy.linkage(
+        squareform(np.clip(dist_values, 0, None)), method="average"
+    )
 
     if ax is not None:
         fig = ax.figure
@@ -831,7 +712,7 @@ def dendrogram(
     hierarchy.dendrogram(linkage, labels=col_labels, orientation=orientation, ax=ax_, **kwargs)
     ax_.tick_params(axis="x", labelsize=fontsize)
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -847,34 +728,22 @@ def vis_miss(
     cluster: bool = False,
     ax: Any = None,
     backend: str = "matplotlib",
+    interactive: bool = False,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure | Any:
+) -> Any:
     """Pixel-level heatmap of present / missing values (naniar-style).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    fontsize : int
-    sort : bool
-    cluster : bool
-    ax : Axes, optional
-    backend : str
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_miss
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = vis_miss(df)
+    matplotlib.axes.Axes or plotly Figure
     """
-    if backend == "plotly":
-        return _vis_miss_plotly(df, **kwargs)
+    if backend == "plotly" or interactive:
+        _require_plotly()
+        from missingly.visualisation.interactive import _vis_miss_plotly
+        return _vis_miss_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
 
     if sort:
@@ -912,7 +781,7 @@ def vis_miss(
     for spine in ax_.spines.values():
         spine.set_visible(False)
     ax_.set_xlabel(f"{null_mat.values.mean() * 100:.1f}% missing", fontsize=fontsize, labelpad=6)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -926,29 +795,16 @@ def miss_cluster(
     cmap: str = "gray_r",
     fontsize: int = 10,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
-    """Clustered heatmap of missing indicator matrix (rows and columns).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple, optional
-    cmap : str
-    fontsize : int
-    ax : Axes, optional
+) -> Any:
+    """Clustered heatmap of missing indicator matrix.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_cluster
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = miss_cluster(df)
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df).astype(float)
     try:
         from scipy.cluster.hierarchy import linkage, leaves_list
@@ -975,7 +831,7 @@ def miss_cluster(
     ax_.set_xticklabels(col_labels, rotation=45, ha="right", fontsize=fontsize)
     ax_.set_yticks([])
     ax_.set_title("Clustered missing indicator matrix")
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -989,29 +845,16 @@ def miss_row_profile(
     color: str = "#4C72B0",
     fontsize: int = 11,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Histogram of per-row completeness fractions.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple
-    color : str
-    fontsize : int
-    ax : Axes, optional
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_row_profile
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = miss_row_profile(df)
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
     completeness = 1 - df.isnull().mean(axis=1)
 
     if ax is not None:
@@ -1026,7 +869,7 @@ def miss_row_profile(
     ax_.set_title("Per-row completeness profile")
     ax_.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -1038,40 +881,32 @@ def shadow_scatter(
     x: str,
     y: str,
     *,
+    shadow_col: Optional[str] = None,
     hue: Optional[str] = None,
     figsize: tuple[float, float] = (7, 5),
     color_present: str = "#4C72B0",
     color_missing: str = "#dd8452",
     alpha: float = 0.7,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Scatter with margin rug for rows missing *x* or *y*.
 
     Parameters
     ----------
-    df : pd.DataFrame
-    x, y : str
-        Column names.
-    hue : str, optional
-        Column used to colour complete-case points.
-    figsize : tuple
-    color_present : str
-    color_missing : str
-    alpha : float
-    ax : Axes, optional
+    shadow_col : str, optional
+        Column to use for colouring shadow points (alias for hue).
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import shadow_scatter
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3, 4], "b": [2, 3, np.nan, 4]})
-    >>> fig = shadow_scatter(df, "a", "b")
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
+    # shadow_col is an alias for hue
+    if shadow_col is not None and hue is None:
+        hue = shadow_col
+
     if ax is not None:
         fig = ax.figure
         ax_ = ax
@@ -1086,9 +921,9 @@ def shadow_scatter(
         categories = df.loc[present, hue].astype(str).unique()
         for cat in categories:
             mask = present & (df[hue].astype(str) == cat)
-            ax_.scatter(xv[mask], yv[mask], alpha=alpha, label=str(cat), **kwargs)
+            ax_.scatter(xv[mask], yv[mask], alpha=alpha, label=str(cat))
     else:
-        ax_.scatter(xv[present], yv[present], c=color_present, alpha=alpha, label="Present", **kwargs)
+        ax_.scatter(xv[present], yv[present], c=color_present, alpha=alpha, label="Present")
 
     x_rng = (xv.max() - xv.min()) if present.any() else 1.0
     y_rng = (yv.max() - yv.min()) if present.any() else 1.0
@@ -1111,7 +946,7 @@ def shadow_scatter(
     ax_.set_title(f"Shadow scatter: {xl} vs {yl}")
     ax_.legend(fontsize=9)
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -1123,27 +958,8 @@ def scatter_miss(
     x: str,
     y: str,
     **kwargs: Any,
-) -> Figure:
-    """Alias for :func:`shadow_scatter`.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    x, y : str
-    **kwargs
-        Forwarded to :func:`shadow_scatter`.
-
-    Returns
-    -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import scatter_miss
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [2, np.nan, 3]})
-    >>> fig = scatter_miss(df, "a", "b")
-    """
+) -> Any:
+    """Alias for :func:`shadow_scatter`."""
     return shadow_scatter(df, x, y, **kwargs)
 
 
@@ -1157,29 +973,16 @@ def vis_miss_fct(
     *,
     figsize: tuple[float, float] | None = None,
     fontsize: int = 10,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
-    """Faceted :func:`vis_miss` split by a categorical column.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    fct : str
-        Column to facet by.
-    figsize : tuple, optional
-    fontsize : int
+) -> Any:
+    """Faceted vis_miss split by a categorical column.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_miss_fct
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3, np.nan], "g": ["A", "A", "B", "B"]})
-    >>> fig = vis_miss_fct(df, "g")
+    matplotlib.axes.Axes  (last facet axes)
     """
+    df = _apply_sentinels(df, missing_values)
     groups = df[fct].unique()
     n_groups = len(groups)
     data_cols = [c for c in df.columns if c != fct]
@@ -1196,7 +999,7 @@ def vis_miss_fct(
         vis_miss(sub, ax=ax_, fontsize=fontsize, **kwargs)
         ax_.set_title(f"{fct} = {grp}", fontsize=fontsize)
 
-    return fig
+    return axes[-1]
 
 
 # ===========================================================================
@@ -1205,7 +1008,7 @@ def vis_miss_fct(
 
 def vis_miss_by_group(
     df: pd.DataFrame,
-    group: str,
+    group_col: str,
     *,
     figsize: tuple[float, float] | None = None,
     cmap: str = "YlOrRd",
@@ -1213,35 +1016,23 @@ def vis_miss_by_group(
     annot: bool = True,
     fmt: str = ".0f",
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Heatmap of % missing per column per group.
 
     Parameters
     ----------
-    df : pd.DataFrame
-    group : str
+    group_col : str
         Column to group by.
-    figsize : tuple, optional
-    cmap : str
-    fontsize : int
-    annot : bool
-    fmt : str
-    ax : Axes, optional
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_miss_by_group
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3, np.nan], "g": ["A", "A", "B", "B"]})
-    >>> fig = vis_miss_by_group(df, "g")
+    matplotlib.axes.Axes
     """
-    data_cols = [c for c in df.columns if c != group]
-    pct = df.groupby(group)[data_cols].apply(lambda g: g.isnull().mean() * 100)
+    df = _apply_sentinels(df, missing_values)
+    data_cols = [c for c in df.columns if c != group_col]
+    pct = df.groupby(group_col)[data_cols].apply(lambda g: g.isnull().mean() * 100)
 
     n_grp, n_col = pct.shape
     if figsize is None:
@@ -1257,8 +1048,8 @@ def vis_miss_by_group(
     pct.columns = col_labels
     sns.heatmap(pct, ax=ax_, cmap=cmap, annot=annot, fmt=fmt,
                 vmin=0, vmax=100, linewidths=0.3, **kwargs)
-    ax_.set_title(f"% missing per column by '{group}'")
-    return fig
+    ax_.set_title(f"% missing per column by '{group_col}'")
+    return ax_
 
 
 # ===========================================================================
@@ -1268,7 +1059,7 @@ def vis_miss_by_group(
 def vis_impute_dist(
     df_before: pd.DataFrame,
     df_after: pd.DataFrame,
-    col: str,
+    column: str,
     *,
     figsize: tuple[float, float] = (8, 4),
     bins: int = 30,
@@ -1276,53 +1067,44 @@ def vis_impute_dist(
     color_after: str = "#dd8452",
     fontsize: int = 11,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Overlay histograms comparing a column before and after imputation.
 
     Parameters
     ----------
-    df_before, df_after : pd.DataFrame
-    col : str
-    figsize : tuple
-    bins : int
-    color_before, color_after : str
-    fontsize : int
-    ax : Axes, optional
+    column : str
+        Column to compare.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_impute_dist
-    >>> before = pd.DataFrame({"a": [1, np.nan, 3, np.nan, 5]})
-    >>> after  = pd.DataFrame({"a": [1, 2.5,    3, 2.5,    5]})
-    >>> fig = vis_impute_dist(before, after, "a")
+    matplotlib.axes.Axes
     """
+    df_before = _apply_sentinels(df_before, missing_values)
+    df_after = _apply_sentinels(df_after, missing_values)
+
     if ax is not None:
         fig = ax.figure
         ax_ = ax
     else:
         fig, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
 
-    before_vals = pd.to_numeric(df_before[col].dropna(), errors="coerce").dropna()
-    after_vals = pd.to_numeric(df_after[col].dropna(), errors="coerce").dropna()
+    before_vals = pd.to_numeric(df_before[column].dropna(), errors="coerce").dropna()
+    after_vals = pd.to_numeric(df_after[column].dropna(), errors="coerce").dropna()
 
     all_vals = pd.concat([before_vals, after_vals])
     edges = np.histogram_bin_edges(all_vals.dropna(), bins=bins)
 
     ax_.hist(before_vals, bins=edges, alpha=0.6, color=color_before, label="Before", **kwargs)
     ax_.hist(after_vals, bins=edges, alpha=0.6, color=color_after, label="After", **kwargs)
-    col_label = _rtl_safe(str(col))
+    col_label = _rtl_safe(str(column))
     ax_.set_xlabel(col_label, fontsize=fontsize)
     ax_.set_ylabel("Count", fontsize=fontsize)
     ax_.set_title(f"Distribution of '{col_label}': before vs after imputation")
     ax_.legend(fontsize=fontsize)
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -1331,60 +1113,82 @@ def vis_impute_dist(
 
 def miss_impute_compare(
     original: pd.DataFrame,
-    imputed_dict: Dict[str, pd.DataFrame],
-    col: str,
+    imputed: pd.DataFrame | Dict[str, pd.DataFrame],
+    column: Optional[str] = None,
     *,
     figsize: tuple[float, float] | None = None,
     bins: int = 30,
     fontsize: int = 11,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
-    """Grid of histograms comparing *col* across multiple imputation results.
+) -> Any:
+    """Grid of histograms comparing columns across multiple imputation results.
 
     Parameters
     ----------
     original : pd.DataFrame
         Data before imputation.
-    imputed_dict : dict[str, pd.DataFrame]
-        Mapping of label → imputed DataFrame.
-    col : str
-        Column to compare.
-    figsize : tuple, optional
-    bins : int
-    fontsize : int
+    imputed : pd.DataFrame or dict[str, pd.DataFrame]
+        Either a single imputed DataFrame or a mapping of label -> DataFrame.
+    column : str, optional
+        Single column to compare.  If None and imputed is a DataFrame, all
+        numeric columns with missing values in *original* are compared.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import miss_impute_compare
-    >>> orig = pd.DataFrame({"a": [1, np.nan, 3, np.nan, 5]})
-    >>> d = {"mean": pd.DataFrame({"a": [1, 3, 3, 3, 5]}), "zero": pd.DataFrame({"a": [1, 0, 3, 0, 5]})}
-    >>> fig = miss_impute_compare(orig, d, "a")
+    matplotlib.figure.Figure
     """
-    n = len(imputed_dict) + 1
+    original = _apply_sentinels(original, missing_values)
+
+    # Normalise imputed to a dict
+    if isinstance(imputed, pd.DataFrame):
+        imputed_dict: Dict[str, pd.DataFrame] = {"Imputed": imputed}
+    else:
+        imputed_dict = imputed
+
+    # Determine columns to compare
+    if column is not None:
+        cols_to_plot = [column]
+    else:
+        cols_to_plot = [
+            c for c in original.columns
+            if original[c].isnull().any() and pd.api.types.is_numeric_dtype(original[c])
+        ]
+        if not cols_to_plot:
+            cols_to_plot = [c for c in original.select_dtypes(include=[np.number]).columns]
+
+    n_cols_plot = len(cols_to_plot)
+    n_methods = len(imputed_dict) + 1  # original + each method
+
     if figsize is None:
-        figsize = (4 * n, 4)
+        figsize = (4 * n_methods, 4 * n_cols_plot)
 
-    fig, axes = plt.subplots(1, n, figsize=figsize, constrained_layout=True, sharey=True)
-    col_label = _rtl_safe(str(col))
-    all_vals = pd.concat(
-        [original[col]] + [d[col] for d in imputed_dict.values()]
+    fig, axes = plt.subplots(
+        n_cols_plot, n_methods,
+        figsize=figsize,
+        constrained_layout=True,
+        squeeze=False,
     )
-    edges = np.histogram_bin_edges(pd.to_numeric(all_vals, errors="coerce").dropna(), bins=bins)
 
-    for ax_, (label, data) in zip(axes, [("Original", original)] + list(imputed_dict.items())):
-        vals = pd.to_numeric(data[col], errors="coerce").dropna()
-        ax_.hist(vals, bins=edges, color="#4C72B0", edgecolor="white", **kwargs)
-        ax_.set_title(label, fontsize=fontsize)
-        ax_.set_xlabel(col_label, fontsize=fontsize)
-        _clean_ax(ax_)
+    method_items = [("Original", original)] + list(imputed_dict.items())
 
-    axes[0].set_ylabel("Count", fontsize=fontsize)
-    fig.suptitle(f"Imputation comparison: '{col_label}'", fontsize=fontsize + 1)
+    for row_i, col in enumerate(cols_to_plot):
+        col_label = _rtl_safe(str(col))
+        all_vals_col = pd.concat([d[col] for _, d in method_items if col in d.columns])
+        edges = np.histogram_bin_edges(
+            pd.to_numeric(all_vals_col, errors="coerce").dropna(), bins=bins
+        )
+        for col_j, (label, data) in enumerate(method_items):
+            ax_ = axes[row_i, col_j]
+            if col in data.columns:
+                vals = pd.to_numeric(data[col], errors="coerce").dropna()
+                ax_.hist(vals, bins=edges, color="#4C72B0", edgecolor="white", **kwargs)
+            ax_.set_title(label, fontsize=fontsize)
+            ax_.set_xlabel(col_label, fontsize=fontsize)
+            _clean_ax(ax_)
+        axes[row_i, 0].set_ylabel(col_label, fontsize=fontsize)
+
+    fig.suptitle("Imputation comparison", fontsize=fontsize + 1)
     return fig
 
 
@@ -1399,29 +1203,16 @@ def vis_miss_cumsum_var(
     color: str = "#4C72B0",
     fontsize: int = 11,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
-    """Line plot of cumulative % missing as variables are added (sorted desc).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple
-    color : str
-    fontsize : int
-    ax : Axes, optional
+) -> Any:
+    """Line plot of cumulative % missing as variables are added.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_miss_cumsum_var
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = vis_miss_cumsum_var(df)
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
     pct = df.isnull().mean().sort_values(ascending=False) * 100
     cumsum = pct.cumsum() / pct.sum() * 100
 
@@ -1441,7 +1232,7 @@ def vis_miss_cumsum_var(
     ax_.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     ax_.set_ylim(0, 105)
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -1455,29 +1246,16 @@ def vis_miss_cumsum_case(
     color: str = "#dd8452",
     fontsize: int = 11,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
-    """Line plot of cumulative % missing as rows are added (sorted desc).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    figsize : tuple
-    color : str
-    fontsize : int
-    ax : Axes, optional
+) -> Any:
+    """Line plot of cumulative % missing as rows are added.
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_miss_cumsum_case
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, np.nan]})
-    >>> fig = vis_miss_cumsum_case(df)
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
     row_miss = df.isnull().mean(axis=1).sort_values(ascending=False)
     cumsum = row_miss.cumsum() / row_miss.sum() * 100
 
@@ -1494,7 +1272,7 @@ def vis_miss_cumsum_case(
     ax_.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     ax_.set_ylim(0, 105)
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -1503,41 +1281,36 @@ def vis_miss_cumsum_case(
 
 def vis_miss_span(
     df: pd.DataFrame,
-    col: str,
+    column: str,
     *,
-    span: int = 20,
+    span_every: int = 20,
+    span: Optional[int] = None,
     figsize: tuple[float, float] = (10, 4),
     color: str = "#4C72B0",
     fontsize: int = 11,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Rolling-window missing rate for a single column over the row index.
 
     Parameters
     ----------
-    df : pd.DataFrame
-    col : str
-    span : int
-        Rolling window size.
-    figsize : tuple
-    color : str
-    fontsize : int
-    ax : Axes, optional
+    column : str
+        Column name to analyse.
+    span_every : int
+        Rolling window size (preferred parameter name).
+    span : int, optional
+        Alias for *span_every* (kept for backwards compatibility).
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_miss_span
-    >>> df = pd.DataFrame({"a": [np.nan if i % 3 == 0 else i for i in range(30)]})
-    >>> fig = vis_miss_span(df, "a")
+    matplotlib.axes.Axes
     """
-    miss = df[col].isnull().astype(float)
-    rolling = miss.rolling(window=span, min_periods=1).mean() * 100
+    df = _apply_sentinels(df, missing_values)
+    window = span if span is not None else span_every
+    miss = df[column].isnull().astype(float)
+    rolling = miss.rolling(window=window, min_periods=1).mean() * 100
 
     if ax is not None:
         fig = ax.figure
@@ -1547,13 +1320,13 @@ def vis_miss_span(
 
     ax_.plot(rolling.index, rolling.values, color=color, linewidth=1.5, **kwargs)
     ax_.fill_between(rolling.index, rolling.values, alpha=0.15, color=color)
-    col_label = _rtl_safe(str(col))
+    col_label = _rtl_safe(str(column))
     ax_.set_xlabel("Row index", fontsize=fontsize)
-    ax_.set_ylabel(f"Rolling {span}-row miss rate (%)", fontsize=fontsize)
-    ax_.set_title(f"Missingness span: '{col_label}' (window={span})")
+    ax_.set_ylabel(f"Rolling {window}-row miss rate (%)", fontsize=fontsize)
+    ax_.set_title(f"Missingness span: '{col_label}' (window={window})")
     ax_.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     _clean_ax(ax_)
-    return fig
+    return ax_
 
 
 # ===========================================================================
@@ -1569,39 +1342,23 @@ def vis_parallel_coords(
     figsize: tuple[float, float] | None = None,
     fontsize: int = 11,
     ax: Any = None,
+    missing_values=None,
     **kwargs: Any,
-) -> Figure:
+) -> Any:
     """Parallel coordinates plot coloured by whether any value is missing.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    color_complete : str
-    color_missing : str
-    alpha : float
-    figsize : tuple, optional
-    fontsize : int
-    ax : Axes, optional
 
     Returns
     -------
-    Figure
-
-    Examples
-    --------
-    >>> import pandas as pd, numpy as np
-    >>> from missingly.visualisation.static import vis_parallel_coords
-    >>> df = pd.DataFrame({"a": [1, np.nan, 3], "b": [2, 3, np.nan], "c": [1, 2, 3]})
-    >>> fig = vis_parallel_coords(df)
+    matplotlib.axes.Axes
     """
+    df = _apply_sentinels(df, missing_values)
     num_df = df.select_dtypes(include=[np.number])
     if num_df.empty:
         fig, ax_ = plt.subplots(figsize=figsize or (6, 4), constrained_layout=True)
         ax_.text(0.5, 0.5, "No numeric columns available",
                  ha="center", va="center", transform=ax_.transAxes)
-        return fig
+        return ax_
 
-    # normalise each column to [0, 1]
     norm = (num_df - num_df.min()) / (num_df.max() - num_df.min()).replace(0, 1)
     has_missing = df.isnull().any(axis=1)
 
@@ -1622,7 +1379,7 @@ def vis_parallel_coords(
         if valid.sum() < 2:
             continue
         color = color_missing if has_missing.iloc[idx] else color_complete
-        ax_.plot(xs[valid], row[valid], color=color, alpha=alpha, linewidth=0.8, **kwargs)
+        ax_.plot(xs[valid], row[valid], color=color, alpha=alpha, linewidth=0.8)
 
     col_labels = _rtl_safe_labels(list(num_df.columns), ax=ax_)
     ax_.set_xticks(xs)
@@ -1639,4 +1396,4 @@ def vis_parallel_coords(
         ],
         fontsize=fontsize - 1,
     )
-    return fig
+    return ax_
