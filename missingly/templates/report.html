@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Missing Data Analysis Report</title>
+  <title>{{ title }}</title>
   <!-- Vazirmatn: supports Persian/Arabic + Latin in a single variable font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -141,7 +141,7 @@
 
   <!-- 1. No-missing fast path -->
   {% if no_missing %}
-  <div class="no-missing">✅ {{ labels.no_missing }}</div>
+  <div class="no-missing">&#x2705; {{ labels.no_missing }}</div>
   {% else %}
 
   <!-- 2. Overview table -->
@@ -191,7 +191,30 @@
     </tbody>
   </table>
 
-  <!-- 4. MCAR test + recommendation -->
+  <!-- 4. Top-10 rows by missingness -->
+  {% if cases_rows %}
+  <h2>{{ labels.section_cases }}</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>{{ labels.col_row_index }}</th>
+        <th>{{ labels.col_missing }}</th>
+        <th>{{ labels.col_pct }}</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in cases_rows %}
+      <tr>
+        <td>{{ row.index }}</td>
+        <td>{{ row.missing }}</td>
+        <td>{{ "%.1f" | format(row.pct) }}%</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- 5. MCAR test + recommendation -->
   {% if mcar_result and mcar_info %}
   <h2>{{ labels.section_mcar }}</h2>
   <div class="mcar-box">
@@ -210,7 +233,7 @@
   </div>
   {% endif %}
 
-  <!-- 5. Visualisations -->
+  <!-- 6. Visualisations -->
   <h2>{{ labels.section_plots }}</h2>
   <div class="plot-grid">
     {% if matrix_plot %}
