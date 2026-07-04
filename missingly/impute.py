@@ -9,56 +9,84 @@ This module provides two layers of imputation API:
 
 2. **FittedImputer** (``make_imputer`` factory)
    A lightweight ``fit`` / ``transform`` / ``fit_transform`` wrapper
-   around :class:`~missingly.transformer.MissinglyImputer` that uses
-   the same strategy names as the stateless functions.  Use this
-   whenever you need to fit on training data and transform test data
-   separately — e.g. inside a scikit-learn ``Pipeline``.
+   around the stateless functions.  Use this whenever you need to fit on
+   training data and transform test data separately — e.g. inside a
+   scikit-learn ``Pipeline``.
 
 Key design decisions
 --------------------
 * Python ``None`` in object-dtype columns is normalised to ``np.nan``
   before any sklearn estimator sees the data.
 * Categorical columns are handled separately for ML-based imputers:
-  - Numeric columns → imputed with the provided regressor.
+  - Numeric columns  → imputed with the provided regressor.
   - Categorical columns → imputed with a classifier, avoiding the
     error of treating category codes as continuous values.
 * ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` do not
   accept NaN in feature matrices.  Any remaining NaN in the feature
   side is filled with column means computed from the training rows.
 
+Error handling
+--------------
+All public functions validate their inputs eagerly and raise specific
+:mod:`missingly.exceptions` exceptions on failure.  No exception is
+swallowed silently.  When ``strict_mode=True`` (see :mod:`missingly.config`)
+the column-by-column imputer raises :class:`~missingly.exceptions.ImputationError`
+rather than falling back to a column mean.
+
 Large-data warnings
 -------------------
 Functions that are O(n²) or slow on large DataFrames emit a
-``UserWarning`` when the input has more than ``_LARGE_DF_ROW_THRESHOLD``
-rows.
+``UserWarning`` when the input exceeds the configured
+``large_df_threshold`` (default 50 000 rows; see :mod:`missingly.config`).
 """
 
 from __future__ import annotations
 
-import warnings
+import logging
 from typing import Dict, List, Optional, Union
 
-import pandas as pd
 import numpy as np
-from sklearn.experimental import enable_iterative_imputer  # noqa: F401
-from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
-from sklearn.linear_model import BayesianRidge
+import pandas as pd
 from sklearn.ensemble import (
-    RandomForestRegressor,
-    RandomForestClassifier,
-    GradientBoostingRegressor,
     GradientBoostingClassifier,
+    GradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
 )
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+from sklearn.impute import IterativeImputer, KNNImputer, SimpleImputer
+from sklearn.linear_model import BayesianRidge
 from sklearn.preprocessing import OrdinalEncoder
+from sklearn.exceptions import NotFittedError
 
+from missingly.exceptions import (
+    ImputationError,
+    InsufficientDataError,
+    InvalidStrategyError,
+)
+from missingly._validation import (
+    validate_dataframe,
+    validate_positive_int,
+    validate_strategy,
+)
+
+logger = logging.getLogger(__name__)
 
 _LARGE_DF_ROW_THRESHOLD = 50_000
-# Threshold: warn when n_cat > n_num AND n_neighbors > this value.
 _KNN_CAT_NEIGHBORS_THRESHOLD = 5
 
+_SUPPORTED_STRATEGIES = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
+_SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
+    """Emit a UserWarning when *df* exceeds the large-DataFrame threshold."""
     if len(df) > _LARGE_DF_ROW_THRESHOLD:
+        import warnings
         warnings.warn(
             f"{method_name}: DataFrame has {len(df):,} rows which may result in "
             f"very long runtimes or high memory usage. "
@@ -70,22 +98,25 @@ def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
 
 
 def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
+    """Warn when KNN is applied to a DataFrame dominated by categorical columns."""
     n_cat = len(df.select_dtypes(exclude=[np.number]).columns)
     n_num = len(df.select_dtypes(include=[np.number]).columns)
     if n_cat > n_num and n_neighbors > _KNN_CAT_NEIGHBORS_THRESHOLD:
+        import warnings
         warnings.warn(
             f"KNN imputation may be unreliable: the DataFrame has {n_cat} categorical "
             f"column(s) but only {n_num} numeric column(s), and n_neighbors={n_neighbors} "
             f"(> {_KNN_CAT_NEIGHBORS_THRESHOLD}). "
             "Euclidean distance over ordinal-encoded categoricals is not statistically "
-            "sound. Consider impute_rf(), impute_gb(), or impute_mice() for heavy-categorical datasets.",
+            "sound. Consider impute_rf(), impute_gb(), or impute_mice() for "
+            "heavy-categorical datasets.",
             UserWarning,
             stacklevel=3,
         )
 
 
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
-    """Replace Python None with np.nan in object columns."""
+    """Replace Python ``None`` with ``np.nan`` in object columns."""
     df = df.copy()
     obj_cols = df.select_dtypes(include=["object"]).columns
     if len(obj_cols):
@@ -96,8 +127,8 @@ def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
 def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
     """Replace NaN entries in a 2-D array with column means.
 
-    Used by ``GradientBoosting`` imputers which do not natively accept
-    NaN in their feature matrices.
+    Used by GradientBoosting imputers which do not natively accept NaN in
+    their feature matrices.
 
     Parameters
     ----------
@@ -107,12 +138,11 @@ def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Copy of *X* with NaN replaced by per-column means.  Columns
-        that are entirely NaN are filled with 0.
+        Copy of *X* with NaN replaced by per-column means.
+        Columns that are entirely NaN are filled with ``0.0``.
     """
     X = X.copy()
     col_means = np.nanmean(X, axis=0)
-    # For all-NaN columns nanmean returns nan — fall back to 0
     col_means = np.where(np.isnan(col_means), 0.0, col_means)
     nan_mask = np.isnan(X)
     X[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
@@ -122,7 +152,13 @@ def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
 def _split_encode(
     df: pd.DataFrame,
 ):
-    """Ordinal-encode categorical columns; return parts needed to reconstruct."""
+    """Ordinal-encode categorical columns; return parts needed to reconstruct.
+
+    Returns
+    -------
+    tuple
+        ``(df_work, cat_cols, num_cols, encoder, cat_dtypes)``
+    """
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_dtypes = {c: df[c].dtype for c in cat_cols}
@@ -160,23 +196,26 @@ def _decode(
         col_vals = cat_array[:, i].copy()
 
         nan_mask = np.isnan(col_vals)
-        # For any remaining NaN after imputation, fall back to mode (index 0)
         if nan_mask.any():
-            # find the most frequent non-nan code
             valid = col_vals[~nan_mask]
             if len(valid) > 0:
-                fallback = float(np.bincount(np.round(np.clip(valid, 0, n_cats - 1)).astype(int)).argmax())
+                fallback = float(
+                    np.bincount(
+                        np.round(np.clip(valid, 0, n_cats - 1)).astype(int)
+                    ).argmax()
+                )
             else:
                 fallback = 0.0
             col_vals[nan_mask] = fallback
 
-        # Round to nearest integer index and clip to valid range
         col_vals = np.clip(np.round(col_vals), 0, n_cats - 1).astype(int)
         decoded_col = encoder.categories_[i][col_vals]
 
         orig_dtype = cat_dtypes[col]
         if hasattr(orig_dtype, "categories"):
-            result[col] = pd.Categorical(decoded_col, categories=orig_dtype.categories)
+            result[col] = pd.Categorical(
+                decoded_col, categories=orig_dtype.categories
+            )
         else:
             result[col] = decoded_col
 
@@ -188,10 +227,39 @@ def _impute_column_by_column(
     regressor,
     classifier,
     random_state: int,
+    strategy_name: str,
     max_iter: int = 1,
     fill_feature_nan: bool = False,
+    strict_mode: bool = False,
 ) -> pd.DataFrame:
-    """Column-by-column imputation used by RF and GB imputers."""
+    """Column-by-column imputation used by RF and GB imputers.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame (already normalised, no Python None).
+    regressor : sklearn estimator
+        Estimator used for numeric columns.
+    classifier : sklearn estimator
+        Estimator used for categorical columns.
+    random_state : int
+        Random seed (informational; estimators are already initialised).
+    strategy_name : str
+        Human-readable strategy name used in exception messages.
+    max_iter : int, default 1
+        Number of imputation passes.
+    fill_feature_nan : bool, default False
+        If True, fill NaN in the feature matrix with column means before
+        fitting.  Required for GradientBoosting which rejects NaN inputs.
+    strict_mode : bool, default False
+        If True, raise :class:`~missingly.exceptions.ImputationError` on
+        estimator failure instead of falling back to the column mean.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+    """
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     all_cols = list(df_work.columns)
     df_result = df_work.copy()
@@ -207,8 +275,15 @@ def _impute_column_by_column(
             y_full = df_result[col].values
 
             observed_mask = ~np.isnan(y_full)
-            if observed_mask.sum() == 0:
-                continue
+            n_observed = observed_mask.sum()
+
+            if n_observed == 0:
+                logger.info(
+                    "Column %r has no observed values; skipping imputation.", col
+                )
+                raise InsufficientDataError(
+                    column=col, n_observed=0, n_required=1
+                )
 
             X_train = X_full[observed_mask]
             y_train = y_full[observed_mask]
@@ -218,22 +293,38 @@ def _impute_column_by_column(
                 X_train = _fill_nan_with_col_means(X_train)
                 X_pred = _fill_nan_with_col_means(X_pred)
 
-            is_cat = col in cat_cols
-            if is_cat:
-                est = classifier
-            else:
-                est = regressor
+            est = classifier if col in cat_cols else regressor
 
             try:
                 est.fit(X_train, y_train)
                 preds = est.predict(X_pred)
-            except Exception:
-                preds = np.nanmean(y_train) * np.ones(X_pred.shape[0])
+            except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+                if strict_mode:
+                    raise ImputationError(
+                        column=col, strategy=strategy_name, original=exc
+                    ) from exc
+                # Fallback: column mean (numeric) or mode (categorical).
+                # This is logged at INFO so it is visible but not alarming.
+                fallback = float(np.nanmean(y_train))
+                logger.info(
+                    "Imputation estimator failed for column %r (strategy=%r): %s. "
+                    "Falling back to column mean (%.4f). "
+                    "Set strict_mode=True to raise instead.",
+                    col,
+                    strategy_name,
+                    exc,
+                    fallback,
+                )
+                preds = fallback * np.ones(X_pred.shape[0])
 
             df_result.loc[missing_mask, col] = preds
 
     return _decode(df_result, cat_cols, encoder, cat_dtypes)
 
+
+# ---------------------------------------------------------------------------
+# Public imputation functions
+# ---------------------------------------------------------------------------
 
 def impute_mean(
     df: pd.DataFrame,
@@ -253,7 +344,25 @@ def impute_mean(
     -------
     pd.DataFrame
         Copy of *df* with missing values replaced by column means.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0]})
+    >>> impute_mean(df)
+         a
+    0  1.0
+    1  2.0
+    2  3.0
     """
+    validate_dataframe(df, param="df")
     df = _normalize_missing(df)
     num_cols = df.select_dtypes(include=[np.number]).columns
     cat_cols = df.select_dtypes(exclude=[np.number]).columns
@@ -287,7 +396,25 @@ def impute_median(
     -------
     pd.DataFrame
         Copy of *df* with missing values replaced by column medians.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0]})
+    >>> impute_median(df)
+         a
+    0  1.0
+    1  2.0
+    2  3.0
     """
+    validate_dataframe(df, param="df")
     df = _normalize_missing(df)
     num_cols = df.select_dtypes(include=[np.number]).columns
     cat_cols = df.select_dtypes(exclude=[np.number]).columns
@@ -318,7 +445,25 @@ def impute_mode(
     -------
     pd.DataFrame
         Copy of *df* with missing values replaced by column modes.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"city": ["Berlin", np.nan, "Berlin"]})
+    >>> impute_mode(df)
+        city
+    0  Berlin
+    1  Berlin
+    2  Berlin
     """
+    validate_dataframe(df, param="df")
     df = _normalize_missing(df)
     imputer = SimpleImputer(strategy="most_frequent")
     result = pd.DataFrame(
@@ -326,104 +471,11 @@ def impute_mode(
         index=df.index,
         columns=df.columns,
     )
-    # Restore original dtypes
     for col in df.columns:
         try:
             result[col] = result[col].astype(df[col].dtype)
         except (ValueError, TypeError):
             pass
-    return result
-
-
-# ---------------------------------------------------------------------------
-# KNN imputation helpers
-# ---------------------------------------------------------------------------
-
-_SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
-
-
-def _impute_knn_gower(
-    df: pd.DataFrame,
-    n_neighbors: int,
-) -> pd.DataFrame:
-    """KNN imputation using Gower distance for mixed-type data.
-
-    This two-step approach bypasses sklearn's ``KNNImputer`` (which only
-    supports numeric Euclidean distance) by computing pairwise Gower
-    distances over the full mixed DataFrame and then manually aggregating
-    neighbours for each missing cell.
-
-    Algorithm
-    ---------
-    For every missing cell ``(row i, col c)``:
-
-    1. Identify *donor* rows — rows where column *c* is observed.
-    2. From the pre-computed Gower distance matrix, extract the row of
-       distances from row *i* to all donor rows (using only features
-       that are jointly observed between *i* and each donor).
-    3. Select the *k* closest donors.
-    4. Aggregate:
-       - **Numeric column**: mean of the *k* donor values.
-       - **Categorical column**: plurality vote (mode) of the *k* donor
-         values.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame with missing values.  May contain any mix of numeric
-        and object/category columns.
-    n_neighbors : int
-        Number of nearest neighbours to use.
-
-    Returns
-    -------
-    pd.DataFrame
-        Imputed copy of *df*.
-
-    Notes
-    -----
-    The Gower distance matrix is O(n²) to compute and store.  For
-    ``n > 10 000`` a ``UserWarning`` is emitted by
-    :func:`~missingly._distance.gower_distance`.
-    """
-    from missingly._distance import gower_distance
-
-    result = df.copy()
-    cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
-    num_cols = set(df.select_dtypes(include=[np.number]).columns)
-
-    # Compute the full n×n Gower distance matrix once.
-    dist_matrix = gower_distance(df)
-    n = len(df)
-
-    for col in df.columns:
-        missing_idx = np.where(df[col].isna())[0]
-        if len(missing_idx) == 0:
-            continue
-
-        # Rows that have an observed value in this column → candidate donors.
-        donor_idx = np.where(df[col].notna())[0]
-        if len(donor_idx) == 0:
-            continue
-
-        for i in missing_idx:
-            # Distance from row i to each donor row.
-            dists = dist_matrix[i, donor_idx]
-
-            k = min(n_neighbors, len(donor_idx))
-            nearest = donor_idx[np.argsort(dists)[:k]]
-
-            if col in num_cols:
-                fill_val = float(np.nanmean(df.iloc[nearest][col].values))
-            else:
-                # Plurality vote — use pandas mode for tie-breaking
-                mode_series = df.iloc[nearest][col].dropna()
-                if len(mode_series) == 0:
-                    continue
-                fill_val = mode_series.mode().iloc[0]
-
-            result.iat[i, df.columns.get_loc(col)] = fill_val
-
     return result
 
 
@@ -446,11 +498,9 @@ def impute_knn(
         * ``"euclidean"`` — Ordinal-encode categorical columns and apply
           sklearn's :class:`~sklearn.impute.KNNImputer` with Euclidean
           distance.  Fast and works well for purely numeric data.
-        * ``"mixed"`` — Use Gower distance
-          (:func:`~missingly._distance.gower_distance`) which handles
-          numeric and categorical columns natively.  Produces more
-          statistically sound neighbours for heavy-categorical datasets,
-          but is **O(n²)** in memory and runtime.  Not recommended for
+        * ``"mixed"`` — Use Gower distance which handles numeric and
+          categorical columns natively.  Statistically sounder for
+          heavy-categorical datasets, but O(n²).  Not recommended for
           ``n > 10 000``.
 
     Returns
@@ -460,40 +510,34 @@ def impute_knn(
 
     Raises
     ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
     ValueError
+        If *df* is empty.
+    InvalidStrategyError
         If *metric* is not one of the supported values.
-
-    Notes
-    -----
-    **Limitations of ``metric="euclidean"``** — Ordinal encoding assigns
-    integer codes to categories, which implies an ordering and magnitude
-    that may not exist.  For datasets with many categorical columns
-    consider ``metric="mixed"`` or a tree-based imputer
-    (``impute_rf`` / ``impute_gb``).
-
-    **Limitations of ``metric="mixed"``** — Gower distance is O(n²) in
-    time and memory.  For ``n > 10 000`` a ``UserWarning`` is emitted.
-    Consider sub-sampling or switching to ``impute_rf`` / ``impute_mice``
-    for very large datasets.
+    TypeError
+        If *n_neighbors* is not a positive integer.
 
     Examples
     --------
     >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({
-    ...     "age": [25.0, np.nan, 35.0, 40.0],
-    ...     "city": ["A", "B", np.nan, "A"],
-    ... })
-    >>> impute_knn(df, n_neighbors=2, metric="mixed")  # doctest: +NORMALIZE_WHITESPACE
-       age city
-    0  25.0    A
-    1  30.0    B
-    2  35.0    A
-    3  40.0    A
+    >>> df = pd.DataFrame({"age": [25.0, np.nan, 35.0, 40.0]})
+    >>> impute_knn(df, n_neighbors=2)
+        age
+    0  25.0
+    1  30.0
+    2  35.0
+    3  40.0
     """
-    if metric not in _SUPPORTED_KNN_METRICS:
-        raise ValueError(
-            f"metric must be one of {sorted(_SUPPORTED_KNN_METRICS)}; got {metric!r}"
-        )
+    validate_dataframe(df, param="df")
+    validate_positive_int(n_neighbors, param="n_neighbors")
+    validate_strategy(
+        metric,
+        _SUPPORTED_KNN_METRICS,
+        param="metric",
+        example="euclidean",
+    )
 
     _warn_if_large(df, "impute_knn")
     df = _normalize_missing(df)
@@ -501,12 +545,13 @@ def impute_knn(
     if metric == "mixed":
         return _impute_knn_gower(df, n_neighbors=n_neighbors)
 
-    # Default: euclidean path
     _warn_if_knn_heavy_categorical(df, n_neighbors)
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     imputer = KNNImputer(n_neighbors=n_neighbors)
     imputed_array = imputer.fit_transform(df_work)
-    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df_work.columns)
+    df_imputed = pd.DataFrame(
+        imputed_array, index=df.index, columns=df_work.columns
+    )
     return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
 
 
@@ -529,8 +574,7 @@ def impute_mice(
     max_iter : int, default 10
         Maximum number of MICE imputation iterations per chain.
     random_state : int, default 0
-        Base random seed.  When *n_imputations* > 1 each chain uses
-        ``random_state + i`` for ``i in range(n_imputations)``.
+        Base random seed.
     estimator : sklearn estimator or None, default None
         Regression estimator used by IterativeImputer.  Defaults to
         ``BayesianRidge()`` with ``sample_posterior=True``.
@@ -543,62 +587,30 @@ def impute_mice(
     pd.DataFrame or list of pd.DataFrame
         Imputed copy (or list of *m* copies) of *df*.
 
-    Notes
-    -----
-    **Full Multiple Imputation (MI) workflow** — to produce valid pooled
-    inferences you must complete all three steps:
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty or *n_imputations* < 1.
 
-    1. Generate *m* imputed datasets::
-
-           dfs = impute_mice(df, n_imputations=m)
-
-    2. Fit your analytical model on **each** imputed dataset independently
-       and collect the parameter estimates and their sampling variances.
-
-    3. Pool the results using the MI pooling utilities in
-       :mod:`missingly.mi`::
-
-           from missingly.mi import pool_scalar_estimates
-           result = pool_scalar_estimates(estimates, variances)
-
-    **End-to-end example** (simple linear regression ``y ~ x``):
-
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from missingly import impute_mice
-    >>> from missingly.mi import pool_scalar_estimates
-    >>> from sklearn.linear_model import LinearRegression
-    >>>
-    >>> rng = np.random.default_rng(0)
-    >>> x = rng.uniform(0, 10, 50)
-    >>> y = 2.0 + 3.0 * x + rng.normal(0, 1, 50)
-    >>> y[rng.random(50) < 0.3] = np.nan
-    >>> df = pd.DataFrame({"x": x, "y": y})
-    >>>
-    >>> dfs = impute_mice(df, n_imputations=5, random_state=1)
-    >>> beta1_ests, beta1_vars = [], []
-    >>> for d in dfs:
-    ...     reg = LinearRegression().fit(d[["x"]], d["y"])
-    ...     beta1_ests.append(float(reg.coef_[0]))
-    ...     resid = d["y"] - reg.predict(d[["x"]])
-    ...     ss_x = float(((d["x"] - d["x"].mean()) ** 2).sum())
-    ...     beta1_vars.append(float(np.var(resid, ddof=2)) / ss_x)
-    >>>
-    >>> result = pool_scalar_estimates(beta1_ests, beta1_vars)
-    >>> # Pooled beta1 should be close to 3.0
-    >>> 2.0 < result["q_bar"] < 4.0
-    True
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0]})
+    >>> result = impute_mice(df, max_iter=2, random_state=0)
+    >>> result["a"].isna().any()
+    False
     """
-    if n_imputations < 1:
-        raise ValueError(f"n_imputations must be >= 1; got {n_imputations}.")
+    validate_dataframe(df, param="df")
+    validate_positive_int(n_imputations, param="n_imputations")
+    validate_positive_int(max_iter, param="max_iter")
 
     _warn_if_large(df, "impute_mice")
     df_norm = _normalize_missing(df)
 
     def _single_chain(seed: int) -> pd.DataFrame:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
-        # Use sample_posterior=True so each chain draws different samples
-        # from the posterior and produces distinct imputed values.
         if estimator is None:
             est = BayesianRidge()
             use_sample_posterior = True
@@ -618,8 +630,6 @@ def impute_mice(
         )
         result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
 
-        # Post-decode safety net: fill any residual NaN in categorical columns
-        # using the most frequent observed value in the original data.
         for col in cat_cols:
             if result[col].isna().any():
                 observed = df_norm[col].dropna()
@@ -639,17 +649,66 @@ def impute_rf(
     df: pd.DataFrame,
     max_iter: int = 1,
     random_state: int = 0,
+    strict_mode: bool = False,
     **rf_kwargs,
 ) -> pd.DataFrame:
-    """Impute missing values using Random Forest."""
+    """Impute missing values using Random Forest.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    max_iter : int, default 1
+        Number of imputation passes over all columns.
+    random_state : int, default 0
+        Random seed passed to the Random Forest estimators.
+    strict_mode : bool, default False
+        If True, raise :class:`~missingly.exceptions.ImputationError` on
+        estimator failure instead of falling back to the column mean.
+    **rf_kwargs
+        Additional keyword arguments forwarded to
+        :class:`~sklearn.ensemble.RandomForestRegressor` and
+        :class:`~sklearn.ensemble.RandomForestClassifier`.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with missing values imputed via Random Forest.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+    ImputationError
+        If an estimator fails and ``strict_mode=True``.
+    InsufficientDataError
+        If a column has no observed values.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
+    >>> result = impute_rf(df, random_state=0)
+    >>> result["a"].isna().any()
+    False
+    """
+    validate_dataframe(df, param="df")
+    validate_positive_int(max_iter, param="max_iter")
     _warn_if_large(df, "impute_rf")
     df = _normalize_missing(df)
     regressor = RandomForestRegressor(random_state=random_state, **rf_kwargs)
     classifier = RandomForestClassifier(random_state=random_state, **rf_kwargs)
     return _impute_column_by_column(
-        df, regressor=regressor, classifier=classifier,
-        random_state=random_state, max_iter=max_iter,
+        df,
+        regressor=regressor,
+        classifier=classifier,
+        random_state=random_state,
+        strategy_name="rf",
+        max_iter=max_iter,
         fill_feature_nan=False,
+        strict_mode=strict_mode,
     )
 
 
@@ -657,17 +716,66 @@ def impute_gb(
     df: pd.DataFrame,
     max_iter: int = 1,
     random_state: int = 0,
+    strict_mode: bool = False,
     **gb_kwargs,
 ) -> pd.DataFrame:
-    """Impute missing values using Gradient Boosting."""
+    """Impute missing values using Gradient Boosting.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    max_iter : int, default 1
+        Number of imputation passes over all columns.
+    random_state : int, default 0
+        Random seed passed to the Gradient Boosting estimators.
+    strict_mode : bool, default False
+        If True, raise :class:`~missingly.exceptions.ImputationError` on
+        estimator failure instead of falling back to the column mean.
+    **gb_kwargs
+        Additional keyword arguments forwarded to
+        :class:`~sklearn.ensemble.GradientBoostingRegressor` and
+        :class:`~sklearn.ensemble.GradientBoostingClassifier`.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with missing values imputed via Gradient Boosting.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+    ImputationError
+        If an estimator fails and ``strict_mode=True``.
+    InsufficientDataError
+        If a column has no observed values.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
+    >>> result = impute_gb(df, random_state=0)
+    >>> result["a"].isna().any()
+    False
+    """
+    validate_dataframe(df, param="df")
+    validate_positive_int(max_iter, param="max_iter")
     _warn_if_large(df, "impute_gb")
     df = _normalize_missing(df)
     regressor = GradientBoostingRegressor(random_state=random_state, **gb_kwargs)
     classifier = GradientBoostingClassifier(random_state=random_state, **gb_kwargs)
     return _impute_column_by_column(
-        df, regressor=regressor, classifier=classifier,
-        random_state=random_state, max_iter=max_iter,
+        df,
+        regressor=regressor,
+        classifier=classifier,
+        random_state=random_state,
+        strategy_name="gb",
+        max_iter=max_iter,
         fill_feature_nan=True,
+        strict_mode=strict_mode,
     )
 
 
@@ -680,42 +788,44 @@ class FittedImputer:
 
     Parameters
     ----------
-    strategy : str, default 'mean'
-        Imputation strategy. One of: 'mean', 'median', 'mode', 'knn',
-        'mice', 'rf', 'gb'.
+    strategy : str, default ``'mean'``
+        Imputation strategy.  One of: ``'mean'``, ``'median'``, ``'mode'``,
+        ``'knn'``, ``'mice'``, ``'rf'``, ``'gb'``.
     **kwargs
         Additional keyword arguments passed to the underlying imputer.
 
+    Raises
+    ------
+    InvalidStrategyError
+        If *strategy* is not one of the supported values.
+
     Examples
     --------
+    >>> import pandas as pd, numpy as np
     >>> imp = make_imputer('mean')
     >>> imp.is_fitted
     False
-    >>> import pandas as pd, numpy as np
     >>> train = pd.DataFrame({'a': [1.0, 2.0, np.nan, 4.0]})
-    >>> imp.fit(train)
-    FittedImputer(strategy='mean', unfitted=True)
+    >>> _ = imp.fit(train)
     >>> imp.is_fitted
     True
     """
 
     def __init__(self, strategy: str = "mean", **kwargs) -> None:
+        validate_strategy(strategy, _SUPPORTED_STRATEGIES, param="strategy")
         self.strategy = strategy
         self.kwargs = kwargs
         self._is_fitted = False
         self._fit_df: Optional[pd.DataFrame] = None
-        # Cache of fill values computed during fit, keyed by column name.
-        # For mean/median/mode strategies these are scalar fill values;
-        # for model-based strategies we store the full fitted imputed train df.
         self._fill_values: Optional[Dict] = None
 
     @property
     def is_fitted(self) -> bool:
-        """bool: True after ``fit()`` has been called, False otherwise."""
+        """bool: True after :meth:`fit` has been called, False otherwise."""
         return self._is_fitted
 
     def fit(self, df: pd.DataFrame) -> "FittedImputer":
-        """Fit on *df* (stores statistics for transform).
+        """Fit on *df* — stores statistics for :meth:`transform`.
 
         Parameters
         ----------
@@ -726,10 +836,16 @@ class FittedImputer:
         -------
         FittedImputer
             self
+
+        Raises
+        ------
+        TypeError
+            If *df* is not a :class:`pandas.DataFrame`.
+        ValueError
+            If *df* is empty.
         """
+        validate_dataframe(df, param="df")
         self._fit_df = df.copy()
-        # Pre-compute the imputed training data so we can extract fill
-        # statistics without touching test data.
         self._fitted_train = _dispatch_strategy(self.strategy, df, **self.kwargs)
         self._is_fitted = True
         return self
@@ -738,19 +854,12 @@ class FittedImputer:
         """Impute *df* using statistics learned from the training data.
 
         Fill values are derived exclusively from the training DataFrame
-        passed to ``fit()``.  This prevents data leakage when *df* is a
-        held-out test set.
-
-        For simple strategies (mean / median / mode) the per-column fill
-        value is computed from the training set and applied directly to the
-        test columns.  For model-based strategies (knn, mice, rf, gb) the
-        same fallback is used: training column means fill any missing cells
-        in the test set.
+        passed to :meth:`fit`, preventing data leakage on held-out sets.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Data to impute (may differ from the training DataFrame).
+            Data to impute.
 
         Returns
         -------
@@ -760,19 +869,20 @@ class FittedImputer:
         Raises
         ------
         RuntimeError
-            If ``fit()`` has not been called yet.
+            If :meth:`fit` has not been called yet.
+        TypeError
+            If *df* is not a :class:`pandas.DataFrame`.
         """
         if not self._is_fitted:
-            raise RuntimeError("Call fit() before transform().")
+            raise RuntimeError(
+                "Call fit() before transform(). "
+                "Example: imputer.fit(train_df).transform(test_df)"
+            )
+        validate_dataframe(df, param="df")
 
-        train_df = self._fit_df
-        result = df.copy()
-
-        # Compute per-column fill values from the training data only.
-        # For numeric columns use the imputed training values to derive means.
-        # For categorical columns use the most-frequent training value.
-        train_norm = _normalize_missing(train_df)
+        train_norm = _normalize_missing(self._fit_df)
         test_norm = _normalize_missing(df)
+        result = df.copy()
 
         for col in df.columns:
             if col not in train_norm.columns:
@@ -785,7 +895,6 @@ class FittedImputer:
             if pd.api.types.is_numeric_dtype(train_col):
                 fill_val = float(np.nanmean(train_col.values))
             else:
-                # mode from training set
                 mode_vals = train_col.dropna()
                 if len(mode_vals) == 0:
                     continue
@@ -816,8 +925,94 @@ class FittedImputer:
         return f"FittedImputer(strategy={self.strategy!r}, {status}=True)"
 
 
-def _dispatch_strategy(strategy: str, df: pd.DataFrame, **kwargs) -> pd.DataFrame:
-    """Route strategy name to the appropriate impute_* function."""
+# ---------------------------------------------------------------------------
+# KNN — Gower distance path
+# ---------------------------------------------------------------------------
+
+def _impute_knn_gower(
+    df: pd.DataFrame,
+    n_neighbors: int,
+) -> pd.DataFrame:
+    """KNN imputation using Gower distance for mixed-type data.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with missing values.
+    n_neighbors : int
+        Number of nearest neighbours.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+    """
+    from missingly._distance import gower_distance
+
+    result = df.copy()
+    cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
+    num_cols = set(df.select_dtypes(include=[np.number]).columns)
+
+    dist_matrix = gower_distance(df)
+
+    for col in df.columns:
+        missing_idx = np.where(df[col].isna())[0]
+        if len(missing_idx) == 0:
+            continue
+
+        donor_idx = np.where(df[col].notna())[0]
+        if len(donor_idx) == 0:
+            logger.info(
+                "Column %r has no observed values for Gower KNN; skipping.", col
+            )
+            continue
+
+        for i in missing_idx:
+            dists = dist_matrix[i, donor_idx]
+            k = min(n_neighbors, len(donor_idx))
+            nearest = donor_idx[np.argsort(dists)[:k]]
+
+            if col in num_cols:
+                fill_val = float(np.nanmean(df.iloc[nearest][col].values))
+            else:
+                mode_series = df.iloc[nearest][col].dropna()
+                if len(mode_series) == 0:
+                    continue
+                fill_val = mode_series.mode().iloc[0]
+
+            result.iat[i, df.columns.get_loc(col)] = fill_val
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Strategy dispatcher
+# ---------------------------------------------------------------------------
+
+def _dispatch_strategy(
+    strategy: str, df: pd.DataFrame, **kwargs
+) -> pd.DataFrame:
+    """Route a strategy name to the appropriate ``impute_*`` function.
+
+    Parameters
+    ----------
+    strategy : str
+        One of the supported strategy names.
+    df : pd.DataFrame
+        DataFrame to impute.
+    **kwargs
+        Forwarded to the imputer.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+
+    Raises
+    ------
+    InvalidStrategyError
+        If *strategy* is not supported.
+    """
     dispatch = {
         "mean": impute_mean,
         "median": impute_median,
@@ -827,21 +1022,18 @@ def _dispatch_strategy(strategy: str, df: pd.DataFrame, **kwargs) -> pd.DataFram
         "rf": impute_rf,
         "gb": impute_gb,
     }
-    if strategy not in dispatch:
-        raise ValueError(
-            f"Unknown strategy {strategy!r}. Choose from: {list(dispatch)}"
-        )
+    validate_strategy(strategy, dispatch.keys(), param="strategy")
     return dispatch[strategy](df, **kwargs)
 
 
 def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
-    """Factory function for FittedImputer.
+    """Factory function for :class:`FittedImputer`.
 
     Parameters
     ----------
-    strategy : str, default 'mean'
-        Imputation strategy. One of: 'mean', 'median', 'mode', 'knn',
-        'mice', 'rf', 'gb'.
+    strategy : str, default ``'mean'``
+        Imputation strategy.  One of: ``'mean'``, ``'median'``, ``'mode'``,
+        ``'knn'``, ``'mice'``, ``'rf'``, ``'gb'``.
     **kwargs
         Additional keyword arguments passed to the underlying imputer.
 
@@ -849,5 +1041,16 @@ def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
     -------
     FittedImputer
         An unfitted imputer ready for fit/transform.
+
+    Raises
+    ------
+    InvalidStrategyError
+        If *strategy* is not one of the supported values.
+
+    Examples
+    --------
+    >>> imp = make_imputer('knn', n_neighbors=3)
+    >>> type(imp)
+    <class 'missingly.impute.FittedImputer'>
     """
     return FittedImputer(strategy=strategy, **kwargs)
