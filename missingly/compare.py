@@ -29,12 +29,28 @@ from typing import List, Optional
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, accuracy_score
+from sklearn.base import clone, is_classifier
+from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import KFold, StratifiedKFold
-from sklearn.base import is_classifier
 
 from . import impute as _impute_module
 from .transformer import MissinglyImputer
+
+
+def _method_name(method) -> str:
+    """Return a display name for an imputation callable.
+
+    Falls back to ``repr`` for lambdas and ``functools.partial`` objects
+    that don’t carry a plain ``__name__``.
+    """
+    name = getattr(method, "__name__", None)
+    if name and name != "<lambda>":
+        return name
+    # functools.partial exposes .func
+    inner = getattr(method, "func", None)
+    if inner is not None:
+        return getattr(inner, "__name__", repr(inner))
+    return repr(method)
 
 
 def compare_imputations(
@@ -42,6 +58,7 @@ def compare_imputations(
     methods: Optional[List] = None,
     mask_frac: float = 0.20,
     random_state: int = 42,
+    missing_values: Optional[List] = None,
 ) -> pd.DataFrame:
     """Compare imputation methods by masking a complete DataFrame and measuring reconstruction.
 
@@ -49,9 +66,9 @@ def compare_imputations(
     imputation method, and evaluates reconstruction accuracy.
 
     .. note::
-        This function answers the question *"which imputer best reconstructs
-        masked values?"*, **not** *"which imputer gives the best downstream
-        model?"*.  For the latter use :func:`cv_compare_imputations`.
+        This function answers *“which imputer best reconstructs masked
+        values?”*, **not** *“which imputer gives the best downstream
+        model?”*.  For the latter use :func:`cv_compare_imputations`.
 
     Scoring:
 
@@ -62,28 +79,35 @@ def compare_imputations(
     Parameters
     ----------
     df : pd.DataFrame
-        A **complete** DataFrame (no missing values) with at least one
-        column.  Mixed numeric/categorical dtypes are supported.
+        A **complete** DataFrame (no missing values after sentinel
+        replacement) with at least one column.  Mixed numeric/categorical
+        dtypes are supported.
     methods : list of callables, optional
-        Imputation functions to compare.  Each must accept a DataFrame and
-        return a fully-imputed DataFrame.  Defaults to all seven built-in
-        methods: mean, median, mode, knn, mice, rf, gb.
+        Imputation functions to compare.  Each must accept a DataFrame
+        and return a fully-imputed DataFrame.  Defaults to all seven
+        built-in methods: mean, median, mode, knn, mice, rf, gb.
     mask_frac : float, optional
         Fraction of values to mask per column (default 0.20).  Must be
         in (0, 1).
     random_state : int, optional
         Random seed for reproducible masking.  Default 42.
+    missing_values : list, optional
+        Sentinel values (e.g. ``[-99, "N/A"]``) to treat as missing
+        *before* checking completeness.  They are replaced with
+        ``np.nan`` in a copy of *df*.
 
     Returns
     -------
     pd.DataFrame
         DataFrame indexed by method name, sorted ascending by ``Score``
         (or ``RMSE`` / ``Accuracy`` when only one column type exists).
+        Methods that raise an exception during imputation are assigned
+        ``NaN`` scores and flagged with an ``Error`` column.
 
     Raises
     ------
     ValueError
-        If *df* has missing values (a complete DataFrame is required).
+        If *df* still has missing values after sentinel replacement.
     ValueError
         If *mask_frac* is not in (0, 1).
 
@@ -93,14 +117,20 @@ def compare_imputations(
     >>> df = pd.DataFrame({'age': [25, 30, 35, 40], 'city': ['A','B','A','B']})
     >>> compare_imputations(df)
     """
-    if df.isnull().any().any():
-        raise ValueError(
-            "compare_imputations requires a complete DataFrame (no missing values). "
-            "Call df.dropna() or use cv_compare_imputations() for data with real "
-            "missing values."
-        )
     if not (0.0 < mask_frac < 1.0):
         raise ValueError(f"mask_frac must be in (0, 1); got {mask_frac!r}")
+
+    # Replace sentinels first, then validate completeness
+    df_clean = df.copy()
+    if missing_values is not None:
+        df_clean = df_clean.replace(missing_values, np.nan)
+
+    if df_clean.isnull().any().any():
+        raise ValueError(
+            "compare_imputations requires a complete DataFrame (no missing values). "
+            "Call df.dropna() or pass the sentinel list via missing_values=, "
+            "or use cv_compare_imputations() for data with real missing values."
+        )
 
     if methods is None:
         methods = [
@@ -113,8 +143,8 @@ def compare_imputations(
             _impute_module.impute_gb,
         ]
 
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df_clean.select_dtypes(exclude=[np.number]).columns.tolist()
 
     if not numeric_cols and not cat_cols:
         raise ValueError("DataFrame has no columns to evaluate.")
@@ -123,24 +153,38 @@ def compare_imputations(
 
     masks: dict = {}
     for col in numeric_cols + cat_cols:
-        n_mask = max(1, int(len(df) * mask_frac))
-        idx = rng.choice(df.index, size=n_mask, replace=False)
+        n_mask = max(1, int(len(df_clean) * mask_frac))
+        idx = rng.choice(df_clean.index, size=n_mask, replace=False)
         masks[col] = idx
 
-    df_missing = df.copy()
+    df_missing = df_clean.copy()
     for col, idx in masks.items():
         df_missing.loc[idx, col] = np.nan
 
-    results = {}
+    results: dict = {}
+    errors: dict = {}
+
     for method in methods:
-        df_imputed = method(df_missing)
-        row: dict = {}
+        name = _method_name(method)
+        try:
+            df_imputed = method(df_missing)
+        except Exception as exc:  # noqa: BLE001
+            errors[name] = str(exc)
+            row: dict = {}
+            if numeric_cols:
+                row["RMSE"] = float("nan")
+            if cat_cols:
+                row["Accuracy"] = float("nan")
+            results[name] = row
+            continue
+
+        row = {}
 
         if numeric_cols:
             rmse_vals = []
             for col in numeric_cols:
                 idx = masks[col]
-                true_vals = df.loc[idx, col].values.astype(float)
+                true_vals = df_clean.loc[idx, col].values.astype(float)
                 pred_vals = df_imputed.loc[idx, col].values.astype(float)
                 rmse_vals.append(
                     np.sqrt(mean_squared_error(true_vals, pred_vals))
@@ -151,27 +195,34 @@ def compare_imputations(
             acc_vals = []
             for col in cat_cols:
                 idx = masks[col]
-                true_vals = df.loc[idx, col].values
+                true_vals = df_clean.loc[idx, col].values
                 pred_vals = df_imputed.loc[idx, col].values
                 acc_vals.append(accuracy_score(true_vals, pred_vals))
             row["Accuracy"] = float(np.mean(acc_vals))
 
-        results[method.__name__] = row
+        results[name] = row
 
     result_df = pd.DataFrame.from_dict(results, orient="index")
 
+    if errors:
+        result_df["Error"] = pd.Series(errors)
+
     if numeric_cols and cat_cols:
-        rmse_min, rmse_max = result_df["RMSE"].min(), result_df["RMSE"].max()
+        valid = result_df["RMSE"].notna() & result_df["Accuracy"].notna()
+        rmse_vals_s = result_df.loc[valid, "RMSE"]
+        rmse_min, rmse_max = rmse_vals_s.min(), rmse_vals_s.max()
         if rmse_max > rmse_min:
             norm_rmse = (result_df["RMSE"] - rmse_min) / (rmse_max - rmse_min)
         else:
             norm_rmse = pd.Series(0.0, index=result_df.index)
         result_df["Score"] = (norm_rmse + (1.0 - result_df["Accuracy"])) / 2.0
-        return result_df.sort_values(by="Score")
+        return result_df.sort_values(by="Score", na_position="last")
     elif numeric_cols:
-        return result_df.sort_values(by="RMSE")
+        return result_df.sort_values(by="RMSE", na_position="last")
     else:
-        return result_df.sort_values(by="Accuracy", ascending=False)
+        return result_df.sort_values(
+            by="Accuracy", ascending=False, na_position="last"
+        )
 
 
 def cv_compare_imputations(
@@ -230,8 +281,7 @@ def cv_compare_imputations(
     pd.DataFrame
         Indexed by strategy name, with columns:
 
-        * ``mean_score`` — mean CV score across folds (higher is better
-          for classifiers / R²; depends on *scoring*).
+        * ``mean_score`` — mean CV score across folds.
         * ``std_score``  — standard deviation of CV scores.
 
         Sorted descending by ``mean_score``.
@@ -257,7 +307,7 @@ def cv_compare_imputations(
     >>> results = cv_compare_imputations(
     ...     X, y,
     ...     estimator=LogisticRegression(),
-    ...     strategies=['mean', 'knn', 'mice'],
+    ...     strategies=['mean', 'knn'],
     ...     n_splits=3,
     ... )
     >>> print(results)
@@ -282,7 +332,6 @@ def cv_compare_imputations(
 
     imputer_kwargs = imputer_kwargs or {}
 
-    # Use stratified splits for classifiers
     try:
         _is_clf = is_classifier(estimator)
     except Exception:
@@ -299,15 +348,14 @@ def cv_compare_imputations(
         )
         split_iter = kf.split(X)
 
-    # Materialise all fold indices so we can reuse them per strategy
     folds = list(split_iter)
     X_arr = X.reset_index(drop=True)
     y_arr = y
 
-    results = {}
+    results: dict = {}
     for strategy in strategies:
         kwargs = imputer_kwargs.get(strategy, {})
-        fold_scores = []
+        fold_scores: list = []
 
         for train_idx, test_idx in folds:
             X_tr = X_arr.iloc[train_idx].copy()
@@ -315,14 +363,11 @@ def cv_compare_imputations(
             y_tr = y_arr[train_idx]
             y_te = y_arr[test_idx]
 
-            # Fit imputer on training fold only — no leakage
             imp = MissinglyImputer(strategy=strategy, **kwargs)
             imp.fit(X_tr)
             X_tr_imp = imp.transform(X_tr)
             X_te_imp = imp.transform(X_te)
 
-            # Clone estimator to avoid state bleed across folds
-            from sklearn.base import clone
             est = clone(estimator)
             est.fit(X_tr_imp, y_tr)
 
@@ -333,7 +378,7 @@ def cv_compare_imputations(
 
         results[strategy] = {
             "mean_score": float(np.mean(fold_scores)),
-            "std_score":  float(np.std(fold_scores)),
+            "std_score": float(np.std(fold_scores)),
         }
 
     result_df = pd.DataFrame.from_dict(results, orient="index")
