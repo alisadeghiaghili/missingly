@@ -91,9 +91,9 @@ from missingly.visualise import (
 )
 
 # ---------------------------------------------------------------------------
-# Summary / stats
+# Summary / stats  (canonical source: diagnostics)
 # ---------------------------------------------------------------------------
-from missingly.summary import (
+from missingly.diagnostics import (
     bind_shadow,
     n_miss,
     n_complete,
@@ -104,12 +104,6 @@ from missingly.summary import (
     summarise,
     miss_scan_count,
     miss_summary,
-)
-
-# ---------------------------------------------------------------------------
-# Diagnosis
-# ---------------------------------------------------------------------------
-from missingly.stats import (
     mcar_test,
     mar_mnar_test,
     diagnose_missing,
@@ -198,7 +192,7 @@ from missingly.manipulation import (
 )
 
 # ---------------------------------------------------------------------------
-# Legacy / experimental — imported raw then wrapped so FutureWarning fires
+# Legacy / experimental shims
 # ---------------------------------------------------------------------------
 from missingly.stats_extra import (
     hotelling_test as _hotelling_test,
@@ -227,7 +221,6 @@ from missingly.simulate import (
     simulate_mixed as _simulate_mixed,
 )
 
-# Wrap each legacy/experimental symbol so callers receive FutureWarning
 hotelling_test = _deprecated_api(since="0.2.0")(_hotelling_test)
 pattern_monotone_test = _deprecated_api(since="0.2.0")(_pattern_monotone_test)
 missing_correlation_matrix = _deprecated_api(since="0.2.0")(_missing_correlation_matrix)
@@ -240,14 +233,11 @@ miss_as_feature = _deprecated_api(since="0.2.0")(_miss_as_feature)
 chunk_apply = _deprecated_api(since="0.2.0")(_chunk_apply)
 memory_usage_mb = _deprecated_api(since="0.2.0")(_memory_usage_mb)
 optimize_dtypes = _deprecated_api(since="0.2.0")(_optimize_dtypes)
-
-# Simulation functions are experimental — wrap them too
 simulate_mcar = _deprecated_api(since="0.2.0")(_simulate_mcar)
 simulate_mar = _deprecated_api(since="0.2.0")(_simulate_mar)
 simulate_mnar = _deprecated_api(since="0.2.0")(_simulate_mnar)
 simulate_mixed = _deprecated_api(since="0.2.0")(_simulate_mixed)
 
-# Backward-compat aliases (point at the wrapped versions)
 test_hotelling = hotelling_test
 test_pattern_monotone = pattern_monotone_test
 
@@ -258,99 +248,44 @@ import missingly.accessor  # noqa: F401
 
 __all__ = [
     # Visualisation
-    "matrix",
-    "bar",
-    "miss_case",
-    "miss_var_pct",
-    "vis_miss",
-    "miss_which",
-    "upset",
-    "miss_patterns",
-    "miss_cooccurrence",
-    "heatmap",
-    "dendrogram",
-    "miss_cluster",
-    "miss_row_profile",
-    "shadow_scatter",
-    "vis_miss_fct",
-    "vis_miss_by_group",
-    "vis_impute_dist",
-    "miss_impute_compare",
-    "scatter_miss",
-    "vis_miss_cumsum_var",
-    "vis_miss_cumsum_case",
-    "vis_miss_span",
-    "vis_parallel_coords",
+    "matrix", "bar", "miss_case", "miss_var_pct", "vis_miss", "miss_which",
+    "upset", "miss_patterns", "miss_cooccurrence", "heatmap", "dendrogram",
+    "miss_cluster", "miss_row_profile", "shadow_scatter", "vis_miss_fct",
+    "vis_miss_by_group", "vis_impute_dist", "miss_impute_compare",
+    "scatter_miss", "vis_miss_cumsum_var", "vis_miss_cumsum_case",
+    "vis_miss_span", "vis_parallel_coords",
     # Summary
-    "bind_shadow",
-    "n_miss",
-    "n_complete",
-    "pct_miss",
-    "pct_complete",
-    "miss_var_summary",
-    "miss_case_summary",
-    "summarise",
-    "miss_scan_count",
-    "miss_summary",
+    "bind_shadow", "n_miss", "n_complete", "pct_miss", "pct_complete",
+    "miss_var_summary", "miss_case_summary", "summarise",
+    "miss_scan_count", "miss_summary",
     # Diagnosis
-    "mcar_test",
-    "mar_mnar_test",
-    "diagnose_missing",
+    "mcar_test", "mar_mnar_test", "diagnose_missing",
     # Imputation
-    "impute_mean",
-    "impute_median",
-    "impute_mode",
-    "impute_knn",
-    "impute_mice",
-    "impute_rf",
-    "impute_gb",
-    "make_imputer",
+    "impute_mean", "impute_median", "impute_mode",
+    "impute_knn", "impute_mice", "impute_rf", "impute_gb", "make_imputer",
     # sklearn-style
-    "MissinglyImputer",
-    "FittedImputer",
-    # MI pooling (low-level Rubin's Rules)
-    "pool_scalar_estimates",
-    "pool_linear_regression_results",
-    # MI Workflow (high-level R-style)
-    "mi_with",
-    "mi_fit",
-    "pool_linear_models",
-    # Comparison / Evaluation
-    "compare_imputations",
-    "cv_compare_imputations",
+    "MissinglyImputer", "FittedImputer",
+    # MI pooling
+    "pool_scalar_estimates", "pool_linear_regression_results",
+    # MI Workflow
+    "mi_with", "mi_fit", "pool_linear_models",
+    # Comparison
+    "compare_imputations", "cv_compare_imputations",
     # Report
     "create_report",
     # Time-series
-    "miss_ts_summary",
-    "vis_ts_miss",
-    "vis_miss_over_time",
-    "impute_ts",
+    "miss_ts_summary", "vis_ts_miss", "vis_miss_over_time", "impute_ts",
     # Simulation (experimental)
-    "simulate_mcar",
-    "simulate_mar",
-    "simulate_mnar",
-    "simulate_mixed",
+    "simulate_mcar", "simulate_mar", "simulate_mnar", "simulate_mixed",
     # Manipulation
-    "replace_with_na",
-    "replace_with_na_all",
-    "add_any_miss_var",
-    "bind_shadow_matrix",
+    "replace_with_na", "replace_with_na_all", "add_any_miss_var", "bind_shadow_matrix",
     # Legacy / experimental
-    "hotelling_test",
-    "pattern_monotone_test",
-    "missing_correlation_matrix",
-    "gap_table",
-    "vis_gap_lengths",
-    "clean_names",
-    "remove_empty",
-    "coalesce_columns",
-    "miss_as_feature",
-    "chunk_apply",
-    "memory_usage_mb",
-    "optimize_dtypes",
+    "hotelling_test", "pattern_monotone_test", "missing_correlation_matrix",
+    "gap_table", "vis_gap_lengths",
+    "clean_names", "remove_empty", "coalesce_columns", "miss_as_feature",
+    "chunk_apply", "memory_usage_mb", "optimize_dtypes",
     # Backward-compat aliases
-    "test_hotelling",
-    "test_pattern_monotone",
+    "test_hotelling", "test_pattern_monotone",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
