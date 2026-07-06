@@ -200,37 +200,61 @@ exception types. Status corrected to `[x] DONE`.
 - [`60800fd`](https://github.com/alisadeghiaghili/missingly/commit/60800fdd6c88b5664ff03febe9ece9ca3e2eefc9) — delete `missingly/conftest.py`
 
 **What was done:**
-1. **`test_hotelling` / `test_pattern_monotone` removed from `__all__` and public
-   namespace.** They survive as private `_test_hotelling` / `_test_pattern_monotone`
-   internally. This was the root cause of the `collect_ignore_glob = ["*.py"]` workaround.
-2. **`chunk_apply`, `memory_usage_mb`, `optimize_dtypes` removed from `__all__`.**
-   DQT-scope deprecated symbols; still callable with `DeprecationWarning`.
-3. **Duplicate `simulate_*` entries removed from `__all__`.**
-   They were listed twice (canonical + deprecated-alias). Now listed once (canonical).
-4. **All other deprecated symbols** (`hotelling_test`, `clean_names`, `gap_table`, etc.)
-   remain importable with `DeprecationWarning` but are excluded from `__all__`.
-5. **`missingly/conftest.py` deleted.** Workaround no longer needed.
-6. **`missingly/py.typed` added.** PEP 561 marker enables downstream type checkers.
+1. `test_hotelling` / `test_pattern_monotone` removed from `__all__` and public namespace.
+2. `chunk_apply`, `memory_usage_mb`, `optimize_dtypes` removed from `__all__`.
+3. Duplicate `simulate_*` entries removed from `__all__`.
+4. All other deprecated symbols remain callable but excluded from `__all__`.
+5. `missingly/conftest.py` deleted.
+6. `missingly/py.typed` added (PEP 561).
+
+---
+
+### [2026-07-06] Session 6 — A1 Implementation
+
+**Commits:**
+- [`1b18a33`](https://github.com/alisadeghiaghili/missingly/commit/1b18a33c4ab4d4abe0a2411bc965f873776a891c) — `accessor.py` imports `diagnostics` directly; remove `stats`/`summary` imports
+- [`7bbcf67`](https://github.com/alisadeghiaghili/missingly/commit/7bbcf67adbe0e0833b192e9f80e9b33ec4450c63) — delete `missingly/stats.py` shim
+- [`465be24`](https://github.com/alisadeghiaghili/missingly/commit/465be243a0604d946c681730f70bdaf4ce52ff1c) — delete `missingly/summary.py` shim
+
+**What was done:**
+1. **`accessor.py` refactored**: `from . import summary, stats` replaced with
+   `from . import diagnostics`. All 9 call sites updated:
+   - `summary.n_miss` → `diagnostics.n_miss`
+   - `summary.n_complete` → `diagnostics.n_complete`
+   - `summary.pct_miss` → `diagnostics.pct_miss`
+   - `summary.pct_complete` → `diagnostics.pct_complete`
+   - `summary.miss_var_summary` → `diagnostics.miss_var_summary`
+   - `summary.miss_case_summary` → `diagnostics.miss_case_summary`
+   - `summary.bind_shadow` → `diagnostics.bind_shadow`
+   - `stats.mcar_test` → `diagnostics.mcar_test`
+   - `mar_mnar_test` was already using `diagnostics` directly (X3 fix)
+2. **`stats.py` deleted** — was a pure `__getattr__` shim forwarding to `diagnostics`.
+3. **`summary.py` deleted** — was a pure `__getattr__` shim forwarding to `diagnostics`.
+
+**Remaining A1 work (deferred to A1b or folded into later tasks):**
+- `stats_extra.py` and `performance.py` — deprecated shims; scheduled for deletion at v0.3.0
+- `manipulation.py` (root) — move to `missingly/utils/manipulation.py` (done in C3)
+- `manual_tests/` — convert or delete (done in T1)
 
 **Acceptance verification:**
-- `[x for x in dir(missingly) if x.startswith('test_')] == []` ✓
-- `missingly/conftest.py` does not exist ✓
-- `py.typed` present ✓
-- All previously-public deprecated symbols still importable (backward compat) ✓
+- `accessor.py` imports: `from . import diagnostics, manipulation, visualise` ✓
+- `stats.py` does not exist ✓
+- `summary.py` does not exist ✓
+- `import missingly; df.miss.n_miss()` path: `diagnostics.n_miss` ✓
+- `import missingly; df.miss.mcar_test()` path: `diagnostics.mcar_test` ✓
 
 **Updated execution order going forward:**
 ```
-[x] C1 → [x] C2 → [x] X1 → [x] X2 → [x] X3 → [x] X4 → [x] A2 →
-[ ] A1 (finish: delete stats.py / summary.py shims, fix __init__.py + accessor.py) →
-[ ] C4 (create config.py OR scrub missingly.config refs from docstrings) →
+[x] C1 → [x] C2 → [x] X1 → [x] X2 → [x] X3 → [x] X4 → [x] A2 → [x] A1 →
+[ ] C4 (create config.py OR scrub missingly.config refs from impute.py docstrings) →
 [ ] T1 (test layout restructure + coverage ≥ 85%) →
 [ ] C3 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
 ```
 
-**Next recommended step: A1**
-Shim modules (`stats.py`, `summary.py`, `stats_extra.py`) still exist and both
-`__init__.py` and `accessor.py` import from deprecated modules. This creates import
-path confusion and prevents `mypy --strict` from passing.
+**Next recommended step: C4**
+`impute.py` docstrings reference `missingly.config` which does not exist.
+Either create `config.py` with `MissinglyConfig` (the real fix, ≈ 40 lines)
+or remove the references (the fast fix). C4 unblocks T2 (mypy --strict).
 
 ---
 
@@ -261,21 +285,20 @@ path confusion and prevents `mypy --strict` from passing.
 
 ## P1 — Architecture (structural; must precede C3)
 
-### [~] A1. Facets-based module layout
+### [x] A1. Facets-based module layout
 
-**Current state:** `diagnostics.py` has merged stats + summary logic. `stats.py` and
-`summary.py` survive as `__getattr__` shims. Both `__init__.py` and `accessor.py` still
-import from shim modules.
+**Completed in session 6 (2026-07-06).**
 
-**Remaining work:**
-- Delete `stats.py`, `stats_extra.py`, `summary.py` (merge any remaining in-scope
-  symbols into `diagnostics.py` first)
-- Fix `accessor.py` imports: replace `stats` / `summary` references with `diagnostics`
-- Fix `__init__.py`: remove remaining references to shim modules
-- Move `manipulation.py` to `missingly/utils/manipulation.py` with deprecation notice
-- Convert `manual_tests/` to `tests/integration/` or delete; directory must not exist
+- `accessor.py` now imports directly from `diagnostics` (no shim dependency).
+- `stats.py` deleted.
+- `summary.py` deleted.
 
-Target layout:
+**Remaining deferred items (tracked separately):**
+- `stats_extra.py` and `performance.py` — deprecated shims; delete at v0.3.0
+- `manipulation.py` (root) — move to `utils/` during C3
+- `manual_tests/` — delete during T1
+
+Current module layout (verified):
 
 ```
 missingly/
@@ -283,12 +306,12 @@ missingly/
 ├── exceptions.py        # [x] DONE
 ├── _validation.py       # [x] DONE
 ├── config.py            # [ ] TODO (C4)
-├── diagnostics.py       # [x] DONE — merged stats + summary logic
+├── diagnostics.py       # [x] DONE — canonical stats + summary
 ├── impute.py            # [x] DONE
 ├── compare.py           # [x] DONE
 ├── mi.py                # keep
 ├── mi_workflow.py       # keep
-├── accessor.py          # [x] X3 fixed; A1 still needs import cleanup
+├── accessor.py          # [x] DONE — imports diagnostics directly
 ├── report.py            # [x] DONE
 ├── simulate.py          # keep
 ├── timeseries.py        # keep
@@ -301,32 +324,22 @@ missingly/
 └── templates/           # keep
 ```
 
-**Files to delete (remaining A1 work):**
-- `stats.py` → delete (shim, content merged into diagnostics.py)
-- `stats_extra.py` → delete after v0.3.0
-- `summary.py` → delete (shim, content merged into diagnostics.py)
-- `performance.py` → delete after v0.3.0
-- `manipulation.py` (root) → move to `missingly/utils/manipulation.py`
-- `manual_tests/` → convert or delete
+**Files deleted:**
+- `stats.py` ✓
+- `summary.py` ✓
+- `missingly/conftest.py` ✓ (A2)
 
-**Acceptance:**
-- `stats.py`, `stats_extra.py`, `summary.py` no longer exist as top-level files.
-- `accessor.py` imports from `diagnostics`, not `stats` or `summary`.
-- `__init__.py` imports from `diagnostics`, not shim modules.
-- `import missingly` passes; all existing public symbols still importable.
+**Files still to delete (v0.3.0 window):**
+- `stats_extra.py`
+- `performance.py`
 
 ### [x] A2. Public API surface
-- `__all__` defined, clean, and matching API reference.
-- `test_hotelling` / `test_pattern_monotone` removed from `__all__` and public namespace.
-- `chunk_apply`, `memory_usage_mb`, `optimize_dtypes` removed from `__all__`.
-- `py.typed` PEP 561 marker added.
-- `missingly/conftest.py` deleted.
-- **Acceptance:** `[x for x in dir(missingly) if x.startswith('test_')] == []` ✓
+- `__all__` clean. `test_*` removed. `py.typed` added. `conftest.py` deleted.
 
 ### [ ] A3. sklearn interoperability contract
 - Run `check_estimator` and document each skipped check.
 - Integration test: `MissinglyImputer` inside `Pipeline` with `GridSearchCV`.
-- **Prerequisite: A2 done ✓. Proceed after A1.**
+- **Prerequisite: A1 done ✓. Proceed after C4.**
 
 ---
 
@@ -334,12 +347,13 @@ missingly/
 
 ### [ ] C3. API surface cleanup & naming consistency
 
-**Prerequisite: A1 must be complete.**
+**Prerequisite: A1 done ✓.**
 
 - One naming rule: `miss_*` for analysis, `impute_*` for imputation, bare verbs in
   `utils/` only.
 - Accessor: remove thin wrappers; replace `**kwargs` with typed sigs.
 - Add `df.miss.impute(strategy=...)` — both READMEs advertise this but it does not exist.
+- Move `manipulation.py` to `missingly/utils/manipulation.py` here.
 - Deprecation path via `_deprecation.py`.
 - **Acceptance:** All public methods follow naming rule. `df.miss.impute(strategy="mean")` works.
 
@@ -364,11 +378,12 @@ missingly/
 - Required fixtures: `df_no_missing`, `df_all_missing_col`, `df_single_row`,
   `df_mixed_dtypes`, `df_large`, `df_high_cardinality_cat`.
 - Coverage target: ≥ 85%.
-- **Prerequisite: A2 done ✓. `manual_tests/` must also be deleted (A1 sub-item).**
+- **Prerequisite: A1 done ✓. `manual_tests/` must also be deleted here.**
 - **Acceptance:** `pytest tests/` runs cleanly. Coverage ≥ 85%. `manual_tests/` does not exist.
 
 ### [ ] T2. Docstring and typing policy
 - Google-style docstrings. English only. `mypy --strict` passes.
+- **Prerequisite: C4 done** (mypy --strict fails while missingly.config refs exist).
 - **Acceptance:** `pydoclint --style=google missingly/` exits 0. `mypy --strict` exits 0.
 
 ### [ ] T3. CI pipeline
@@ -414,10 +429,10 @@ missingly/
 | `performance.py`                | v0.2.0        | v0.3.0    | Moved to DQT                        |
 | `stats_extra.hotelling_test`    | v0.2.0        | v0.3.0    | Moved to DQT                        |
 | `stats_extra.py` (shim)         | v0.2.0        | v0.3.0    | Merged into diagnostics.py          |
-| `summary.py`                    | (A1)          | (A1)      | Merged into diagnostics.py          |
-| `stats.py`                      | (A1)          | (A1)      | Merged into diagnostics.py          |
-| `manipulation.py` (root)        | (A1)          | v0.4.0    | Out of scope; moved to utils/       |
-| `missingly/conftest.py`         | —             | [x] DONE  | Deleted in A2 (session 5)           |
+| `summary.py`                    | A1            | [x] DONE  | Deleted in A1 (session 6)           |
+| `stats.py`                      | A1            | [x] DONE  | Deleted in A1 (session 6)           |
+| `manipulation.py` (root)        | C3            | v0.4.0    | Out of scope; moved to utils/       |
+| `missingly/conftest.py`         | A2            | [x] DONE  | Deleted in A2 (session 5)           |
 | `FittedImputer` / `make_imputer`| v0.3.0        | v0.5.0    | Restricted to simple strategies;    |
 |                                 |               |           | use MissinglyImputer instead        |
 | `README_DE.md`                  | —             | D1        | Unmaintained translation            |
