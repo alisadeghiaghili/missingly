@@ -613,10 +613,10 @@ def diagnose_missing(
     Decision logic
     --------------
     1. Run Little's MCAR test on numeric columns.
-    2. p ≥ *significance* → MCAR: simple imputers are appropriate.
-    3. p < *significance* → not MCAR.  Check max nullity correlation:
-       - > 0.30 → MAR: use model-based imputers (KNN, MICE, RF).
-       - ≤ 0.30 → possible MNAR: flag and recommend domain review.
+    2. p \u2265 *significance* \u2192 MCAR: simple imputers are appropriate.
+    3. p < *significance* \u2192 not MCAR.  Check max nullity correlation:
+       - > 0.30 \u2192 MAR: use model-based imputers (KNN, MICE, RF).
+       - \u2264 0.30 \u2192 possible MNAR: flag and recommend domain review.
     4. Columns with > 40% missingness are always flagged.
 
     Parameters
@@ -684,7 +684,7 @@ def diagnose_missing(
     if can_test:
         try:
             test_result = mcar_test(num_df, max_iter=max_iter, tol=tol, ridge=ridge)
-        except Exception:  # pragma: no cover — numerical edge-cases
+        except (ValueError, np.linalg.LinAlgError, ArithmeticError):  # pragma: no cover — numerical edge-cases
             can_test = False
 
     p_val = test_result.get("p_value")

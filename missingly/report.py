@@ -180,6 +180,14 @@ def _safe_plot(plot_fn, df: pd.DataFrame, **kwargs) -> Optional[str]:
     """Call a plot function and return a base64 PNG string, or None on failure.
 
     Works for functions that return either a Figure or an Axes.
+    On failure, emits a UserWarning and returns None so the report is
+    still generated without the offending plot.
+
+    Catches only specific, expected failure modes:
+    - ``ImportError`` / ``ModuleNotFoundError``: optional matplotlib filter import.
+    - ``TypeError``, ``ValueError``: bad arguments to the plot function.
+    - ``RuntimeError``: matplotlib backend or rendering failure.
+    - ``MemoryError``: frame too large to render.
     """
     try:
         with warnings.catch_warnings():
@@ -189,7 +197,7 @@ def _safe_plot(plot_fn, df: pd.DataFrame, **kwargs) -> Optional[str]:
                 warnings.filterwarnings(
                     "ignore", category=_mpl.MatplotlibDeprecationWarning
                 )
-            except Exception:  # noqa: BLE001
+            except (ImportError, ModuleNotFoundError):
                 pass
 
             result = plot_fn(df, **kwargs)
@@ -200,13 +208,12 @@ def _safe_plot(plot_fn, df: pd.DataFrame, **kwargs) -> Optional[str]:
             elif hasattr(result, "figure"):
                 fig = result.figure
             else:
-                # Fallback: get current figure
                 fig = plt.gcf()
 
             b64 = _fig_to_b64(fig)
             plt.close(fig)
         return b64
-    except Exception as exc:  # noqa: BLE001
+    except (TypeError, ValueError, RuntimeError, MemoryError) as exc:
         warnings.warn(
             f"Plot {plot_fn.__name__!r} failed: {exc}", UserWarning, stacklevel=2
         )
@@ -378,8 +385,8 @@ def create_report(
     mcar_info = None
     try:
         mcar_result = mcar_test(df_analysis)
-        mcar_info = _mcar_interpretation(mcar_result.p_value, overall_pct, lang=language)
-    except Exception as exc:  # noqa: BLE001
+        mcar_info = _mcar_interpretation(mcar_result["p_value"], overall_pct, lang=language)
+    except (ValueError, TypeError, np.linalg.LinAlgError, ArithmeticError) as exc:
         warnings.warn(f"MCAR test failed: {exc}", UserWarning, stacklevel=2)
 
     matrix_plot  = _safe_plot(matrix,   df_analysis)

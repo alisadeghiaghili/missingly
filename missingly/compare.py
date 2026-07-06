@@ -41,7 +41,7 @@ def _method_name(method) -> str:
     """Return a display name for an imputation callable.
 
     Falls back to ``repr`` for lambdas and ``functools.partial`` objects
-    that don’t carry a plain ``__name__``.
+    that don't carry a plain ``__name__``.
     """
     name = getattr(method, "__name__", None)
     if name and name != "<lambda>":
@@ -66,15 +66,15 @@ def compare_imputations(
     imputation method, and evaluates reconstruction accuracy.
 
     .. note::
-        This function answers *“which imputer best reconstructs masked
-        values?”*, **not** *“which imputer gives the best downstream
-        model?”*.  For the latter use :func:`cv_compare_imputations`.
+        This function answers *\u201cwhich imputer best reconstructs masked
+        values?\u201d*, **not** *\u201cwhich imputer gives the best downstream
+        model?\u201d*.  For the latter use :func:`cv_compare_imputations`.
 
     Scoring:
 
-    * **Numeric columns** → RMSE (lower is better).
-    * **Categorical columns** → accuracy (higher is better).
-    * **Mixed** → normalised composite ``Score`` (lower is better).
+    * **Numeric columns** \u2192 RMSE (lower is better).
+    * **Categorical columns** \u2192 accuracy (higher is better).
+    * **Mixed** \u2192 normalised composite ``Score`` (lower is better).
 
     Parameters
     ----------
@@ -168,7 +168,7 @@ def compare_imputations(
         name = _method_name(method)
         try:
             df_imputed = method(df_missing)
-        except Exception as exc:  # noqa: BLE001
+        except (ValueError, TypeError, RuntimeError, MemoryError, np.linalg.LinAlgError) as exc:
             errors[name] = str(exc)
             row: dict = {}
             if numeric_cols:
@@ -268,7 +268,7 @@ def cv_compare_imputations(
         Number of CV folds.  Default 5.
     scoring : callable, optional
         A function ``scoring(estimator, X, y) -> float``.  Defaults to
-        ``estimator.score`` (accuracy for classifiers, R² for regressors).
+        ``estimator.score`` (accuracy for classifiers, R\u00b2 for regressors).
     random_state : int, optional
         Random seed for KFold shuffling.  Default 42.
     imputer_kwargs : dict, optional
@@ -281,8 +281,8 @@ def cv_compare_imputations(
     pd.DataFrame
         Indexed by strategy name, with columns:
 
-        * ``mean_score`` — mean CV score across folds.
-        * ``std_score``  — standard deviation of CV scores.
+        * ``mean_score`` \u2014 mean CV score across folds.
+        * ``std_score``  \u2014 standard deviation of CV scores.
 
         Sorted descending by ``mean_score``.
 
@@ -334,7 +334,7 @@ def cv_compare_imputations(
 
     try:
         _is_clf = is_classifier(estimator)
-    except Exception:
+    except AttributeError:
         _is_clf = False
 
     if _is_clf:
