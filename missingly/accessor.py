@@ -46,8 +46,6 @@ import pandas as pd
 from . import (
     diagnostics,
     manipulation,
-    summary,
-    stats,
     visualise,
 )
 from .exceptions import MissingColumnError
@@ -314,7 +312,7 @@ class MissinglyAccessor:
         -------
         int
         """
-        return summary.n_miss(self._df)
+        return diagnostics.n_miss(self._df)
 
     def n_complete(self) -> int:
         """Return total number of non-missing values.
@@ -323,7 +321,7 @@ class MissinglyAccessor:
         -------
         int
         """
-        return summary.n_complete(self._df)
+        return diagnostics.n_complete(self._df)
 
     def pct_miss(self) -> float:
         """Return percentage of missing values across the whole DataFrame.
@@ -332,7 +330,7 @@ class MissinglyAccessor:
         -------
         float
         """
-        return summary.pct_miss(self._df)
+        return diagnostics.pct_miss(self._df)
 
     def pct_complete(self) -> float:
         """Return percentage of complete (non-missing) values.
@@ -341,7 +339,7 @@ class MissinglyAccessor:
         -------
         float
         """
-        return summary.pct_complete(self._df)
+        return diagnostics.pct_complete(self._df)
 
     def miss_var_summary(
         self, missing_values: Optional[List] = None
@@ -356,7 +354,7 @@ class MissinglyAccessor:
         -------
         pd.DataFrame
         """
-        return summary.miss_var_summary(self._df, missing_values)
+        return diagnostics.miss_var_summary(self._df, missing_values)
 
     def miss_case_summary(
         self, missing_values: Optional[List] = None
@@ -371,7 +369,7 @@ class MissinglyAccessor:
         -------
         pd.DataFrame
         """
-        return summary.miss_case_summary(self._df, missing_values)
+        return diagnostics.miss_case_summary(self._df, missing_values)
 
     def bind_shadow(self, missing_values: Optional[List] = None) -> pd.DataFrame:
         """Return the DataFrame with a shadow matrix appended.
@@ -384,7 +382,7 @@ class MissinglyAccessor:
         -------
         pd.DataFrame
         """
-        return summary.bind_shadow(self._df, missing_values)
+        return diagnostics.bind_shadow(self._df, missing_values)
 
     # ------------------------------------------------------------------
     # Stats — return natural output type
@@ -399,7 +397,7 @@ class MissinglyAccessor:
             Keys: ``chi_square``, ``df``, ``p_value``, ``missing_patterns``,
             ``amount_missing``.
         """
-        return stats.mcar_test(self._df)
+        return diagnostics.mcar_test(self._df)
 
     def mar_mnar_test(self, target: str) -> pd.DataFrame:
         """Test for MAR / MNAR patterns with respect to a target column.
