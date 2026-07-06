@@ -9,9 +9,11 @@ This module provides two layers of imputation API:
 
 2. **FittedImputer** (``make_imputer`` factory)
    A lightweight ``fit`` / ``transform`` / ``fit_transform`` wrapper
-   around the stateless functions.  Use this whenever you need to fit on
-   training data and transform test data separately — e.g. inside a
-   scikit-learn ``Pipeline``.
+   that stores per-column fill values (mean, median, or mode) computed
+   on training data and applies them to unseen data.  Supports only
+   ``{mean, median, mode}`` — strategies whose fit-state is a simple
+   scalar per column.  For model-based strategies (knn, mice, rf, gb)
+   use :class:`~missingly.transformer.MissinglyImputer` instead.
 
 Key design decisions
 --------------------
@@ -77,6 +79,8 @@ _KNN_CAT_NEIGHBORS_THRESHOLD = 5
 
 _SUPPORTED_STRATEGIES = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
 _SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
+# Strategies whose fit-state is a per-column scalar — the only ones FittedImputer supports.
+_SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
 
 
 # ---------------------------------------------------------------------------
@@ -303,18 +307,26 @@ def _impute_column_by_column(
                     raise ImputationError(
                         column=col, strategy=strategy_name, original=exc
                     ) from exc
-                # Fallback: column mean (numeric) or mode (categorical).
-                # This is logged at INFO so it is visible but not alarming.
-                fallback = float(np.nanmean(y_train))
-                logger.info(
-                    "Imputation estimator failed for column %r (strategy=%r): %s. "
-                    "Falling back to column mean (%.4f). "
-                    "Set strict_mode=True to raise instead.",
-                    col,
-                    strategy_name,
-                    exc,
-                    fallback,
-                )
+                # Fallback: mode code for categorical columns, mean for numeric.
+                # Logged at INFO so it is visible but not alarming.
+                if col in cat_cols:
+                    # y_train contains ordinal-encoded float codes from _split_encode.
+                    # Use mode of valid (non-NaN, non-negative) codes.
+                    valid_codes = y_train[~np.isnan(y_train)].astype(int)
+                    valid_codes = valid_codes[valid_codes >= 0]  # exclude unknown sentinel (-1)
+                    fallback = float(np.bincount(valid_codes).argmax()) if len(valid_codes) > 0 else 0.0
+                    logger.info(
+                        "Categorical fallback for %r (strategy=%r): mode code %d. "
+                        "Set strict_mode=True to raise instead.",
+                        col, strategy_name, int(fallback),
+                    )
+                else:
+                    fallback = float(np.nanmean(y_train))
+                    logger.info(
+                        "Numeric fallback for %r (strategy=%r): mean %.4f. "
+                        "Set strict_mode=True to raise instead.",
+                        col, strategy_name, fallback,
+                    )
                 preds = fallback * np.ones(X_pred.shape[0])
 
             df_result.loc[missing_mask, col] = preds
@@ -780,86 +792,136 @@ def impute_gb(
 
 
 # ---------------------------------------------------------------------------
-# FittedImputer — fit / transform interface
+# KNN Gower helper (referenced by transformer.py)
 # ---------------------------------------------------------------------------
 
-class FittedImputer:
-    """Lightweight fit/transform wrapper for missingly imputation strategies.
+def _impute_knn_gower(
+    df: pd.DataFrame,
+    n_neighbors: int = 5,
+) -> pd.DataFrame:
+    """Impute using Gower distance for mixed numeric/categorical data.
 
     Parameters
     ----------
-    strategy : str, default ``'mean'``
-        Imputation strategy.  One of: ``'mean'``, ``'median'``, ``'mode'``,
-        ``'knn'``, ``'mice'``, ``'rf'``, ``'gb'``.
-    **kwargs
-        Additional keyword arguments passed to the underlying imputer.
+    df : pd.DataFrame
+        DataFrame (already normalised) to impute.
+    n_neighbors : int, default 5
+        Number of nearest neighbours.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+    """
+    try:
+        import gower  # type: ignore[import]
+    except ImportError as exc:
+        raise ImportError(
+            "Gower distance requires the 'gower' package: pip install gower"
+        ) from exc
+
+    result = df.copy()
+    n = len(df)
+    dist_matrix = gower.gower_matrix(df)
+
+    for col in df.columns:
+        missing_mask = df[col].isna()
+        if not missing_mask.any():
+            continue
+        missing_idx = np.where(missing_mask)[0]
+        observed_idx = np.where(~missing_mask)[0]
+        for i in missing_idx:
+            row_dists = dist_matrix[i, observed_idx]
+            k = min(n_neighbors, len(observed_idx))
+            nn_idx = observed_idx[np.argsort(row_dists)[:k]]
+            donors = df.iloc[nn_idx][col]
+            if pd.api.types.is_numeric_dtype(df[col]):
+                result.at[df.index[i], col] = donors.mean()
+            else:
+                result.at[df.index[i], col] = donors.mode().iloc[0]
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# FittedImputer — fit on train, transform on test (simple strategies only)
+# ---------------------------------------------------------------------------
+
+class FittedImputer:
+    """Lightweight fit/transform imputer for simple strategies.
+
+    Learns per-column fill values (mean, median, or mode) from a training
+    DataFrame and applies them to any subsequent DataFrame.  This prevents
+    data leakage when imputing test data inside a cross-validation loop.
+
+    .. note::
+        Only ``{mean, median, mode}`` are supported — strategies whose
+        fit-state is a scalar per column.  For model-based strategies
+        (``knn``, ``mice``, ``rf``, ``gb``) use
+        :class:`~missingly.transformer.MissinglyImputer` instead, which
+        implements the full sklearn ``BaseEstimator`` / ``TransformerMixin``
+        contract including ``get_params`` / ``set_params`` / ``clone``.
+
+    Parameters
+    ----------
+    strategy : {"mean", "median", "mode"}
+        Fill strategy to use.
 
     Raises
     ------
     InvalidStrategyError
-        If *strategy* is not one of the supported values.
+        If *strategy* is not one of ``{"mean", "median", "mode"}``.
 
     Examples
     --------
     >>> import pandas as pd, numpy as np
-    >>> imp = make_imputer('mean')
-    >>> imp.is_fitted
-    False
-    >>> train = pd.DataFrame({'a': [1.0, 2.0, np.nan, 4.0]})
-    >>> _ = imp.fit(train)
-    >>> imp.is_fitted
-    True
+    >>> from missingly.impute import make_imputer
+    >>> train = pd.DataFrame({"a": [1.0, 2.0, 3.0, np.nan]})
+    >>> test  = pd.DataFrame({"a": [np.nan, 5.0]})
+    >>> imp = make_imputer("median").fit(train)
+    >>> imp.transform(test)
+         a
+    0  2.0
+    1  5.0
     """
 
-    def __init__(self, strategy: str = "mean", **kwargs) -> None:
-        validate_strategy(strategy, _SUPPORTED_STRATEGIES, param="strategy")
+    def __init__(self, strategy: str = "mean") -> None:
+        if strategy not in _SIMPLE_FIT_STRATEGIES:
+            raise InvalidStrategyError(
+                param="strategy",
+                got=strategy,
+                allowed=sorted(_SIMPLE_FIT_STRATEGIES),
+            )
         self.strategy = strategy
-        self.kwargs = kwargs
-        self._is_fitted = False
         self._fit_df: Optional[pd.DataFrame] = None
-        self._fill_values: Optional[Dict] = None
-
-    @property
-    def is_fitted(self) -> bool:
-        """bool: True after :meth:`fit` has been called, False otherwise."""
-        return self._is_fitted
+        self._is_fitted: bool = False
 
     def fit(self, df: pd.DataFrame) -> "FittedImputer":
-        """Fit on *df* — stores statistics for :meth:`transform`.
+        """Learn fill values from *df*.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Training data used to compute imputation statistics.
+            Training data.  Only non-missing values are used.
 
         Returns
         -------
         FittedImputer
-            self
-
-        Raises
-        ------
-        TypeError
-            If *df* is not a :class:`pandas.DataFrame`.
-        ValueError
-            If *df* is empty.
+            self (for method chaining).
         """
         validate_dataframe(df, param="df")
-        self._fit_df = df.copy()
-        self._fitted_train = _dispatch_strategy(self.strategy, df, **self.kwargs)
+        self._fit_df = _normalize_missing(df).copy()
         self._is_fitted = True
         return self
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Impute *df* using statistics learned from the training data.
-
-        Fill values are derived exclusively from the training DataFrame
-        passed to :meth:`fit`, preventing data leakage on held-out sets.
+        """Apply learned fill values to *df*.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Data to impute.
+            Data to impute.  Must have the same columns as the training
+            DataFrame passed to ``fit``.
 
         Returns
         -------
@@ -869,178 +931,79 @@ class FittedImputer:
         Raises
         ------
         RuntimeError
-            If :meth:`fit` has not been called yet.
-        TypeError
-            If *df* is not a :class:`pandas.DataFrame`.
+            If ``transform`` is called before ``fit``.
         """
-        if not self._is_fitted:
+        if not self._is_fitted or self._fit_df is None:
             raise RuntimeError(
-                "Call fit() before transform(). "
-                "Example: imputer.fit(train_df).transform(test_df)"
+                "FittedImputer must be fitted before calling transform. "
+                "Call .fit(train_df) first."
             )
         validate_dataframe(df, param="df")
-
-        train_norm = _normalize_missing(self._fit_df)
-        test_norm = _normalize_missing(df)
+        df = _normalize_missing(df)
         result = df.copy()
 
         for col in df.columns:
-            if col not in train_norm.columns:
+            if not result[col].isna().any():
                 continue
-            missing_mask = test_norm[col].isna()
-            if not missing_mask.any():
+            if col not in self._fit_df.columns:
                 continue
 
-            train_col = train_norm[col]
-            if pd.api.types.is_numeric_dtype(train_col):
-                fill_val = float(np.nanmean(train_col.values))
-            else:
-                mode_vals = train_col.dropna()
+            train_col = self._fit_df[col].dropna()
+            if len(train_col) == 0:
+                continue
+
+            if self.strategy == "mode":
+                mode_vals = train_col.mode()
                 if len(mode_vals) == 0:
                     continue
-                fill_val = mode_vals.mode().iloc[0]
+                fill_val = mode_vals.iloc[0]
+            elif pd.api.types.is_numeric_dtype(train_col):
+                if self.strategy == "median":
+                    fill_val = float(np.nanmedian(train_col.values))
+                else:  # mean
+                    fill_val = float(np.nanmean(train_col.values))
+            else:
+                # Non-numeric column with mean/median strategy: fall back to mode.
+                mode_vals = train_col.mode()
+                if len(mode_vals) == 0:
+                    continue
+                fill_val = mode_vals.iloc[0]
 
-            result.loc[missing_mask, col] = fill_val
+            result[col] = result[col].fillna(fill_val)
 
         return result
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fit on *df* and return its imputed copy.
+        """Fit on *df* then transform *df*.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Data to fit on and impute.
+            Data to fit and impute.
 
         Returns
         -------
         pd.DataFrame
-            Imputed copy of *df*.
+            Imputed copy of *df* using fill values learned from *df* itself.
         """
-        self.fit(df)
-        return _dispatch_strategy(self.strategy, df, **self.kwargs)
-
-    def __repr__(self) -> str:
-        status = "fitted" if self._is_fitted else "unfitted"
-        return f"FittedImputer(strategy={self.strategy!r}, {status}=True)"
+        return self.fit(df).transform(df)
 
 
-# ---------------------------------------------------------------------------
-# KNN — Gower distance path
-# ---------------------------------------------------------------------------
+def make_imputer(strategy: str = "mean") -> FittedImputer:
+    """Factory function that returns a :class:`FittedImputer`.
 
-def _impute_knn_gower(
-    df: pd.DataFrame,
-    n_neighbors: int,
-) -> pd.DataFrame:
-    """KNN imputation using Gower distance for mixed-type data.
+    Only simple strategies are supported: ``{mean, median, mode}``.
+    For model-based strategies use
+    :class:`~missingly.transformer.MissinglyImputer`.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        DataFrame with missing values.
-    n_neighbors : int
-        Number of nearest neighbours.
-
-    Returns
-    -------
-    pd.DataFrame
-        Imputed copy of *df*.
-    """
-    from missingly._distance import gower_distance
-
-    result = df.copy()
-    cat_cols = set(df.select_dtypes(exclude=[np.number]).columns)
-    num_cols = set(df.select_dtypes(include=[np.number]).columns)
-
-    dist_matrix = gower_distance(df)
-
-    for col in df.columns:
-        missing_idx = np.where(df[col].isna())[0]
-        if len(missing_idx) == 0:
-            continue
-
-        donor_idx = np.where(df[col].notna())[0]
-        if len(donor_idx) == 0:
-            logger.info(
-                "Column %r has no observed values for Gower KNN; skipping.", col
-            )
-            continue
-
-        for i in missing_idx:
-            dists = dist_matrix[i, donor_idx]
-            k = min(n_neighbors, len(donor_idx))
-            nearest = donor_idx[np.argsort(dists)[:k]]
-
-            if col in num_cols:
-                fill_val = float(np.nanmean(df.iloc[nearest][col].values))
-            else:
-                mode_series = df.iloc[nearest][col].dropna()
-                if len(mode_series) == 0:
-                    continue
-                fill_val = mode_series.mode().iloc[0]
-
-            result.iat[i, df.columns.get_loc(col)] = fill_val
-
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Strategy dispatcher
-# ---------------------------------------------------------------------------
-
-def _dispatch_strategy(
-    strategy: str, df: pd.DataFrame, **kwargs
-) -> pd.DataFrame:
-    """Route a strategy name to the appropriate ``impute_*`` function.
-
-    Parameters
-    ----------
-    strategy : str
-        One of the supported strategy names.
-    df : pd.DataFrame
-        DataFrame to impute.
-    **kwargs
-        Forwarded to the imputer.
-
-    Returns
-    -------
-    pd.DataFrame
-        Imputed copy of *df*.
-
-    Raises
-    ------
-    InvalidStrategyError
-        If *strategy* is not supported.
-    """
-    dispatch = {
-        "mean": impute_mean,
-        "median": impute_median,
-        "mode": impute_mode,
-        "knn": impute_knn,
-        "mice": impute_mice,
-        "rf": impute_rf,
-        "gb": impute_gb,
-    }
-    validate_strategy(strategy, dispatch.keys(), param="strategy")
-    return dispatch[strategy](df, **kwargs)
-
-
-def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
-    """Factory function for :class:`FittedImputer`.
-
-    Parameters
-    ----------
-    strategy : str, default ``'mean'``
-        Imputation strategy.  One of: ``'mean'``, ``'median'``, ``'mode'``,
-        ``'knn'``, ``'mice'``, ``'rf'``, ``'gb'``.
-    **kwargs
-        Additional keyword arguments passed to the underlying imputer.
+    strategy : {"mean", "median", "mode"}, default "mean"
+        Fill strategy.
 
     Returns
     -------
     FittedImputer
-        An unfitted imputer ready for fit/transform.
 
     Raises
     ------
@@ -1049,8 +1012,8 @@ def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
 
     Examples
     --------
-    >>> imp = make_imputer('knn', n_neighbors=3)
+    >>> imp = make_imputer("median")
     >>> type(imp)
     <class 'missingly.impute.FittedImputer'>
     """
-    return FittedImputer(strategy=strategy, **kwargs)
+    return FittedImputer(strategy=strategy)

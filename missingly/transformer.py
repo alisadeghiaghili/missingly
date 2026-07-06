@@ -29,6 +29,9 @@ Design decisions
 * ``GradientBoostingRegressor`` and ``GradientBoostingClassifier`` do not
   accept NaN in feature matrices.  Before fitting or predicting with GB,
   ``_fill_nan_with_col_means`` is applied to feature arrays.
+* ``estimator_kwargs`` is stored as a single ``Optional[dict]`` parameter
+  (not ``**kwargs``) so that ``get_params()`` / ``set_params()`` /
+  ``clone()`` work correctly per the sklearn estimator contract.
 
 Example
 -------
@@ -42,6 +45,7 @@ Example
 >>>
 >>> imputer = MissinglyImputer(strategy='mean')
 >>> imputer.fit(X_train)
+MissinglyImputer()
 >>> X_train_imputed = imputer.transform(X_train)
 >>> X_test_imputed  = imputer.transform(X_test)   # uses train statistics only
 """
@@ -94,20 +98,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         * ``"median"`` — fill numeric with median, categorical with mode.
         * ``"mode"``   — fill all columns with most frequent value.
         * ``"knn"``    — k-Nearest Neighbours (default k=5).
-
-          - ``metric="euclidean"`` (default) — ordinal-encode categorical
-            columns then apply sklearn KNNImputer.  Fast; best for
-            purely numeric datasets.
-          - ``metric="mixed"`` — use Gower distance for mixed
-            numeric+categorical data.  More statistically sound for
-            heavy-categorical datasets, but **O(n²)** in memory and
-            runtime.  Not recommended for ``n > 10 000``.
-
         * ``"mice"``   — Multiple Imputation by Chained Equations.
-        * ``"rf"``     — Random Forest (regressor for numeric,
-          classifier for categorical).
-        * ``"gb"``     — Gradient Boosting (regressor for numeric,
-          classifier for categorical).
+        * ``"rf"``     — Random Forest.
+        * ``"gb"``     — Gradient Boosting.
 
         Default is ``"mean"``.
     n_neighbors : int, optional
@@ -115,42 +108,15 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     metric : str, optional
         Distance metric for ``strategy="knn"``.  One of
         ``"euclidean"`` (default) or ``"mixed"``.
-        Ignored for all other strategies.
     max_iter : int, optional
         Maximum EM/MICE/RF/GB iterations.  Default 10.
     random_state : int, optional
         Random seed for reproducibility.  Default 0.
-    **estimator_kwargs
-        Additional keyword arguments forwarded to the underlying
-        sklearn estimator (e.g. ``n_estimators=200`` for RF/GB).
-
-    Attributes
-    ----------
-    strategy : str
-    n_neighbors : int
-    metric : str
-    max_iter : int
-    random_state : int
-    feature_names_in_ : list[str] or None
-        Column names seen during ``fit``.  ``None`` before fitting.
-    numeric_cols_ : list[str]
-        Numeric column names seen during ``fit``.
-    cat_cols_ : list[str]
-        Categorical column names seen during ``fit``.
-    imputer_ : fitted sklearn imputer or None
-        The underlying fitted imputer (for mean/median/mode/knn/mice).
-    cat_imputer_ : fitted SimpleImputer or None
-        Categorical imputer (for mean/median).
-    encoder_ : fitted OrdinalEncoder or None
-        Encoder for categorical columns (knn/mice).
-    cat_dtypes_ : dict
-        Original dtypes of categorical columns.
-    rf_reg_models_ : dict[str, fitted estimator]
-        Per-column fitted regressors (rf/gb strategies).
-    rf_clf_models_ : dict[str, fitted estimator]
-        Per-column fitted classifiers (rf/gb strategies).
-    cat_label_encoders_ : dict[str, OrdinalEncoder]
-        Per-column label encoders for classification targets (rf/gb).
+    estimator_kwargs : dict or None, optional
+        Additional keyword arguments forwarded to the underlying sklearn
+        estimator (e.g. ``{'n_estimators': 200}`` for RF/GB strategies).
+        Stored as-is so that ``get_params()`` / ``set_params()`` /
+        ``clone()`` behave correctly.
 
     Example
     -------
@@ -160,8 +126,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     ...     ("imputer", MissinglyImputer(strategy="knn", n_neighbors=3)),
     ...     ("clf",     LogisticRegression()),
     ... ])
-    >>> pipe.fit(X_train, y_train)
-    >>> pipe.predict(X_test)
     """
 
     def __init__(
@@ -171,9 +135,13 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         metric: str = "euclidean",
         max_iter: int = 10,
         random_state: int = 0,
-        **estimator_kwargs,
+        estimator_kwargs: Optional[dict] = None,
     ) -> None:
-        """Initialise the imputer with the chosen strategy and hyperparameters."""
+        """Initialise the imputer.
+
+        All parameters are stored verbatim (no coercion) so that
+        ``get_params()`` / ``set_params()`` round-trip correctly.
+        """
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"strategy must be one of {sorted(_VALID_STRATEGIES)}; "
@@ -185,24 +153,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.max_iter = max_iter
         self.random_state = random_state
         self.estimator_kwargs = estimator_kwargs
-
-        # Fitted state — None until fit() is called.
-        # IMPORTANT: do NOT use mutable defaults like [] here; sklearn's
-        # check_is_fitted looks for attributes ending in '_' and treats any
-        # truthy value as "fitted", so [] would pass the check even before fit.
+        # Fitted-state sentinel — NOT a trailing-underscore attribute so that
+        # sklearn's check_is_fitted does not treat it as a fitted attribute.
         self._is_fitted: bool = False
-        self.feature_names_in_: Optional[List[str]] = None
-        self.numeric_cols_: List[str] = []
-        self.cat_cols_: List[str] = []
-        self.imputer_ = None
-        self.cat_imputer_ = None
-        self.encoder_: Optional[OrdinalEncoder] = None
-        self.cat_dtypes_: Dict[str, object] = {}
-        self.rf_reg_models_: Dict[str, object] = {}
-        self.rf_clf_models_: Dict[str, object] = {}
-        self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
-        # For metric="mixed" KNN: store the training DataFrame for Gower
-        self._knn_train_df_: Optional[pd.DataFrame] = None
 
     # ------------------------------------------------------------------
     # sklearn fitted-state contract
@@ -273,12 +226,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Returns
         -------
         self
-            The fitted imputer instance.
-
-        Raises
-        ------
-        TypeError
-            If *X* is not a pandas DataFrame.
         """
         if not isinstance(X, pd.DataFrame):
             raise TypeError(
@@ -286,29 +233,32 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
         X = self._normalize(X)
 
-        self.feature_names_in_ = X.columns.tolist()
-        self.numeric_cols_ = X.select_dtypes(include=[np.number]).columns.tolist()
-        self.cat_cols_ = X.select_dtypes(exclude=[np.number]).columns.tolist()
-        self.cat_dtypes_ = {c: X[c].dtype for c in self.cat_cols_}
+        # Fitted-state attributes — only set inside fit(), never in __init__.
+        self.feature_names_in_: List[str] = X.columns.tolist()
+        self.numeric_cols_: List[str] = X.select_dtypes(include=[np.number]).columns.tolist()
+        self.cat_cols_: List[str] = X.select_dtypes(exclude=[np.number]).columns.tolist()
+        self.cat_dtypes_: Dict[str, object] = {c: X[c].dtype for c in self.cat_cols_}
+        self.imputer_ = None
+        self.cat_imputer_ = None
+        self.encoder_: Optional[OrdinalEncoder] = None
+        self.rf_reg_models_: Dict[str, object] = {}
+        self.rf_clf_models_: Dict[str, object] = {}
+        self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
+        self._knn_train_df_: Optional[pd.DataFrame] = None
 
         strategy = self.strategy
 
         if strategy == "mean":
             self._fit_simple(X, num_strategy="mean")
-
         elif strategy == "median":
             self._fit_simple(X, num_strategy="median")
-
         elif strategy == "mode":
             self.imputer_ = SimpleImputer(strategy="most_frequent")
             self.imputer_.fit(X)
-
         elif strategy == "knn":
             self._fit_knn(X)
-
         elif strategy == "mice":
             self._fit_mice(X)
-
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
 
@@ -325,18 +275,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self.cat_imputer_.fit(X[self.cat_cols_])
 
     def _fit_knn(self, X: pd.DataFrame) -> None:
-        """Fit KNN imputer — euclidean or mixed metric.
-
-        For ``metric="mixed"``, the training DataFrame is stored so that
-        ``transform`` can compute Gower distances from test rows to
-        the (complete) training pool.
-        """
+        """Fit KNN imputer — euclidean or mixed metric."""
         if self.metric == "mixed":
-            # Store train data; Gower imputation is done lazily in transform.
             self._knn_train_df_ = X.copy()
             return
-
-        # euclidean path
         if self.cat_cols_:
             self.encoder_ = OrdinalEncoder(
                 handle_unknown="use_encoded_value",
@@ -349,7 +291,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.imputer_.fit(X_enc)
 
     def _fit_mice(self, X: pd.DataFrame) -> None:
-        """Fit ordinal encoder + IterativeImputer on the full encoded DataFrame."""
+        """Fit ordinal encoder + IterativeImputer."""
         if self.cat_cols_:
             self.encoder_ = OrdinalEncoder(
                 handle_unknown="use_encoded_value",
@@ -358,9 +300,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
             self.encoder_.fit(X[self.cat_cols_])
         X_enc = self._encode_cats(X)
-        estimator = BayesianRidge()
         self.imputer_ = IterativeImputer(
-            estimator=estimator,
+            estimator=BayesianRidge(),
             max_iter=self.max_iter,
             random_state=self.random_state,
             imputation_order="roman",
@@ -368,15 +309,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.imputer_.fit(X_enc)
 
     def _fit_tree(self, X: pd.DataFrame) -> None:
-        """Fit per-column regressor/classifier for rf and gb strategies.
-
-        For GB, any NaN remaining in the feature matrix is filled with
-        column means (``_fill_nan_with_col_means``) because
-        ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` do
-        not natively support NaN features.
-        """
+        """Fit per-column regressor/classifier for rf and gb strategies."""
+        est_kwargs = self.estimator_kwargs or {}
         is_rf = self.strategy == "rf"
-        is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
 
         if self.cat_cols_:
@@ -399,7 +334,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             feature_idx = [col_index[c] for c in X.columns if c != col]
             X_train = X_enc[np.ix_(np.where(train_mask)[0], feature_idx)]
 
-            if is_gb:
+            if not is_rf:
                 X_train = _fill_nan_with_col_means(X_train)
 
             if col in cat_set:
@@ -412,13 +347,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                     X.loc[train_mask, col].values.reshape(-1, 1)
                 ).ravel().astype(int)
                 clf = (
-                    RandomForestClassifier(
-                        random_state=self.random_state, **self.estimator_kwargs
-                    )
+                    RandomForestClassifier(random_state=self.random_state, **est_kwargs)
                     if is_rf
-                    else GradientBoostingClassifier(
-                        random_state=self.random_state, **self.estimator_kwargs
-                    )
+                    else GradientBoostingClassifier(random_state=self.random_state, **est_kwargs)
                 )
                 clf.fit(X_train, y_train_enc)
                 self.rf_clf_models_[col] = clf
@@ -426,13 +357,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             else:
                 y_train = X.loc[train_mask, col].values
                 reg = (
-                    RandomForestRegressor(
-                        random_state=self.random_state, **self.estimator_kwargs
-                    )
+                    RandomForestRegressor(random_state=self.random_state, **est_kwargs)
                     if is_rf
-                    else GradientBoostingRegressor(
-                        random_state=self.random_state, **self.estimator_kwargs
-                    )
+                    else GradientBoostingRegressor(random_state=self.random_state, **est_kwargs)
                 )
                 reg.fit(X_train, y_train)
                 self.rf_reg_models_[col] = reg
@@ -447,24 +374,13 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Parameters
         ----------
         X : pd.DataFrame
-            Data to impute.  Must have the same columns as the training
-            DataFrame passed to ``fit``.
+            Data to impute.  Must have the same columns as training data.
         y : ignored
-            Present for sklearn API compatibility.
 
         Returns
         -------
         pd.DataFrame
-            Fully-imputed copy of *X*.  The original is not modified.
-
-        Raises
-        ------
-        sklearn.exceptions.NotFittedError
-            If ``transform`` is called before ``fit``.
-        TypeError
-            If *X* is not a pandas DataFrame.
-        ValueError
-            If *X* has columns that differ from those seen during ``fit``.
+            Imputed copy of *X*.
         """
         from sklearn.utils.validation import check_is_fitted
         check_is_fitted(self)
@@ -502,12 +418,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy == "knn":
             if self.metric == "mixed":
                 from .impute import _impute_knn_gower
-                # Combine train (donors) and test, impute, return only test rows.
                 train_df = self._knn_train_df_
                 n_train = len(train_df)
-                combined = pd.concat(
-                    [train_df, X], ignore_index=True
-                )
+                combined = pd.concat([train_df, X], ignore_index=True)
                 imputed_combined = _impute_knn_gower(
                     combined, n_neighbors=self.n_neighbors
                 )
@@ -531,11 +444,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         return result[self.feature_names_in_]
 
     def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply fitted per-column tree models to impute missing values.
-
-        For GB models, NaN in the feature matrix is filled with column
-        means before calling ``predict``.
-        """
+        """Apply fitted per-column tree models to impute missing values."""
         is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
         X_enc = self._encode_cats(X).values
@@ -570,11 +479,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     # ------------------------------------------------------------------
 
     def get_feature_names_out(self) -> List[str]:
-        """Return the output feature names (same order as input).
+        """Return feature names as seen during fit.
 
         Returns
         -------
         list[str]
-            Feature names as seen during ``fit``.
         """
         return list(self.feature_names_in_)

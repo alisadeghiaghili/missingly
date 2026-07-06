@@ -44,11 +44,13 @@ from typing import Callable, Dict, List, Optional, Union
 import pandas as pd
 
 from . import (
+    diagnostics,
     manipulation,
     summary,
     stats,
     visualise,
 )
+from .exceptions import MissingColumnError
 from .impute import (
     impute_mean,
     impute_median,
@@ -115,7 +117,6 @@ class MissinglyAccessor:
         Returns
         -------
         pd.DataFrame
-            Transformed copy of the wrapped DataFrame.
         """
         return manipulation.replace_with_na(self._df, replace)
 
@@ -125,7 +126,6 @@ class MissinglyAccessor:
         Parameters
         ----------
         condition : callable
-            Passed to :func:`missingly.manipulation.replace_with_na_all`.
 
         Returns
         -------
@@ -145,11 +145,8 @@ class MissinglyAccessor:
         Parameters
         ----------
         case : str, optional
-            Passed to :func:`missingly.manipulation.clean_names`.
         sep : str, optional
-            Word separator.  Passed to :func:`missingly.manipulation.clean_names`.
         strip_accents : bool, optional
-            Passed to :func:`missingly.manipulation.clean_names`.
 
         Returns
         -------
@@ -172,13 +169,9 @@ class MissinglyAccessor:
         Parameters
         ----------
         axis : str or int, optional
-            ``'both'`` (default), ``'rows'``, or ``'cols'``.
         missing_values : list, optional
-            Sentinel values treated as missing.
         thresh_row : float, optional
-            Drop rows with a missing fraction above this threshold (0–1).
         thresh_col : float, optional
-            Drop columns with a missing fraction above this threshold (0–1).
 
         Returns
         -------
@@ -203,11 +196,8 @@ class MissinglyAccessor:
         Parameters
         ----------
         target : str
-            Column to fill.
         *donors : str
-            One or more columns used as fill sources, in priority order.
         remove_donors : bool, optional
-            If ``True``, drop donor columns after coalescing.
 
         Returns
         -------
@@ -230,14 +220,9 @@ class MissinglyAccessor:
         Parameters
         ----------
         columns : list of str, optional
-            Columns to create indicators for.  Defaults to all columns
-            that have at least one missing value.
         missing_values : list, optional
-            Sentinel values treated as missing.
         suffix : str, optional
-            Suffix appended to each indicator column name.
         keep_original : bool, optional
-            If ``False``, original columns are dropped.
 
         Returns
         -------
@@ -258,11 +243,6 @@ class MissinglyAccessor:
     def impute_mean(self, **kwargs) -> pd.DataFrame:
         """Impute missing values with column means.
 
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_mean`.
-
         Returns
         -------
         pd.DataFrame
@@ -271,11 +251,6 @@ class MissinglyAccessor:
 
     def impute_median(self, **kwargs) -> pd.DataFrame:
         """Impute missing values with column medians.
-
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_median`.
 
         Returns
         -------
@@ -286,11 +261,6 @@ class MissinglyAccessor:
     def impute_mode(self, **kwargs) -> pd.DataFrame:
         """Impute missing values with column modes.
 
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_mode`.
-
         Returns
         -------
         pd.DataFrame
@@ -299,11 +269,6 @@ class MissinglyAccessor:
 
     def impute_knn(self, **kwargs) -> pd.DataFrame:
         """Impute missing values using k-nearest neighbours.
-
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_knn`.
 
         Returns
         -------
@@ -314,11 +279,6 @@ class MissinglyAccessor:
     def impute_mice(self, **kwargs) -> pd.DataFrame:
         """Impute missing values using MICE (iterative imputer).
 
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_mice`.
-
         Returns
         -------
         pd.DataFrame
@@ -328,11 +288,6 @@ class MissinglyAccessor:
     def impute_rf(self, **kwargs) -> pd.DataFrame:
         """Impute missing values using a random-forest model.
 
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_rf`.
-
         Returns
         -------
         pd.DataFrame
@@ -341,11 +296,6 @@ class MissinglyAccessor:
 
     def impute_gb(self, **kwargs) -> pd.DataFrame:
         """Impute missing values using a gradient-boosting model.
-
-        Parameters
-        ----------
-        **kwargs
-            Forwarded to :func:`missingly.impute.impute_gb`.
 
         Returns
         -------
@@ -401,7 +351,6 @@ class MissinglyAccessor:
         Parameters
         ----------
         missing_values : list, optional
-            Sentinel values treated as missing.
 
         Returns
         -------
@@ -417,7 +366,6 @@ class MissinglyAccessor:
         Parameters
         ----------
         missing_values : list, optional
-            Sentinel values treated as missing.
 
         Returns
         -------
@@ -428,14 +376,9 @@ class MissinglyAccessor:
     def bind_shadow(self, missing_values: Optional[List] = None) -> pd.DataFrame:
         """Return the DataFrame with a shadow matrix appended.
 
-        The shadow matrix contains binary (True/False) columns suffixed
-        with ``_NA``, one per original column, indicating missingness.
-        The result has twice as many columns as the input.
-
         Parameters
         ----------
         missing_values : list, optional
-            Sentinel values treated as missing.
 
         Returns
         -------
@@ -453,27 +396,42 @@ class MissinglyAccessor:
         Returns
         -------
         dict
-            Keys: ``statistic``, ``df``, ``p_value``.
+            Keys: ``chi_square``, ``df``, ``p_value``, ``missing_patterns``,
+            ``amount_missing``.
         """
         return stats.mcar_test(self._df)
 
-    def mar_mnar_test(
-        self, target_col: Optional[str] = None
-    ) -> pd.DataFrame:
-        """Test for MAR / MNAR patterns.
+    def mar_mnar_test(self, target: str) -> pd.DataFrame:
+        """Test for MAR / MNAR patterns with respect to a target column.
+
+        Delegates to :func:`missingly.diagnostics.mar_mnar_test` with the
+        correct ``X`` / ``Y`` split.  The *target* column is used as the
+        outcome variable (``Y``); all remaining columns are used as
+        predictors (``X``).
 
         Parameters
         ----------
-        target_col : str, optional
-            Passed to :func:`missingly.stats.mar_mnar_test`.
+        target : str
+            Name of the outcome column.  Must exist in the DataFrame.
 
         Returns
         -------
         pd.DataFrame
+            Result from :func:`missingly.diagnostics.mar_mnar_test`.
+
+        Raises
+        ------
+        MissingColumnError
+            If *target* is not a column in the wrapped DataFrame.
         """
-        if target_col is not None:
-            return stats.mar_mnar_test(self._df, target_col)
-        return stats.mar_mnar_test(self._df)
+        if target not in self._df.columns:
+            raise MissingColumnError(
+                columns=[target],
+                available=list(self._df.columns),
+            )
+        X = self._df.drop(columns=[target])
+        Y = self._df[target].to_numpy()
+        return diagnostics.mar_mnar_test(X, Y)
 
     # ------------------------------------------------------------------
     # Visualisation — return Axes (or dict of Axes)
@@ -623,12 +581,8 @@ class MissinglyAccessor:
         Parameters
         ----------
         imputed_df : pd.DataFrame
-            The imputed version of the wrapped DataFrame, used as the
-            "after" distribution.
         ax : matplotlib.axes.Axes, optional
-            Axes to plot on.
         **kwargs
-            Forwarded to :func:`missingly.visualise.vis_impute_dist`.
 
         Returns
         -------
