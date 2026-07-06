@@ -192,7 +192,8 @@ from missingly.manipulation import (
 )
 
 # ---------------------------------------------------------------------------
-# Legacy / experimental shims
+# Legacy / experimental shims  (importable but NOT in __all__)
+# These emit DeprecationWarning on use. Will be removed in v0.3.0.
 # ---------------------------------------------------------------------------
 from missingly.stats_extra import (
     hotelling_test as _hotelling_test,
@@ -214,13 +215,8 @@ from missingly.performance import (
     memory_usage_mb as _memory_usage_mb,
     optimize_dtypes as _optimize_dtypes,
 )
-from missingly.simulate import (
-    simulate_mcar as _simulate_mcar,
-    simulate_mar as _simulate_mar,
-    simulate_mnar as _simulate_mnar,
-    simulate_mixed as _simulate_mixed,
-)
 
+# Deprecated aliases — still callable, emit DeprecationWarning, NOT in __all__
 hotelling_test = _deprecated_api(since="0.2.0")(_hotelling_test)
 pattern_monotone_test = _deprecated_api(since="0.2.0")(_pattern_monotone_test)
 missing_correlation_matrix = _deprecated_api(since="0.2.0")(_missing_correlation_matrix)
@@ -233,13 +229,12 @@ miss_as_feature = _deprecated_api(since="0.2.0")(_miss_as_feature)
 chunk_apply = _deprecated_api(since="0.2.0")(_chunk_apply)
 memory_usage_mb = _deprecated_api(since="0.2.0")(_memory_usage_mb)
 optimize_dtypes = _deprecated_api(since="0.2.0")(_optimize_dtypes)
-simulate_mcar = _deprecated_api(since="0.2.0")(_simulate_mcar)
-simulate_mar = _deprecated_api(since="0.2.0")(_simulate_mar)
-simulate_mnar = _deprecated_api(since="0.2.0")(_simulate_mnar)
-simulate_mixed = _deprecated_api(since="0.2.0")(_simulate_mixed)
 
-test_hotelling = hotelling_test
-test_pattern_monotone = pattern_monotone_test
+# test_hotelling / test_pattern_monotone were the root cause of
+# missingly/conftest.py having collect_ignore_glob = ["*.py"].
+# They are now private aliases only — NOT in __all__, NOT in public namespace.
+_test_hotelling = hotelling_test
+_test_pattern_monotone = pattern_monotone_test
 
 # ---------------------------------------------------------------------------
 # Accessor (side-effect import — registers df.miss)
@@ -275,17 +270,13 @@ __all__ = [
     "create_report",
     # Time-series
     "miss_ts_summary", "vis_ts_miss", "vis_miss_over_time", "impute_ts",
-    # Simulation (experimental)
+    # Simulation
     "simulate_mcar", "simulate_mar", "simulate_mnar", "simulate_mixed",
     # Manipulation
     "replace_with_na", "replace_with_na_all", "add_any_miss_var", "bind_shadow_matrix",
-    # Legacy / experimental
-    "hotelling_test", "pattern_monotone_test", "missing_correlation_matrix",
-    "gap_table", "vis_gap_lengths",
-    "clean_names", "remove_empty", "coalesce_columns", "miss_as_feature",
-    "chunk_apply", "memory_usage_mb", "optimize_dtypes",
-    # Backward-compat aliases
-    "test_hotelling", "test_pattern_monotone",
+    # NOTE: ALL deprecated symbols (hotelling_test, chunk_apply, test_hotelling, etc.)
+    # are intentionally EXCLUDED from __all__. They remain callable for backward
+    # compatibility but will not appear in tab-completion or API docs.
 ]
 
 __version__ = "0.3.0"
