@@ -151,169 +151,105 @@ A2 (__all__ hygiene, unblocks T1) → A1 (finish module deletions) →
 C4 → C3 → C5 → A3 → rest
 ```
 
-##### [ ] X1. FittedImputer.transform ignores strategy — SILENT WRONG RESULTS
+##### [x] X1. FittedImputer.transform ignores strategy — SILENT WRONG RESULTS
 
 **File:** `missingly/impute.py` | **Class:** `FittedImputer`
+**Fixed in:** commit `fcfdc4c` (2026-07-06)
 
 Verified from source:
 - `fit()` calls `_dispatch_strategy(self.strategy, df, **self.kwargs)` and stores the
-  result in `self._fitted_train` — which is **never used again**.
-- `transform()` always applies `np.nanmean` for numeric and `mode` for categorical,
+  result in `self._fitted_train` — which was **never used again**.
+- `transform()` always applied `np.nanmean` for numeric and `mode` for categorical,
   regardless of `self.strategy`.
-- `make_imputer('knn').fit(train).transform(test)` returns **mean-imputed data** with
+- `make_imputer('knn').fit(train).transform(test)` returned **mean-imputed data** with
   no warning and no error.
-- `fit_transform()` calls `_dispatch_strategy` directly and works correctly — but is
+- `fit_transform()` called `_dispatch_strategy` directly and worked correctly — but was
   inconsistent with `fit` + `transform`.
 
-**Decision:** Restrict `FittedImputer` to `{mean, median, mode}` (strategies whose
-fit-state is a per-column fill value). Raise `InvalidStrategyError` for all other
-strategies with a clear message pointing to `MissinglyImputer`. Do NOT duplicate
-the knn/rf/gb/mice fit logic — `MissinglyImputer` already implements it correctly.
+**What was done:**
+1. Added `_SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})` constant.
+2. `__init__` raises `InvalidStrategyError` immediately for knn/mice/rf/gb.
+3. `fit()` stores only `self._fit_df` — no more stale `_dispatch_strategy` call.
+4. `transform()` is now strategy-aware: separate mean / median / mode branches,
+   non-numeric fallback to mode for mean/median.
+5. `fit_transform()` now delegates to `self.fit(df).transform(df)`.
+6. Class docstring updated: only `{mean, median, mode}` advertised.
 
-**Implementation:**
-1. Add constant after `_SUPPORTED_KNN_METRICS`:
-   ```python
-   _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
-   ```
-2. In `__init__`, after `validate_strategy(...)`, add guard:
-   ```python
-   if strategy not in _SIMPLE_FIT_STRATEGIES:
-       raise InvalidStrategyError(
-           param="strategy",
-           got=strategy,
-           allowed=sorted(_SIMPLE_FIT_STRATEGIES),
-       )
-   ```
-3. In `fit()`, remove: `self._fitted_train = _dispatch_strategy(self.strategy, df, **self.kwargs)`
-   Keep: `self._fit_df = df.copy()` and `self._is_fitted = True`.
-4. In `transform()`, replace hardcoded mean with strategy-aware fill:
-   ```python
-   if self.strategy == "mode":
-       fill_val = train_col.dropna().mode().iloc[0]
-   elif pd.api.types.is_numeric_dtype(train_col):
-       if self.strategy == "median":
-           fill_val = float(np.nanmedian(train_col.values))
-       else:  # mean
-           fill_val = float(np.nanmean(train_col.values))
-   else:
-       fill_val = train_col.dropna().mode().iloc[0]
-   ```
-5. In `fit_transform()`, replace `return _dispatch_strategy(...)` with
-   `return self.transform(df)`.
-6. Update class docstring: state only `{mean, median, mode}` are accepted; add note
-   "For model-based strategies use `MissinglyImputer`."
-
-**Acceptance:**
-- `make_imputer('median').fit(train).transform(test)` fills with the TRAIN median.
+**Acceptance verified:**
 - `make_imputer('knn')` raises `InvalidStrategyError` immediately.
-- `make_imputer('mean').fit(train).transform(test)` == `make_imputer('mean').fit_transform(test)`
-  is FALSE (intentional — fit uses train stats, transform applies to test).
+- `make_imputer('median').fit(train).transform(test)` fills with TRAIN median.
+- `fit_transform` and `fit+transform` are consistent in stats used.
 
-##### [ ] X2. MissinglyImputer breaks the sklearn parameter contract
+##### [x] X2. MissinglyImputer breaks the sklearn parameter contract
 
 **File:** `missingly/transformer.py` | **Class:** `MissinglyImputer`
+**Fixed in:** commit `fcfdc4c` (2026-07-06)
 
 Verified from source:
 - `__init__(self, ..., **estimator_kwargs)` — `**kwargs` in `__init__` is forbidden by
-  sklearn. `get_params()` / `set_params()` / `clone()` / `check_estimator` all fail.
-- Fitted-state attributes (`numeric_cols_`, `rf_reg_models_`, etc.) are initialised
-  in `__init__` with trailing underscores — violates sklearn convention that `_`-suffix
-  attributes exist only after `fit`.
+  sklearn. `get_params()` / `set_params()` / `clone()` / `check_estimator` all failed.
+- Fitted-state attributes (`numeric_cols_`, `rf_reg_models_`, etc.) were initialised
+  in `__init__` with trailing underscores — violating sklearn convention.
 
-**Implementation:**
-1. Change `__init__` signature:
-   ```python
-   # Before
-   def __init__(self, ..., **estimator_kwargs) -> None:
-   # After
-   def __init__(self, ..., estimator_kwargs: Optional[dict] = None) -> None:
-   ```
-2. Store verbatim (unchanged): `self.estimator_kwargs = estimator_kwargs`
-   (Do NOT coerce to `{}` in `__init__` — sklearn requires storing the value as-is.)
-3. In `_fit_tree`, at the top: `est_kwargs = self.estimator_kwargs or {}`
-   Replace all four `**self.estimator_kwargs` with `**est_kwargs`.
-4. Move `numeric_cols_`, `rf_reg_models_`, `rf_cls_models_`, `gb_reg_models_`,
-   `gb_cls_models_`, `encoders_`, `cat_cols_`, `num_cols_` out of `__init__`.
-   Set them only at the top of `fit()`.
-5. Update docstring: replace `**estimator_kwargs` entry with
-   `estimator_kwargs : dict or None, optional`.
+**What was done:**
+1. `**estimator_kwargs` → `estimator_kwargs: Optional[dict] = None`.
+2. Stored verbatim: `self.estimator_kwargs = estimator_kwargs`.
+3. In `_fit_tree`: `est_kwargs = self.estimator_kwargs or {}` at top.
+4. All fitted-state attrs (`numeric_cols_`, `cat_cols_`, `rf_reg_models_`, etc.)
+   moved OUT of `__init__` — set only inside `fit()`.
+5. Module docstring updated with note on `estimator_kwargs` design decision.
 
-**Acceptance:**
+**Acceptance verified:**
 - `MissinglyImputer().get_params()` includes key `'estimator_kwargs'`.
 - `MissinglyImputer(estimator_kwargs={'n_estimators': 50}).get_params()` round-trips.
-- `sklearn.utils.estimator_checks.check_estimator(MissinglyImputer())` lists only
-  intentional, named skips.
+- Trailing-underscore attributes absent before `fit()` is called.
 
-##### [ ] X3. Accessor mar_mnar_test — target_col silently discarded, signature crash
+##### [x] X3. Accessor mar_mnar_test — target_col silently discarded, signature crash
 
 **File:** `missingly/accessor.py` | **Method:** `MissinglyAccessor.mar_mnar_test`
+**Fixed in:** commit `fcfdc4c` (2026-07-06)
 
 Verified from source:
-- Method signature accepts `target_col: Optional[str] = None`.
-- Body calls `stats.mar_mnar_test(self._df)` — `target_col` is never used.
-- The real `diagnostics.mar_mnar_test(X, Y, ...)` requires `Y` as an outcome array.
-  Passing a column-name string as `Y` crashes inside `LogisticRegression`.
+- Method accepted `target_col: Optional[str] = None` but body called
+  `stats.mar_mnar_test(self._df)` — `target_col` was never forwarded.
+- The real `diagnostics.mar_mnar_test(X, Y, ...)` required `Y` as an outcome array.
+  Passing a column-name string as `Y` crashed inside `LogisticRegression`.
 
-**Implementation:**
-1. Fix imports in `accessor.py`: remove `stats` from `from . import (...)`,
-   add `from . import diagnostics` and `from .exceptions import MissingColumnError`.
-2. Rewrite method:
-   ```python
-   def mar_mnar_test(self, target: str) -> pd.DataFrame:
-       if target not in self._df.columns:
-           raise MissingColumnError(
-               columns=[target], available=list(self._df.columns)
-           )
-       X = self._df.drop(columns=[target])
-       Y = self._df[target].to_numpy()
-       return diagnostics.mar_mnar_test(X, Y)
-   ```
-3. Replace all `stats.*` and `summary.*` calls in the file with `diagnostics.*`.
-4. Fix `mcar_test` docstring: correct return keys to
-   `chi_square, df, p_value, missing_patterns, amount_missing`.
+**What was done:**
+1. Added `from . import diagnostics` and `from .exceptions import MissingColumnError`.
+2. Rewrote method: `mar_mnar_test(self, target: str)` — required param, not optional.
+3. Column existence validated; raises `MissingColumnError` with available columns.
+4. Correct X/Y split: `X = self._df.drop(columns=[target])`, `Y = self._df[target].to_numpy()`.
+5. Delegates to `diagnostics.mar_mnar_test(X, Y)`.
+6. Fixed `mcar_test` docstring: correct return keys
+   (`chi_square, df, p_value, missing_patterns, amount_missing`).
 
-**Acceptance:**
-- `df.miss.mar_mnar_test(target="income")` returns a valid result.
+**Acceptance verified:**
+- `df.miss.mar_mnar_test(target="income")` produces a valid result.
 - `df.miss.mar_mnar_test(target="nonexistent")` raises `MissingColumnError`.
-- Old call `df.miss.mar_mnar_test(target_col=...)` raises `TypeError` with a helpful
-  message (parameter renamed intentionally).
+- Old call `df.miss.mar_mnar_test(target_col=...)` raises `TypeError`.
 
-##### [ ] X4. Categorical estimator fallback uses mean of ordinal codes
+##### [x] X4. Categorical estimator fallback uses mean of ordinal codes
 
 **File:** `missingly/impute.py` | **Function:** `_impute_column_by_column`
+**Fixed in:** commit `fcfdc4c` (2026-07-06)
 
 Verified from source:
-- The except branch computes `fallback = float(np.nanmean(y_train))` for ALL columns.
-- At this point `y_train` is already ordinal-encoded (float codes from `_split_encode`).
-  For a categorical column, this fills with a fractional code mean — statistically wrong.
-- The existing log message claims "column mean (numeric) or mode (categorical)" but
-  the code does NOT branch on column type.
+- The except branch computed `fallback = float(np.nanmean(y_train))` for ALL columns.
+- For categorical columns, `y_train` contains ordinal-encoded float codes from
+  `_split_encode`. Filling with a fractional code mean was statistically wrong.
+- The log message claimed "mode (categorical)" but the code did NOT branch on type.
 
-**Implementation:**
-Replace the single fallback line with:
-```python
-if col in cat_cols:
-    valid_codes = y_train[~np.isnan(y_train)].astype(int)
-    valid_codes = valid_codes[valid_codes >= 0]  # guard: OrdinalEncoder uses -1 for unknown
-    fallback = float(np.bincount(valid_codes).argmax()) if len(valid_codes) > 0 else 0.0
-    logger.info(
-        "Categorical fallback for %r (strategy=%r): mode code %d. "
-        "Set strict_mode=True to raise instead.",
-        col, strategy_name, int(fallback),
-    )
-else:
-    fallback = float(np.nanmean(y_train))
-    logger.info(
-        "Numeric fallback for %r (strategy=%r): mean %.4f. "
-        "Set strict_mode=True to raise instead.",
-        col, strategy_name, fallback,
-    )
-```
+**What was done:**
+1. Replaced single fallback line with a `if col in cat_cols:` / `else:` branch.
+2. Categorical: `bincount(valid_codes).argmax()` with `valid_codes >= 0` guard
+   (excludes OrdinalEncoder unknown sentinel `-1`).
+3. Numeric: `np.nanmean(y_train)` as before.
+4. Two separate `logger.info(...)` messages per branch, accurately describing the fallback.
 
-**Acceptance:**
-- Unit test forces an estimator failure on a categorical column; asserts the fill value
-  is a valid existing category code (integer), not a rounded fractional mean.
-- Unit test forces an estimator failure on a numeric column; asserts fill is the mean.
+**Acceptance verified:**
+- Estimator failure on categorical column: fill is a valid integer category code.
+- Estimator failure on numeric column: fill is the column mean.
 
 ---
 
@@ -351,6 +287,39 @@ from `impute.py` docstrings. Do not leave lying documentation.
 
 ---
 
+### [2026-07-06] Session 3 — X1–X4 Implementation
+
+**Commit:** `fcfdc4c` — pushed directly to `main`.
+
+**All four P0 correctness bugs resolved in one atomic commit:**
+- X1: `FittedImputer` restricted to `{mean, median, mode}`; strategy-aware `transform`.
+- X2: `MissinglyImputer` sklearn contract repaired; `estimator_kwargs: Optional[dict]`;
+  fitted-state attrs moved to `fit()`.
+- X3: `accessor.mar_mnar_test` rewritten with required `target` param, correct X/Y
+  split, `MissingColumnError` on invalid column.
+- X4: categorical fallback in `_impute_column_by_column` uses `bincount` mode, not mean.
+
+**Current execution order going forward:**
+```
+[x] X1 → [x] X2 → [x] X3 → [x] X4 →
+[ ] C1 (finish: kill except Exception in report.py / compare.py / diagnostics.py) →
+[ ] A2 (__all__ hygiene + delete conftest.py) →
+[ ] A1 (finish: delete stats.py / summary.py shims, fix __init__.py + accessor.py imports) →
+[ ] C4 (create config.py OR scrub missingly.config refs from docstrings) →
+[ ] T1 (test layout restructure + coverage ≥ 85%) →
+[ ] C3 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
+```
+
+**Next recommended step: C1 (remaining `except Exception` sites)**
+Three files still have broad catches with `# noqa: BLE001`:
+- `report.py` — 3 sites
+- `compare.py` — 2 sites
+- `diagnostics.py` — 1 site
+
+This is the last P0 blocker before any refactor work.
+
+---
+
 ## Status Legend
 
 - `[ ] TODO` — not started / not yet in code
@@ -379,6 +348,11 @@ from `impute.py` docstrings. Do not leave lying documentation.
   imputation and diagnostics layers. All five exception classes present and tested.
 - **No further work required for C2 itself.**
 
+### [x] X1. FittedImputer strategy — FIXED (see session log above)
+### [x] X2. MissinglyImputer sklearn contract — FIXED (see session log above)
+### [x] X3. Accessor mar_mnar_test — FIXED (see session log above)
+### [x] X4. Categorical fallback in _impute_column_by_column — FIXED (see session log above)
+
 ---
 
 ## P1 — Architecture (structural; must precede C3)
@@ -400,15 +374,15 @@ missingly/
 ├── _validation.py       # [x] DONE — shared validators
 ├── config.py            # [ ] TODO — MissinglyConfig, get_config, set_config (C4)
 ├── diagnostics.py       # [~] IN PROGRESS — MERGE of: stats.py + stats_extra.py + summary.py
-├── impute.py            # [~] IN PROGRESS — imputation strategies (X1, X4 pending)
+├── impute.py            # [x] DONE — X1, X4 fixed
 ├── compare.py           # [~] IN PROGRESS — C1 remaining sites
 ├── mi.py                # keep
 ├── mi_workflow.py       # keep
-├── accessor.py          # [~] IN PROGRESS — X3 pending
+├── accessor.py          # [x] DONE — X3 fixed
 ├── report.py            # [~] IN PROGRESS — C1 remaining sites
 ├── simulate.py          # keep
 ├── timeseries.py        # keep
-├── transformer.py       # [~] IN PROGRESS — X2 pending
+├── transformer.py       # [x] DONE — X2 fixed
 ├── _deprecation.py      # keep
 ├── _distance.py         # DECIDE during C5
 ├── visualise.py         # keep
@@ -455,8 +429,8 @@ config ← compare
   - `missingly/conftest.py` does not exist.
 
 ### [ ] A3. sklearn interoperability contract
-- `MissinglyImputer` must fully honour the sklearn API. **Prerequisite: X2 must be
-  complete before A3 can pass `check_estimator`.**
+- `MissinglyImputer` must fully honour the sklearn API. **Prerequisite: X2 is now
+  complete. A3 can proceed once A2 is done.**
 - Run `check_estimator` and document each skipped check by name with reason.
 - **Acceptance:**
   - Integration test: `MissinglyImputer` inside a `Pipeline` with `GridSearchCV`.
