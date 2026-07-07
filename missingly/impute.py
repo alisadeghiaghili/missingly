@@ -31,7 +31,8 @@ Error handling
 --------------
 All public functions validate their inputs eagerly and raise specific
 :mod:`missingly.exceptions` exceptions on failure.  No exception is
-swallowed silently.  When ``strict_mode=True`` (see :mod:`missingly.config`)
+swallowed silently.  When ``strict_mode=True`` (see :mod:`missingly.config`
+or the global :data:`missingly.config.strict_mode` setting)
 the column-by-column imputer raises :class:`~missingly.exceptions.ImputationError`
 rather than falling back to a column mean.
 
@@ -39,7 +40,8 @@ Large-data warnings
 -------------------
 Functions that are O(n²) or slow on large DataFrames emit a
 ``UserWarning`` when the input exceeds the configured
-``large_df_threshold`` (default 50 000 rows; see :mod:`missingly.config`).
+``large_df_threshold`` (default 50 000 rows; configure via
+:attr:`missingly.config.large_df_threshold`).
 """
 
 from __future__ import annotations
@@ -71,11 +73,9 @@ from missingly._validation import (
     validate_positive_int,
     validate_strategy,
 )
+from missingly.config import config as _config
 
 logger = logging.getLogger(__name__)
-
-_LARGE_DF_ROW_THRESHOLD = 50_000
-_KNN_CAT_NEIGHBORS_THRESHOLD = 5
 
 _SUPPORTED_STRATEGIES = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
 _SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
@@ -89,7 +89,7 @@ _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
 
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
     """Emit a UserWarning when *df* exceeds the large-DataFrame threshold."""
-    if len(df) > _LARGE_DF_ROW_THRESHOLD:
+    if len(df) > _config.large_df_threshold:
         import warnings
         warnings.warn(
             f"{method_name}: DataFrame has {len(df):,} rows which may result in "
@@ -105,12 +105,12 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
     """Warn when KNN is applied to a DataFrame dominated by categorical columns."""
     n_cat = len(df.select_dtypes(exclude=[np.number]).columns)
     n_num = len(df.select_dtypes(include=[np.number]).columns)
-    if n_cat > n_num and n_neighbors > _KNN_CAT_NEIGHBORS_THRESHOLD:
+    if n_cat > n_num and n_neighbors > _config.knn_cat_neighbors_threshold:
         import warnings
         warnings.warn(
             f"KNN imputation may be unreliable: the DataFrame has {n_cat} categorical "
             f"column(s) but only {n_num} numeric column(s), and n_neighbors={n_neighbors} "
-            f"(> {_KNN_CAT_NEIGHBORS_THRESHOLD}). "
+            f"(> {_config.knn_cat_neighbors_threshold}). "
             "Euclidean distance over ordinal-encoded categoricals is not statistically "
             "sound. Consider impute_rf(), impute_gb(), or impute_mice() for "
             "heavy-categorical datasets.",
@@ -234,7 +234,7 @@ def _impute_column_by_column(
     strategy_name: str,
     max_iter: int = 1,
     fill_feature_nan: bool = False,
-    strict_mode: bool = False,
+    strict_mode: Optional[bool] = None,
 ) -> pd.DataFrame:
     """Column-by-column imputation used by RF and GB imputers.
 
@@ -255,15 +255,18 @@ def _impute_column_by_column(
     fill_feature_nan : bool, default False
         If True, fill NaN in the feature matrix with column means before
         fitting.  Required for GradientBoosting which rejects NaN inputs.
-    strict_mode : bool, default False
+    strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
-        estimator failure instead of falling back to the column mean.
+        estimator failure instead of falling back to the column mean/mode.
+        If None, falls back to :attr:`missingly.config.strict_mode`.
 
     Returns
     -------
     pd.DataFrame
         Imputed copy of *df*.
     """
+    effective_strict = _config.strict_mode if strict_mode is None else strict_mode
+
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     all_cols = list(df_work.columns)
     df_result = df_work.copy()
@@ -303,7 +306,7 @@ def _impute_column_by_column(
                 est.fit(X_train, y_train)
                 preds = est.predict(X_pred)
             except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
-                if strict_mode:
+                if effective_strict:
                     raise ImputationError(
                         column=col, strategy=strategy_name, original=exc
                     ) from exc
@@ -661,7 +664,7 @@ def impute_rf(
     df: pd.DataFrame,
     max_iter: int = 1,
     random_state: int = 0,
-    strict_mode: bool = False,
+    strict_mode: Optional[bool] = None,
     **rf_kwargs,
 ) -> pd.DataFrame:
     """Impute missing values using Random Forest.
@@ -674,9 +677,10 @@ def impute_rf(
         Number of imputation passes over all columns.
     random_state : int, default 0
         Random seed passed to the Random Forest estimators.
-    strict_mode : bool, default False
+    strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
-        estimator failure instead of falling back to the column mean.
+        estimator failure instead of falling back to the column mean/mode.
+        If None, uses the global :attr:`missingly.config.strict_mode` setting.
     **rf_kwargs
         Additional keyword arguments forwarded to
         :class:`~sklearn.ensemble.RandomForestRegressor` and
@@ -728,7 +732,7 @@ def impute_gb(
     df: pd.DataFrame,
     max_iter: int = 1,
     random_state: int = 0,
-    strict_mode: bool = False,
+    strict_mode: Optional[bool] = None,
     **gb_kwargs,
 ) -> pd.DataFrame:
     """Impute missing values using Gradient Boosting.
@@ -741,9 +745,10 @@ def impute_gb(
         Number of imputation passes over all columns.
     random_state : int, default 0
         Random seed passed to the Gradient Boosting estimators.
-    strict_mode : bool, default False
+    strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
-        estimator failure instead of falling back to the column mean.
+        estimator failure instead of falling back to the column mean/mode.
+        If None, uses the global :attr:`missingly.config.strict_mode` setting.
     **gb_kwargs
         Additional keyword arguments forwarded to
         :class:`~sklearn.ensemble.GradientBoostingRegressor` and
