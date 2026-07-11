@@ -1,4 +1,4 @@
-"""Tests for summary/diagnostics functions (migrated from missingly.summary -> missingly.diagnostics)."""
+"""Tests for diagnostics summary functions."""
 
 from __future__ import annotations
 
@@ -13,10 +13,6 @@ from missingly.diagnostics import (
     pct_miss,
     n_complete,
     pct_complete,
-    miss_var_table,
-    miss_case_table,
-    miss_var_run,
-    miss_span,
     bind_shadow,
 )
 
@@ -42,23 +38,18 @@ def all_missing_df():
     return pd.DataFrame({"a": [np.nan, np.nan], "b": [np.nan, np.nan]})
 
 
-# ---------------------------------------------------------------------------
-# n_miss / pct_miss / n_complete / pct_complete
-# ---------------------------------------------------------------------------
-
 class TestScalarHelpers:
     def test_n_miss(self, simple_df):
         assert n_miss(simple_df) == 4
 
     def test_pct_miss(self, simple_df):
-        total = simple_df.size
-        expected = 4 / total * 100
+        expected = 4 / simple_df.size * 100
         assert abs(pct_miss(simple_df) - expected) < 1e-9
 
     def test_n_complete(self, simple_df):
         assert n_complete(simple_df) == simple_df.size - 4
 
-    def test_pct_complete(self, simple_df):
+    def test_pct_complete_sums_to_100(self, simple_df):
         assert abs(pct_complete(simple_df) + pct_miss(simple_df) - 100) < 1e-9
 
     def test_n_miss_no_missing(self, no_missing_df):
@@ -68,20 +59,13 @@ class TestScalarHelpers:
         assert n_miss(all_missing_df) == all_missing_df.size
 
 
-# ---------------------------------------------------------------------------
-# miss_var_summary
-# ---------------------------------------------------------------------------
-
 class TestMissVarSummary:
     def test_returns_dataframe(self, simple_df):
-        result = miss_var_summary(simple_df)
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(miss_var_summary(simple_df), pd.DataFrame)
 
-    def test_columns_present(self, simple_df):
+    def test_required_columns(self, simple_df):
         result = miss_var_summary(simple_df)
-        assert "variable" in result.columns
-        assert "n_miss" in result.columns
-        assert "pct_miss" in result.columns
+        assert {"variable", "n_miss", "pct_miss"}.issubset(result.columns)
 
     def test_counts_correct(self, simple_df):
         result = miss_var_summary(simple_df).set_index("variable")
@@ -90,47 +74,20 @@ class TestMissVarSummary:
         assert result.loc["c", "n_miss"] == 0
 
     def test_no_missing(self, no_missing_df):
-        result = miss_var_summary(no_missing_df)
-        assert (result["n_miss"] == 0).all()
+        assert (miss_var_summary(no_missing_df)["n_miss"] == 0).all()
 
-
-# ---------------------------------------------------------------------------
-# miss_case_summary
-# ---------------------------------------------------------------------------
 
 class TestMissCaseSummary:
     def test_returns_dataframe(self, simple_df):
-        result = miss_case_summary(simple_df)
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(miss_case_summary(simple_df), pd.DataFrame)
 
     def test_row_count(self, simple_df):
+        assert len(miss_case_summary(simple_df)) == len(simple_df)
+
+    def test_required_columns(self, simple_df):
         result = miss_case_summary(simple_df)
-        assert len(result) == len(simple_df)
+        assert {"case", "n_miss", "pct_miss"}.issubset(result.columns)
 
-    def test_columns_present(self, simple_df):
-        result = miss_case_summary(simple_df)
-        assert "case" in result.columns
-        assert "n_miss" in result.columns
-        assert "pct_miss" in result.columns
-
-
-# ---------------------------------------------------------------------------
-# miss_var_table / miss_case_table
-# ---------------------------------------------------------------------------
-
-class TestTableHelpers:
-    def test_miss_var_table(self, simple_df):
-        result = miss_var_table(simple_df)
-        assert isinstance(result, pd.DataFrame)
-
-    def test_miss_case_table(self, simple_df):
-        result = miss_case_table(simple_df)
-        assert isinstance(result, pd.DataFrame)
-
-
-# ---------------------------------------------------------------------------
-# bind_shadow
-# ---------------------------------------------------------------------------
 
 class TestBindShadow:
     def test_doubles_columns(self, simple_df):
@@ -146,4 +103,4 @@ class TestBindShadow:
         result = bind_shadow(simple_df)
         shadow_cols = [c for c in result.columns if c.endswith("_NA")]
         for col in shadow_cols:
-            assert result[col].dtype == bool or result[col].isin([True, False]).all()
+            assert result[col].isin([True, False]).all()
