@@ -5,7 +5,7 @@ that support missingness analysis.  It was relocated from
 ``missingly/manipulation.py`` (root) as part of C3 (API surface cleanup).
 
 The root ``manipulation.py`` is now a deprecated shim that re-exports
-everything from here and emits :class:`FutureWarning` on import.
+everything from here and emits :class:`DeprecationWarning` on import.
 
 Public functions
 ----------------
@@ -18,10 +18,16 @@ add_any_miss_var
 bind_shadow_matrix
     Return the shadow matrix of a DataFrame as a standalone DataFrame.
 
-Note: ``clean_names``, ``remove_empty``, ``coalesce_columns``, and
-``miss_as_feature`` are **not** reproduced here.  They were deprecated in
-v0.2.0 and their stubs remain in the root ``manipulation.py`` shim until
-the v0.4.0 deletion milestone.
+Deprecated shims (emit DeprecationWarning on call)
+---------------------------------------------------
+clean_names
+    Moved to ``data_quality_toolkit.cleaning``.
+remove_empty
+    Moved to ``data_quality_toolkit.cleaning``.
+coalesce_columns
+    Moved to ``data_quality_toolkit.cleaning``.
+miss_as_feature
+    Experimental; may be moved to a separate package.
 
 Compatibility
 -------------
@@ -30,11 +36,18 @@ Requires Python 3.9+.
 
 from __future__ import annotations
 
+import warnings
 from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 
+from missingly._deprecation import deprecated_api
+
+
+# ---------------------------------------------------------------------------
+# Active public API
+# ---------------------------------------------------------------------------
 
 def replace_with_na(
     df: pd.DataFrame,
@@ -194,3 +207,141 @@ def bind_shadow_matrix(
         shadow = shadow | df.isin(missing_values)
     shadow.columns = [f"{col}_NA" for col in df.columns]
     return shadow
+
+
+# ---------------------------------------------------------------------------
+# Deprecated shims — preserved for backward compatibility
+# Will be removed in v0.4.0 alongside root manipulation.py deletion.
+# ---------------------------------------------------------------------------
+
+@deprecated_api(
+    "Use `from data_quality_toolkit.cleaning import clean_names` instead.",
+    since="0.2.0",
+)
+def clean_names(*args, **kwargs):
+    """Legacy shim — emits :class:`DeprecationWarning`.
+
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.cleaning``.
+    """
+    warnings.warn(
+        "clean_names moved to data_quality_toolkit.cleaning and will be "
+        "removed from missingly in v0.4.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from data_quality_toolkit.cleaning import clean_names as _clean  # type: ignore[import]
+    return _clean(*args, **kwargs)
+
+
+@deprecated_api(
+    "Use `from data_quality_toolkit.cleaning import remove_empty` instead.",
+    since="0.2.0",
+)
+def remove_empty(*args, **kwargs):
+    """Legacy shim — emits :class:`DeprecationWarning`.
+
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.cleaning``.
+    """
+    warnings.warn(
+        "remove_empty moved to data_quality_toolkit.cleaning and will be "
+        "removed from missingly in v0.4.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from data_quality_toolkit.cleaning import remove_empty as _remove  # type: ignore[import]
+    return _remove(*args, **kwargs)
+
+
+@deprecated_api(
+    "Use `from data_quality_toolkit.cleaning import coalesce_columns` instead.",
+    since="0.2.0",
+)
+def coalesce_columns(*args, **kwargs):
+    """Legacy shim — emits :class:`DeprecationWarning`.
+
+    .. deprecated:: 0.2.0
+        Moved to ``data_quality_toolkit.cleaning``.
+    """
+    warnings.warn(
+        "coalesce_columns moved to data_quality_toolkit.cleaning and will be "
+        "removed from missingly in v0.4.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from data_quality_toolkit.cleaning import coalesce_columns as _coal  # type: ignore[import]
+    return _coal(*args, **kwargs)
+
+
+@deprecated_api(
+    "This function may be moved to a separate feature-engineering package in a future release.",
+    since="0.2.0",
+)
+def miss_as_feature(
+    df: pd.DataFrame,
+    columns: Optional[List[str]] = None,
+    *,
+    missing_values: Optional[List] = None,
+    suffix: str = "_NA",
+    keep_original: bool = True,
+) -> pd.DataFrame:
+    """Encode missingness as binary indicator columns (experimental).
+
+    .. deprecated:: 0.2.0
+        Experimental — may be moved to a separate package.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    columns : list of str, optional
+        Columns to encode.  Defaults to all columns with any missing values.
+    missing_values : list, optional
+        Additional sentinel values to treat as missing.
+    suffix : str, default ``"_NA"``
+        Suffix appended to each indicator column name.
+    keep_original : bool, default True
+        If False, drop the original columns after adding indicators.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with binary indicator columns interleaved.
+    """
+    warnings.warn(
+        "miss_as_feature is experimental and may be moved to a separate "
+        "package in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    if columns is not None:
+        missing_cols = [c for c in columns if c not in df.columns]
+        if missing_cols:
+            raise KeyError(f"Columns not found in DataFrame: {missing_cols}")
+        target_cols = columns
+    else:
+        null_mask = df.isnull()
+        if missing_values:
+            null_mask = null_mask | df.isin(missing_values)
+        target_cols = [c for c in df.columns if null_mask[c].any()]
+
+    result = df.copy()
+    new_order: List[str] = []
+
+    for col in df.columns:
+        new_order.append(col)
+        if col in target_cols:
+            indicator = df[col].isnull()
+            if missing_values:
+                indicator = indicator | df[col].isin(missing_values)
+            ind_name = f"{col}{suffix}"
+            result[ind_name] = indicator.astype(int)
+            new_order.append(ind_name)
+
+    result = result[new_order]
+
+    if not keep_original:
+        result = result.drop(columns=list(target_cols))
+
+    return result

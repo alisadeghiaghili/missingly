@@ -7,7 +7,7 @@ directly for new code::
     # Preferred (new code)
     from missingly.utils.manipulation import replace_with_na
 
-    # Still works but emits no warning yet — will in v0.4.0
+    # Still works but will emit DeprecationWarning in v0.4.0
     from missingly.manipulation import replace_with_na
 
 .. deprecated:: 0.3.0
