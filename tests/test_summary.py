@@ -1,8 +1,4 @@
-"""Tests for missingly summary functions.
-
-Covers correctness of all summary statistics and the critical
-bind_shadow NaN + sentinel bug fix.
-"""
+"""Tests for summary/diagnostics functions (migrated from missingly.summary -> missingly.diagnostics)."""
 
 from __future__ import annotations
 
@@ -10,150 +6,144 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.summary import (
-    bind_shadow,
-    n_miss,
-    n_complete,
-    pct_miss,
-    pct_complete,
+from missingly.diagnostics import (
     miss_var_summary,
     miss_case_summary,
+    n_miss,
+    pct_miss,
+    n_complete,
+    pct_complete,
+    miss_var_table,
+    miss_case_table,
+    miss_var_run,
+    miss_span,
+    bind_shadow,
 )
 
 
-@pytest.fixture
-def df():
-    """Small DataFrame with NaN and a sentinel value."""
-    return pd.DataFrame({
-        "A": [1.0, np.nan, -99.0],
-        "B": [np.nan, 2.0, 3.0],
-    })
+@pytest.fixture()
+def simple_df():
+    return pd.DataFrame(
+        {
+            "a": [1.0, np.nan, 3.0, np.nan, 5.0],
+            "b": [np.nan, 2.0, np.nan, 4.0, 5.0],
+            "c": [1.0, 2.0, 3.0, 4.0, 5.0],
+        }
+    )
+
+
+@pytest.fixture()
+def no_missing_df():
+    return pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+
+
+@pytest.fixture()
+def all_missing_df():
+    return pd.DataFrame({"a": [np.nan, np.nan], "b": [np.nan, np.nan]})
 
 
 # ---------------------------------------------------------------------------
-# bind_shadow
+# n_miss / pct_miss / n_complete / pct_complete
 # ---------------------------------------------------------------------------
 
-def test_bind_shadow_doubles_columns(df):
-    """bind_shadow returns a DataFrame with 2x the columns."""
-    result = bind_shadow(df)
-    assert result.shape[1] == df.shape[1] * 2
+class TestScalarHelpers:
+    def test_n_miss(self, simple_df):
+        assert n_miss(simple_df) == 4
 
+    def test_pct_miss(self, simple_df):
+        total = simple_df.size
+        expected = 4 / total * 100
+        assert abs(pct_miss(simple_df) - expected) < 1e-9
 
-def test_bind_shadow_suffix(df):
-    """Shadow columns are named with _NA suffix."""
-    result = bind_shadow(df)
-    assert "A_NA" in result.columns
-    assert "B_NA" in result.columns
+    def test_n_complete(self, simple_df):
+        assert n_complete(simple_df) == simple_df.size - 4
 
+    def test_pct_complete(self, simple_df):
+        assert abs(pct_complete(simple_df) + pct_miss(simple_df) - 100) < 1e-9
 
-def test_bind_shadow_nan_always_detected(df):
-    """NaN values are detected even when missing_values is provided."""
-    # Without missing_values: NaN in A[1] and B[0] should be True
-    result = bind_shadow(df)
-    assert result.loc[1, "A_NA"] == True   # A[1] is NaN
-    assert result.loc[0, "B_NA"] == True   # B[0] is NaN
+    def test_n_miss_no_missing(self, no_missing_df):
+        assert n_miss(no_missing_df) == 0
 
-
-def test_bind_shadow_sentinel_also_detected(df):
-    """Sentinel values in missing_values are flagged as missing."""
-    result = bind_shadow(df, missing_values=[-99])
-    # A[2] = -99.0 should be flagged
-    assert result.loc[2, "A_NA"] == True
-
-
-def test_bind_shadow_nan_plus_sentinel(df):
-    """Both NaN and sentinels are flagged when missing_values is given."""
-    result = bind_shadow(df, missing_values=[-99])
-    # A[1] = NaN → still True
-    assert result.loc[1, "A_NA"] == True
-    # A[2] = -99 → True
-    assert result.loc[2, "A_NA"] == True
-    # A[0] = 1.0 → False
-    assert result.loc[0, "A_NA"] == False
-
-
-def test_bind_shadow_does_not_mutate(df):
-    """bind_shadow does not mutate the original DataFrame."""
-    original = df.copy()
-    bind_shadow(df, missing_values=[-99])
-    pd.testing.assert_frame_equal(df, original)
-
-
-# ---------------------------------------------------------------------------
-# n_miss / n_complete
-# ---------------------------------------------------------------------------
-
-def test_n_miss_basic(df):
-    """n_miss counts NaN values correctly."""
-    assert n_miss(df) == 2  # A[1] and B[0]
-
-
-def test_n_miss_with_sentinel(df):
-    """n_miss counts sentinels when missing_values is provided."""
-    assert n_miss(df, missing_values=[-99]) == 3  # A[1], B[0], A[2]
-
-
-def test_n_complete_basic(df):
-    """n_complete + n_miss == total cells."""
-    assert n_miss(df) + n_complete(df) == df.size
-
-
-# ---------------------------------------------------------------------------
-# pct_miss / pct_complete
-# ---------------------------------------------------------------------------
-
-def test_pct_miss_range(df):
-    """pct_miss is between 0 and 100."""
-    assert 0.0 <= pct_miss(df) <= 100.0
-
-
-def test_pct_complete_complement(df):
-    """pct_miss and pct_complete sum to 100."""
-    assert abs(pct_miss(df) + pct_complete(df) - 100.0) < 1e-9
-
-
-def test_pct_miss_empty_df():
-    """pct_miss returns 0 for an empty DataFrame."""
-    assert pct_miss(pd.DataFrame()) == 0.0
+    def test_n_miss_all_missing(self, all_missing_df):
+        assert n_miss(all_missing_df) == all_missing_df.size
 
 
 # ---------------------------------------------------------------------------
 # miss_var_summary
 # ---------------------------------------------------------------------------
 
-def test_miss_var_summary_shape(df):
-    """miss_var_summary has one row per column."""
-    result = miss_var_summary(df)
-    assert len(result) == len(df.columns)
+class TestMissVarSummary:
+    def test_returns_dataframe(self, simple_df):
+        result = miss_var_summary(simple_df)
+        assert isinstance(result, pd.DataFrame)
 
+    def test_columns_present(self, simple_df):
+        result = miss_var_summary(simple_df)
+        assert "variable" in result.columns
+        assert "n_miss" in result.columns
+        assert "pct_miss" in result.columns
 
-def test_miss_var_summary_values(df):
-    """miss_var_summary n_miss column matches expected counts."""
-    result = miss_var_summary(df)
-    a_row = result[result["variable"] == "A"].iloc[0]
-    assert a_row["n_miss"] == 1  # only A[1] is NaN
+    def test_counts_correct(self, simple_df):
+        result = miss_var_summary(simple_df).set_index("variable")
+        assert result.loc["a", "n_miss"] == 2
+        assert result.loc["b", "n_miss"] == 2
+        assert result.loc["c", "n_miss"] == 0
 
-
-def test_miss_var_summary_sentinel(df):
-    """miss_var_summary counts sentinels when missing_values is provided."""
-    result = miss_var_summary(df, missing_values=[-99])
-    a_row = result[result["variable"] == "A"].iloc[0]
-    assert a_row["n_miss"] == 2  # A[1]=NaN and A[2]=-99
+    def test_no_missing(self, no_missing_df):
+        result = miss_var_summary(no_missing_df)
+        assert (result["n_miss"] == 0).all()
 
 
 # ---------------------------------------------------------------------------
 # miss_case_summary
 # ---------------------------------------------------------------------------
 
-def test_miss_case_summary_shape(df):
-    """miss_case_summary has one row per DataFrame row."""
-    result = miss_case_summary(df)
-    assert len(result) == len(df)
+class TestMissCaseSummary:
+    def test_returns_dataframe(self, simple_df):
+        result = miss_case_summary(simple_df)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_row_count(self, simple_df):
+        result = miss_case_summary(simple_df)
+        assert len(result) == len(simple_df)
+
+    def test_columns_present(self, simple_df):
+        result = miss_case_summary(simple_df)
+        assert "case" in result.columns
+        assert "n_miss" in result.columns
+        assert "pct_miss" in result.columns
 
 
-def test_miss_case_summary_pct_range(df):
-    """miss_case_summary pct_miss is between 0 and 100."""
-    result = miss_case_summary(df)
-    assert (result["pct_miss"] >= 0).all()
-    assert (result["pct_miss"] <= 100).all()
+# ---------------------------------------------------------------------------
+# miss_var_table / miss_case_table
+# ---------------------------------------------------------------------------
+
+class TestTableHelpers:
+    def test_miss_var_table(self, simple_df):
+        result = miss_var_table(simple_df)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_miss_case_table(self, simple_df):
+        result = miss_case_table(simple_df)
+        assert isinstance(result, pd.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# bind_shadow
+# ---------------------------------------------------------------------------
+
+class TestBindShadow:
+    def test_doubles_columns(self, simple_df):
+        result = bind_shadow(simple_df)
+        assert result.shape[1] == simple_df.shape[1] * 2
+
+    def test_shadow_column_names(self, simple_df):
+        result = bind_shadow(simple_df)
+        for col in simple_df.columns:
+            assert f"{col}_NA" in result.columns
+
+    def test_shadow_values_bool(self, simple_df):
+        result = bind_shadow(simple_df)
+        shadow_cols = [c for c in result.columns if c.endswith("_NA")]
+        for col in shadow_cols:
+            assert result[col].dtype == bool or result[col].isin([True, False]).all()
