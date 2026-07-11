@@ -1,40 +1,17 @@
-"""missingly.utils — out-of-scope helpers isolated from the core package.
+"""missingly.utils — internal utilities not part of the public missing-data API.
 
-This subpackage contains utilities that were historically part of
-``missingly`` but fall outside its core charter (missingness analysis,
-imputation, and reporting).  They remain here for backward compatibility
-and will be redirected to their canonical homes in future releases.
+This subpackage contains helper modules that are out of scope for
+``missingly``'s core charter (missingness analysis, imputation,
+comparison, reporting) but are kept here for backward compatibility
+during the deprecation window.
 
-Submodules
-----------
-manipulation
-    DataFrame manipulation helpers: ``replace_with_na``,
-    ``replace_with_na_all``, ``add_any_miss_var``, ``bind_shadow_matrix``.
-    The deprecated functions ``clean_names``, ``remove_empty``,
-    ``coalesce_columns``, and ``miss_as_feature`` live here as shims
-    pointing to ``data_quality_toolkit``.
+Public surface
+--------------
+Do **not** import from this subpackage in new user code.
+Use the canonical ``missingly`` public API instead.
 
-Public re-exports
------------------
-All public symbols from ``missingly.utils.manipulation`` are re-exported
-here so callers can import from either location::
-
-    from missingly.utils import replace_with_na
-    from missingly.utils.manipulation import replace_with_na  # identical
+Deprecation timeline
+--------------------
+* ``utils.manipulation`` symbols deprecated in v0.3.0, removed in v0.4.0.
+  Point users to ``data_quality_toolkit`` for data-cleaning utilities.
 """
-
-from __future__ import annotations
-
-from missingly.utils.manipulation import (
-    replace_with_na,
-    replace_with_na_all,
-    add_any_miss_var,
-    bind_shadow_matrix,
-)
-
-__all__ = [
-    "replace_with_na",
-    "replace_with_na_all",
-    "add_any_miss_var",
-    "bind_shadow_matrix",
-]
