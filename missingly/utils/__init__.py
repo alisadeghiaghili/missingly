@@ -1,17 +1,29 @@
-"""missingly.utils — internal utilities not part of the public missing-data API.
+"""Internal utilities subpackage for missingly.
 
-This subpackage contains helper modules that are out of scope for
-``missingly``'s core charter (missingness analysis, imputation,
-comparison, reporting) but are kept here for backward compatibility
-during the deprecation window.
+This subpackage contains helpers that support the missingly core but are
+not part of the public missingness-analysis API.  Public consumers should
+not import from here directly — use the top-level ``missingly`` namespace.
 
-Public surface
---------------
-Do **not** import from this subpackage in new user code.
-Use the canonical ``missingly`` public API instead.
-
-Deprecation timeline
---------------------
-* ``utils.manipulation`` symbols deprecated in v0.3.0, removed in v0.4.0.
-  Point users to ``data_quality_toolkit`` for data-cleaning utilities.
+Contents
+--------
+manipulation
+    Data-frame manipulation utilities (replace_with_na, add_any_miss_var,
+    bind_shadow_matrix).  These were previously in the root
+    ``missingly/manipulation.py``; that file is now a deprecated shim.
 """
+
+from __future__ import annotations
+
+from .manipulation import (
+    replace_with_na,
+    replace_with_na_all,
+    add_any_miss_var,
+    bind_shadow_matrix,
+)
+
+__all__ = [
+    "replace_with_na",
+    "replace_with_na_all",
+    "add_any_miss_var",
+    "bind_shadow_matrix",
+]

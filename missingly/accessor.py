@@ -16,9 +16,9 @@ allows the entire missingly API to be used as fluent method chains:
         .miss.miss_as_feature()
     )
 
-    # Imputation
+    # Imputation — returns new DataFrame by default
     imputed = df.miss.impute(method="mean")
-    imputed_cols = df.miss.impute(method="knn", columns=["age", "income"])
+    imputed_inplace = df.miss.impute(method="knn", inplace=False)
 
     # Visualisation — returns Axes, not DataFrame
     ax = df.miss.vis_miss()
@@ -92,6 +92,8 @@ class MissinglyAccessor:
     >>> df.miss.n_miss()
     2
     >>> imputed = df.miss.impute(method="mean")
+    >>> imputed.isna().any().any()
+    False
     """
 
     def __init__(self, pandas_obj: pd.DataFrame) -> None:
@@ -103,7 +105,7 @@ class MissinglyAccessor:
         self._df = pandas_obj
 
     # ------------------------------------------------------------------
-    # Unified imputation dispatcher
+    # Imputation — unified dispatcher (C3)
     # ------------------------------------------------------------------
 
     def impute(
@@ -114,137 +116,120 @@ class MissinglyAccessor:
         fill_value: Optional[object] = None,
         inplace: bool = False,
         random_state: int = 0,
+        **kwargs,
     ) -> Optional[pd.DataFrame]:
-        """Impute missing values using the specified strategy.
+        """Impute missing values using any missingly strategy.
 
-        This is a thin, tested facade over
-        :class:`~missingly.transformer.MissinglyImputer` (for
-        model-based strategies) and the stateless
-        :func:`~missingly.impute.impute_*` functions (for simple
-        strategies). No imputation logic lives here.
+        This is a thin facade over :class:`~missingly.transformer.MissinglyImputer`.
+        No imputation logic lives here — all computation is delegated to
+        the canonical engine so that accessor and transformer results are
+        always consistent.
 
         Parameters
         ----------
         method : str, default ``"mean"``
-            Imputation strategy. One of:
-
-            * ``"mean"``     — fill numeric with mean, categorical with mode.
-            * ``"median"``   — fill numeric with median, categorical with mode.
-            * ``"mode"``     — fill all columns with most frequent value.
-            * ``"constant"`` — fill with *fill_value* (must be supplied).
-            * ``"knn"``      — k-Nearest Neighbours (default k=5).
-            * ``"mice"``     — Multiple Imputation by Chained Equations.
-            * ``"rf"``       — Random Forest.
-            * ``"gb"``       — Gradient Boosting.
-
+            Imputation strategy.  One of:
+            ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``,
+            ``"mice"``, ``"rf"``, ``"gb"``.
         columns : list of str or None, default None
-            Columns to impute. ``None`` means all columns.
-        fill_value : scalar or None, default None
-            Fill value used only when ``method="constant"``.
-            Required if ``method="constant"``; ignored otherwise.
+            Columns to impute.  If ``None``, all columns are imputed.
+            Untouched columns are preserved as-is.
+        fill_value : object or None, default None
+            Reserved for future ``"constant"`` strategy.  Unused by
+            current strategies; passing it with other methods raises
+            ``ValueError``.
         inplace : bool, default False
-            If True, mutate the source DataFrame and return ``None``.
-            If False (default), return a new DataFrame and leave the
-            source unchanged.
+            If ``False`` (default), return a new DataFrame and leave the
+            caller unchanged.  If ``True``, mutate the caller DataFrame
+            in-place and return ``None``.
         random_state : int, default 0
             Random seed forwarded to stochastic strategies
             (``"mice"``, ``"rf"``, ``"gb"``).
+        **kwargs
+            Additional keyword arguments forwarded to
+            :class:`~missingly.transformer.MissinglyImputer`
+            (e.g. ``n_neighbors=3`` for ``"knn"``).
 
         Returns
         -------
         pd.DataFrame or None
-            Imputed DataFrame when ``inplace=False``; ``None`` when
-            ``inplace=True``.
+            New imputed DataFrame when ``inplace=False``;
+            ``None`` when ``inplace=True``.
 
         Raises
         ------
         ValueError
-            If *method* is unknown, *fill_value* is missing for
-            ``method="constant"``, or *columns* contains names not
-            present in the DataFrame.
-        TypeError
-            If *columns* is not a list or None.
+            If *method* is not a recognised strategy.
+        MissingColumnError
+            If any name in *columns* does not exist in the DataFrame.
+        ValueError
+            If *fill_value* is supplied with a non-``"constant"`` method.
 
         Examples
         --------
         >>> import pandas as pd, numpy as np, missingly
-        >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': ['x', None, 'x']})
-        >>> df.miss.impute(method="mean")  # returns new DataFrame
-           a  b
+        >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': ['x', None, 'z']})
+        >>> df.miss.impute(method="mean")  # numeric mean, categorical mode
+             a  b
         0  1.0  x
         1  2.0  x
-        2  3.0  x
-        >>> df.miss.impute(method="constant", fill_value=0, columns=["a"])
-           a     b
+        2  3.0  z
+        >>> df.miss.impute(method="mean", columns=["a"])  # only column 'a'
+             a     b
         0  1.0     x
-        1  0.0  None
-        2  3.0     x
+        1  2.0  None
+        2  3.0     z
         """
-        _VALID = _SUPPORTED_STRATEGIES | {"constant"}
-
-        if method not in _VALID:
+        if method not in _SUPPORTED_STRATEGIES:
             raise ValueError(
                 f"Unknown imputation method {method!r}. "
-                f"Valid methods: {sorted(_VALID)}"
+                f"Supported methods: {sorted(_SUPPORTED_STRATEGIES)}"
             )
 
+        if fill_value is not None:
+            raise ValueError(
+                "fill_value is reserved for strategy='constant' which is not "
+                "yet implemented. Do not pass fill_value with other strategies."
+            )
+
+        df = self._df
+
+        # Validate requested columns
         if columns is not None:
-            if not isinstance(columns, list):
-                raise TypeError(
-                    f"'columns' must be a list of strings or None; "
-                    f"got {type(columns)!r}"
-                )
-            unknown = [c for c in columns if c not in self._df.columns]
+            unknown = [c for c in columns if c not in df.columns]
             if unknown:
                 raise MissingColumnError(
                     columns=unknown,
-                    available=list(self._df.columns),
+                    available=list(df.columns),
                 )
 
-        if method == "constant" and fill_value is None:
-            raise ValueError(
-                "method='constant' requires fill_value to be set. "
-                "Example: df.miss.impute(method='constant', fill_value=0)"
-            )
-
-        # Determine working subset
-        working_df = self._df if columns is None else self._df[columns]
-        rest_cols = (
-            [c for c in self._df.columns if c not in columns]
-            if columns is not None
-            else []
-        )
-
-        # Delegate to canonical implementations
-        if method == "constant":
-            imputed_part = working_df.fillna(fill_value)
-        elif method == "mean":
-            imputed_part = impute_mean(working_df)
-        elif method == "median":
-            imputed_part = impute_median(working_df)
-        elif method == "mode":
-            imputed_part = impute_mode(working_df)
-        else:
-            # Model-based: delegate to MissinglyImputer so fit/transform
-            # are handled consistently with the sklearn transformer path.
-            imputer = MissinglyImputer(
-                strategy=method,
-                random_state=random_state,
-            )
-            imputed_part = imputer.fit_transform(working_df)
-
-        # Re-assemble full DataFrame preserving column order
+        # Select the sub-frame to impute; keep the rest untouched
         if columns is not None:
-            result = self._df.copy()
-            result[columns] = imputed_part
+            sub = df[columns].copy()
         else:
-            result = imputed_part
+            sub = df.copy()
 
-        # Preserve index name
-        result.index.name = self._df.index.name
+        # Delegate entirely to MissinglyImputer — no logic here
+        imputer = MissinglyImputer(
+            strategy=method,
+            random_state=random_state,
+            **kwargs,
+        )
+        imputed_sub = imputer.fit_transform(sub)
+
+        # Reconstruct full DataFrame preserving column order
+        if columns is not None:
+            result = df.copy()
+            result[columns] = imputed_sub[columns].values
+        else:
+            result = imputed_sub
+
+        # Preserve index
+        result.index = df.index
 
         if inplace:
-            self._df[result.columns] = result
+            for col in df.columns:
+                df[col] = result[col]
             return None
 
         return result
@@ -283,42 +268,12 @@ class MissinglyAccessor:
         """
         return manipulation.replace_with_na_all(self._df, condition)
 
-    def miss_as_feature(
-        self,
-        columns: Optional[List[str]] = None,
-        *,
-        missing_values: Optional[List] = None,
-        suffix: str = "_NA",
-        keep_original: bool = True,
-    ) -> pd.DataFrame:
-        """Add binary missingness indicator columns and return a new DataFrame.
-
-        Parameters
-        ----------
-        columns : list of str, optional
-        missing_values : list, optional
-        suffix : str, optional
-        keep_original : bool, optional
-
-        Returns
-        -------
-        pd.DataFrame
-        """
-        return manipulation.miss_as_feature(
-            self._df,
-            columns,
-            missing_values=missing_values,
-            suffix=suffix,
-            keep_original=keep_original,
-        )
-
     # ------------------------------------------------------------------
-    # Imputation — typed wrappers (return DataFrame for chaining)
+    # Imputation wrappers — typed signatures, delegate to impute module
     # ------------------------------------------------------------------
 
     def impute_mean(
         self,
-        *,
         numeric_only: bool = False,
     ) -> pd.DataFrame:
         """Impute missing values with column means.
@@ -336,7 +291,6 @@ class MissinglyAccessor:
 
     def impute_median(
         self,
-        *,
         numeric_only: bool = False,
     ) -> pd.DataFrame:
         """Impute missing values with column medians.
@@ -363,7 +317,6 @@ class MissinglyAccessor:
 
     def impute_knn(
         self,
-        *,
         n_neighbors: int = 5,
         metric: str = "euclidean",
     ) -> pd.DataFrame:
@@ -372,7 +325,9 @@ class MissinglyAccessor:
         Parameters
         ----------
         n_neighbors : int, default 5
+            Number of nearest neighbours.
         metric : {"euclidean", "mixed"}, default "euclidean"
+            Distance metric.
 
         Returns
         -------
@@ -382,7 +337,6 @@ class MissinglyAccessor:
 
     def impute_mice(
         self,
-        *,
         max_iter: int = 10,
         random_state: int = 0,
         n_imputations: int = 1,
@@ -392,8 +346,11 @@ class MissinglyAccessor:
         Parameters
         ----------
         max_iter : int, default 10
+            Maximum MICE iterations.
         random_state : int, default 0
+            Random seed.
         n_imputations : int, default 1
+            Number of imputed datasets to generate.
 
         Returns
         -------
@@ -408,7 +365,6 @@ class MissinglyAccessor:
 
     def impute_rf(
         self,
-        *,
         max_iter: int = 1,
         random_state: int = 0,
         strict_mode: Optional[bool] = None,
@@ -418,8 +374,11 @@ class MissinglyAccessor:
         Parameters
         ----------
         max_iter : int, default 1
+            Number of imputation passes.
         random_state : int, default 0
+            Random seed.
         strict_mode : bool or None, default None
+            If True, raise on estimator failure instead of falling back.
 
         Returns
         -------
@@ -434,7 +393,6 @@ class MissinglyAccessor:
 
     def impute_gb(
         self,
-        *,
         max_iter: int = 1,
         random_state: int = 0,
         strict_mode: Optional[bool] = None,
@@ -444,8 +402,11 @@ class MissinglyAccessor:
         Parameters
         ----------
         max_iter : int, default 1
+            Number of imputation passes.
         random_state : int, default 0
+            Random seed.
         strict_mode : bool or None, default None
+            If True, raise on estimator failure instead of falling back.
 
         Returns
         -------
@@ -551,6 +512,8 @@ class MissinglyAccessor:
         Returns
         -------
         dict
+            Keys: ``chi_square``, ``df``, ``p_value``, ``missing_patterns``,
+            ``amount_missing``.
         """
         return diagnostics.mcar_test(self._df)
 
@@ -560,7 +523,7 @@ class MissinglyAccessor:
         Parameters
         ----------
         target : str
-            Name of the outcome column.
+            Name of the outcome column.  Must exist in the DataFrame.
 
         Returns
         -------
