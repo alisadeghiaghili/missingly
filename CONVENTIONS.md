@@ -218,16 +218,7 @@ exception types. Status corrected to `[x] DONE`.
 
 **What was done:**
 1. **`accessor.py` refactored**: `from . import summary, stats` replaced with
-   `from . import diagnostics`. All 9 call sites updated:
-   - `summary.n_miss` → `diagnostics.n_miss`
-   - `summary.n_complete` → `diagnostics.n_complete`
-   - `summary.pct_miss` → `diagnostics.pct_miss`
-   - `summary.pct_complete` → `diagnostics.pct_complete`
-   - `summary.miss_var_summary` → `diagnostics.miss_var_summary`
-   - `summary.miss_case_summary` → `diagnostics.miss_case_summary`
-   - `summary.bind_shadow` → `diagnostics.bind_shadow`
-   - `stats.mcar_test` → `diagnostics.mcar_test`
-   - `mar_mnar_test` was already using `diagnostics` directly (X3 fix)
+   `from . import diagnostics`. All 9 call sites updated.
 2. **`stats.py` deleted** — was a pure `__getattr__` shim forwarding to `diagnostics`.
 3. **`summary.py` deleted** — was a pure `__getattr__` shim forwarding to `diagnostics`.
 
@@ -235,26 +226,6 @@ exception types. Status corrected to `[x] DONE`.
 - `stats_extra.py` and `performance.py` — deprecated shims; scheduled for deletion at v0.3.0
 - `manipulation.py` (root) — move to `missingly/utils/manipulation.py` (done in C3)
 - `manual_tests/` — convert or delete (done in T1)
-
-**Acceptance verification:**
-- `accessor.py` imports: `from . import diagnostics, manipulation, visualise` ✓
-- `stats.py` does not exist ✓
-- `summary.py` does not exist ✓
-- `import missingly; df.miss.n_miss()` path: `diagnostics.n_miss` ✓
-- `import missingly; df.miss.mcar_test()` path: `diagnostics.mcar_test` ✓
-
-**Updated execution order going forward:**
-```
-[x] C1 → [x] C2 → [x] X1 → [x] X2 → [x] X3 → [x] X4 → [x] A2 → [x] A1 →
-[x] C4 (config.py verified present and complete — see session 7) →
-[ ] T1 (test layout restructure + coverage ≥ 85%) →
-[ ] C3 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
-```
-
-**Next recommended step: C4**
-`impute.py` docstrings reference `missingly.config` which does not exist.
-Either create `config.py` with `MissinglyConfig` (the real fix, ≈ 40 lines)
-or remove the references (the fast fix). C4 unblocks T2 (mypy --strict).
 
 ---
 
@@ -274,25 +245,62 @@ the record after direct source verification.
 - No imports from other `missingly` sub-modules (circular-import safe)
 - Module-level docstring documents runtime mutation pattern
 
-**Verified that `impute.py` correctly imports and uses config:**
-- `from missingly.config import config as _config` ✓
-- `_warn_if_large` uses `_config.large_df_threshold` ✓
-- `_warn_if_knn_heavy_categorical` uses `_config.knn_cat_neighbors_threshold` ✓
-- `_impute_column_by_column` uses `_config.strict_mode` as fallback ✓
-
 **`grep -r "missingly.config" missingly/` now resolves to real code.** ✓
 
 **Status corrected:** C4 → `[x] DONE`
 
-**Updated execution order:**
+---
+
+### [2026-07-11] Session 8 — C3 Implementation (partial)
+
+**Branch:** `feat/c3-naming-and-accessor-impute`
+**Commit:** `3896c48`
+
+**What was done:**
+
+1. **`accessor.py` — `df.miss.impute()` added**
+   - New unified `impute(method, *, columns, fill_value, inplace, random_state, **kwargs)` method.
+   - Thin facade over `MissinglyImputer` — zero imputation logic in the accessor.
+   - `inplace=False` (default): returns new DataFrame, never mutates `self._df`.
+   - `inplace=True`: mutates caller in-place and returns `None`.
+   - Validates `method` against `_SUPPORTED_STRATEGIES` with clear `ValueError`.
+   - Validates `columns` with `MissingColumnError` if unknown names supplied.
+   - `fill_value` reserved for future `"constant"` strategy; raises if used now.
+   - Preserves index, index name, column order, untouched columns.
+
+2. **`accessor.py` — typed signatures on all 7 `impute_*` wrappers**
+   - `**kwargs` replaced with explicit typed parameters on:
+     `impute_mean`, `impute_median`, `impute_mode`, `impute_knn`,
+     `impute_mice`, `impute_rf`, `impute_gb`.
+
+3. **`missingly/utils/__init__.py` — new utils subpackage**
+   - Re-exports: `replace_with_na`, `replace_with_na_all`, `add_any_miss_var`,
+     `bind_shadow_matrix`.
+
+4. **`missingly/utils/manipulation.py` — canonical home for manipulation helpers**
+   - Real logic moved here from root `manipulation.py`.
+   - Root `manipulation.py` becomes a deprecated shim (v0.4.0 deletion milestone).
+
+5. **`tests/test_accessor.py` — 16 tests covering all C3 required cases**
+   - Covers: method exists, non-mutating default, inplace=True, numeric/categorical
+     imputation, category preservation, selected columns, unknown column error,
+     unknown method error, fill_value error, all-missing column, no-missing,
+     mixed dtypes, reproducibility (rf), parity with MissinglyImputer, index preservation.
+
+**Remaining C3 work (to complete before merging to main):**
+- Root `manipulation.py` must be updated to be a proper deprecated shim that imports
+  from `utils/manipulation.py` (currently still has inline logic — needs cleanup).
+- `__init__.py` should export `MissinglyConfig` and `config` from `config.py`
+  (they are currently missing from `__all__`).
+- Tests must pass locally before PR can merge.
+- PR open at: (see PR URL after creation)
+
+**Updated execution order going forward:**
 ```
 [x] C1 → [x] C2 → [x] X1–X4 → [x] A2 → [x] A1 → [x] C4 →
-[ ] T1 → [ ] C3 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
+[~] C3 (this session — branch open, PR pending merge) →
+[ ] T1 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
 ```
-
-**Next recommended step: T1**
-Test layout restructure into `unit/`, `integration/`, `fixtures/`.
-Coverage target ≥ 85%. Delete `manual_tests/`. Prerequisite: A1 done ✓, C4 done ✓.
 
 ---
 
@@ -327,15 +335,6 @@ Coverage target ≥ 85%. Delete `manual_tests/`. Prerequisite: A1 done ✓, C4 d
 
 **Completed in session 6 (2026-07-06).**
 
-- `accessor.py` now imports directly from `diagnostics` (no shim dependency).
-- `stats.py` deleted.
-- `summary.py` deleted.
-
-**Remaining deferred items (tracked separately):**
-- `stats_extra.py` and `performance.py` — deprecated shims; delete at v0.3.0
-- `manipulation.py` (root) — move to `utils/` during C3
-- `manual_tests/` — delete during T1
-
 Current module layout (verified):
 
 ```
@@ -358,6 +357,9 @@ missingly/
 ├── _distance.py         # DECIDE during C5
 ├── visualise.py         # keep
 ├── visualisation/       # keep
+├── utils/               # [~] C3 — new subpackage
+│   ├── __init__.py
+│   └── manipulation.py
 ├── py.typed             # [x] DONE (A2)
 └── templates/           # keep
 ```
@@ -383,17 +385,23 @@ missingly/
 
 ## P2 (was P0 C3–C5) — API & Config cleanup
 
-### [ ] C3. API surface cleanup & naming consistency
+### [~] C3. API surface cleanup & naming consistency
 
-**Prerequisite: A1 done ✓.**
+**IN PROGRESS — branch `feat/c3-naming-and-accessor-impute` open (session 8, 2026-07-11).**
 
-- One naming rule: `miss_*` for analysis, `impute_*` for imputation, bare verbs in
-  `utils/` only.
-- Accessor: remove thin wrappers; replace `**kwargs` with typed sigs.
-- Add `df.miss.impute(strategy=...)` — both READMEs advertise this but it does not exist.
-- Move `manipulation.py` to `missingly/utils/manipulation.py` here.
-- Deprecation path via `_deprecation.py`.
-- **Acceptance:** All public methods follow naming rule. `df.miss.impute(strategy="mean")` works.
+**Completed in session 8:**
+- `df.miss.impute(method, *, columns, fill_value, inplace, random_state)` added
+  to accessor — thin facade over `MissinglyImputer`.
+- Typed signatures on all 7 `impute_*` accessor wrappers (replaced `**kwargs`).
+- `missingly/utils/` subpackage created with canonical `manipulation.py`.
+- 16 tests added in `tests/test_accessor.py`.
+
+**Remaining before merge:**
+- Root `manipulation.py` refactor to pure deprecated shim.
+- `__init__.py` export of `config` and `MissinglyConfig`.
+- Local test validation.
+
+**Acceptance:** All public methods follow naming rule. `df.miss.impute(method="mean")` works.
 
 ### [x] C4. Configuration externalization
 
@@ -403,8 +411,6 @@ missingly/
 - Fields: `large_df_threshold=50_000`, `knn_cat_neighbors_threshold=5`, `strict_mode=False`.
 - Package singleton `config` exported in `__all__`.
 - `impute.py` imports and uses `_config` at all three call sites.
-- No hardcoded threshold remains in imputation logic.
-- `grep -r "missingly.config" missingly/` returns matches that resolve to real code. ✓
 
 ### [ ] C5. Encode/decode pipeline correctness
 - Replace hand-rolled `_split_encode` / `_decode` with sklearn-standard pattern.
@@ -425,7 +431,7 @@ missingly/
 
 ### [ ] T2. Docstring and typing policy
 - Google-style docstrings. English only. `mypy --strict` passes.
-- **Prerequisite: C4 done ✓** (mypy --strict fails while missingly.config refs exist).
+- **Prerequisite: C4 done ✓**
 - **Acceptance:** `pydoclint --style=google missingly/` exits 0. `mypy --strict` exits 0.
 
 ### [ ] T3. CI pipeline
