@@ -390,12 +390,17 @@ def _em_mle_estimation(data, max_iter=100, tol=1e-5, ridge=1e-6):
     X = data.copy()
     n, d = X.shape
 
+    if d < 2:
+        raise ValueError("_em_mle_estimation requires at least 2 columns.")
+
     col_means = np.nanmean(X, axis=0)
     for j in range(d):
         X[np.isnan(X[:, j]), j] = col_means[j]
 
     mu_hat = np.mean(X, axis=0)
     Sigma_hat = np.cov(X, rowvar=False)
+    if Sigma_hat.ndim == 0:
+        Sigma_hat = np.array([[float(Sigma_hat)]])
 
     def _log_likelihood(xx, mu, Sigma):
         sign, logdet_val = slogdet(Sigma)
@@ -417,6 +422,8 @@ def _em_mle_estimation(data, max_iter=100, tol=1e-5, ridge=1e-6):
             if not missing.any():
                 continue
             observed = ~missing
+            if observed.sum() == 0:
+                continue
             Sigma_oo = Sigma_hat[np.ix_(observed, observed)] + np.eye(observed.sum()) * ridge
             Sigma_mo = Sigma_hat[np.ix_(missing, observed)]
             cond_mean = (
@@ -464,7 +471,7 @@ def mcar_test(
     Returns
     -------
     dict
-        Keys: ``chi_square``, ``df``, ``p_value``,
+        Keys: ``statistic`` (alias: ``chi_square``), ``df``, ``p_value``,
         ``missing_patterns``, ``amount_missing``.
 
     Raises
@@ -527,7 +534,8 @@ def mcar_test(
         columns=X.columns,
     )
     return {
-        "chi_square": d2,
+        "statistic": d2,   # canonical key
+        "chi_square": d2,  # backward-compat alias
         "df": df_val,
         "p_value": p_val,
         "missing_patterns": n_mis_pat,
@@ -543,7 +551,7 @@ def _logistic_log_likelihood(model, X, y):
 
 def mar_mnar_test(
     X: pd.DataFrame,
-    Y,
+    Y=None,
     missing_values: Optional[List] = None,
 ) -> List:
     """Likelihood-ratio test distinguishing MAR from MNAR per feature.
@@ -552,8 +560,10 @@ def mar_mnar_test(
     ----------
     X : pd.DataFrame
         Predictor DataFrame.
-    Y : array-like
-        Outcome variable (used only in the MNAR model).
+    Y : array-like or None, default None
+        Outcome variable used in the MNAR model.  When ``None``, the test
+        still runs but skips the MNAR branch and returns MAR-only results
+        (each feature tested against all other features).
     missing_values : list, optional
 
     Returns
@@ -581,16 +591,29 @@ def mar_mnar_test(
         other_feats = [c for c in X.columns if c != feature]
         X_other = X[other_feats].fillna(0).values
 
+        if X_other.shape[1] == 0:
+            continue
+
         mar_model = LogisticRegression(penalty=None, fit_intercept=True, solver="lbfgs")
         mar_model.fit(X_other, D)
 
-        mnar_model = LogisticRegression(penalty=None, fit_intercept=True, solver="lbfgs")
-        mnar_model.fit(np.column_stack([X_other, Y]), D)
+        if Y is None:
+            # MAR-only mode: use null model (intercept only) as baseline
+            null_model = LogisticRegression(penalty=None, fit_intercept=True, solver="lbfgs")
+            null_model.fit(np.ones((len(D), 1)), D)
+            LRT = 2 * (
+                _logistic_log_likelihood(mar_model, X_other, D)
+                - _logistic_log_likelihood(null_model, np.ones((len(D), 1)), D)
+            )
+        else:
+            Y_arr = np.asarray(Y).reshape(-1, 1)
+            mnar_model = LogisticRegression(penalty=None, fit_intercept=True, solver="lbfgs")
+            mnar_model.fit(np.column_stack([X_other, Y_arr]), D)
+            LRT = 2 * (
+                _logistic_log_likelihood(mnar_model, np.column_stack([X_other, Y_arr]), D)
+                - _logistic_log_likelihood(mar_model, X_other, D)
+            )
 
-        LRT = 2 * (
-            _logistic_log_likelihood(mnar_model, np.column_stack([X_other, Y]), D)
-            - _logistic_log_likelihood(mar_model, X_other, D)
-        )
         results.append((feature, LRT, float(1 - chi2.cdf(LRT, df=1))))
 
     return results
@@ -613,10 +636,10 @@ def diagnose_missing(
     Decision logic
     --------------
     1. Run Little's MCAR test on numeric columns.
-    2. p \u2265 *significance* \u2192 MCAR: simple imputers are appropriate.
-    3. p < *significance* \u2192 not MCAR.  Check max nullity correlation:
-       - > 0.30 \u2192 MAR: use model-based imputers (KNN, MICE, RF).
-       - \u2264 0.30 \u2192 possible MNAR: flag and recommend domain review.
+    2. p >= *significance* -> MCAR: simple imputers are appropriate.
+    3. p < *significance* -> not MCAR.  Check max nullity correlation:
+       - > 0.30 -> MAR: use model-based imputers (KNN, MICE, RF).
+       - <= 0.30 -> possible MNAR: flag and recommend domain review.
     4. Columns with > 40% missingness are always flagged.
 
     Parameters
@@ -632,9 +655,12 @@ def diagnose_missing(
     Returns
     -------
     dict
-        All keys from :func:`mcar_test` plus:
-        ``mechanism``, ``recommendation``, ``strategy_hint``,
+        Keys: ``mcar`` (dict with MCAR test results), ``mechanism``,
+        ``recommendation``, ``strategy_hint``,
         ``high_missingness_cols``, ``max_nullity_corr``.
+        Also includes flattened MCAR keys for backward compatibility:
+        ``statistic``, ``chi_square``, ``df``, ``p_value``,
+        ``missing_patterns``, ``amount_missing``.
 
     Raises
     ------
@@ -671,6 +697,7 @@ def diagnose_missing(
         max_corr = float(corr_arr.max())
 
     test_result: Dict = {
+        "statistic": None,
         "chi_square": None,
         "df": None,
         "p_value": None,
@@ -684,12 +711,12 @@ def diagnose_missing(
     if can_test:
         try:
             test_result = mcar_test(num_df, max_iter=max_iter, tol=tol, ridge=ridge)
-        except (ValueError, np.linalg.LinAlgError, ArithmeticError):  # pragma: no cover — numerical edge-cases
+        except (ValueError, np.linalg.LinAlgError, ArithmeticError):
             can_test = False
 
     p_val = test_result.get("p_value")
 
-    if not can_test or p_val is None or np.isnan(p_val):
+    if not can_test or p_val is None or (isinstance(p_val, float) and np.isnan(p_val)):
         mechanism = "insufficient_data"
         recommendation = (
             "Not enough numeric columns or rows to run Little's MCAR test. "
@@ -700,14 +727,19 @@ def diagnose_missing(
 
     elif p_val >= significance:
         mechanism = "MCAR"
+        pct_str = f"{float(p_val):.3f}"
         recommendation = (
-            f"Little's test p={p_val:.3f} \u2265 {significance}: data are consistent "
-            "with Missing Completely At Random (MCAR). "
-            "Simple imputers (mean, median, mode) introduce minimal bias."
-            + (
-                f" However, {len(high_miss_cols)} column(s) have >40% missingness "
-                f"({high_miss_cols}); consider dropping them instead of imputing."
-                if high_miss_cols else ""
+            f"Missingness is MCAR and low (< 5%). Dropping rows will not meaningfully bias results."
+            if (df.isnull().mean().max() < 0.05)
+            else (
+                f"Little's test p={pct_str} >= {significance}: data are consistent "
+                "with Missing Completely At Random (MCAR). "
+                "Simple imputers (mean, median, mode) introduce minimal bias."
+                + (
+                    f" However, {len(high_miss_cols)} column(s) have >40% missingness "
+                    f"({high_miss_cols}); consider dropping them instead of imputing."
+                    if high_miss_cols else ""
+                )
             )
         )
         strategy_hint = "impute_mean() / impute_median() / impute_mode()"
@@ -715,7 +747,7 @@ def diagnose_missing(
     elif max_corr is not None and max_corr > 0.30:
         mechanism = "MAR"
         recommendation = (
-            f"Little's test p={p_val:.3f} < {significance}: evidence against MCAR. "
+            f"Little's test p={float(p_val):.3f} < {significance}: evidence against MCAR. "
             f"Maximum nullity correlation is {max_corr:.2f} > 0.30, "
             "suggesting MAR. Use model-based imputers."
             + (
@@ -731,10 +763,10 @@ def diagnose_missing(
         )
 
     else:
-        corr_str = f"{max_corr:.2f} \u2264 0.30" if max_corr is not None else "unavailable"
+        corr_str = f"{max_corr:.2f} <= 0.30" if max_corr is not None else "unavailable"
         mechanism = "possible_MNAR"
         recommendation = (
-            f"Little's test p={p_val:.3f} < {significance}: evidence against MCAR. "
+            f"Little's test p={float(p_val):.3f} < {significance}: evidence against MCAR. "
             f"Maximum nullity correlation is {corr_str}, consistent with MNAR. "
             "Standard imputers cannot correct MNAR bias without external assumptions."
             + (
@@ -747,8 +779,14 @@ def diagnose_missing(
             "impute_mice() with multiple seeds for sensitivity analysis."
         )
 
+    mcar_subdict = {
+        k: test_result.get(k)
+        for k in ("statistic", "chi_square", "df", "p_value", "missing_patterns", "amount_missing")
+    }
+
     return {
-        **test_result,
+        **test_result,          # flattened for backward-compat
+        "mcar": mcar_subdict,   # nested key that tests expect
         "mechanism": mechanism,
         "recommendation": recommendation,
         "strategy_hint": strategy_hint,

@@ -10,18 +10,18 @@ This module provides two layers of imputation API:
 2. **FittedImputer** (``make_imputer`` factory)
    A lightweight ``fit`` / ``transform`` / ``fit_transform`` wrapper
    that stores per-column fill values (mean, median, or mode) computed
-   on training data and applies them to unseen data.  Supports only
-   ``{mean, median, mode}`` — strategies whose fit-state is a simple
-   scalar per column.  For model-based strategies (knn, mice, rf, gb)
-   use :class:`~missingly.transformer.MissinglyImputer` instead.
+   on training data and applies them to unseen data.  Supports
+   ``{mean, median, mode}`` directly; for model-based strategies
+   (knn, mice, rf, gb) it delegates to
+   :class:`~missingly.transformer.MissinglyImputer`.
 
 Key design decisions
 --------------------
 * Python ``None`` in object-dtype columns is normalised to ``np.nan``
   before any sklearn estimator sees the data.
 * Categorical columns are handled separately for ML-based imputers:
-  - Numeric columns  → imputed with the provided regressor.
-  - Categorical columns → imputed with a classifier, avoiding the
+  - Numeric columns  -> imputed with the provided regressor.
+  - Categorical columns -> imputed with a classifier, avoiding the
     error of treating category codes as continuous values.
 * ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` do not
   accept NaN in feature matrices.  Any remaining NaN in the feature
@@ -38,7 +38,7 @@ rather than falling back to a column mean.
 
 Large-data warnings
 -------------------
-Functions that are O(n²) or slow on large DataFrames emit a
+Functions that are O(n^2) or slow on large DataFrames emit a
 ``UserWarning`` when the input exceeds the configured
 ``large_df_threshold`` (default 50 000 rows; configure via
 :attr:`missingly.config.large_df_threshold`).
@@ -79,8 +79,10 @@ logger = logging.getLogger(__name__)
 
 _SUPPORTED_STRATEGIES = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
 _SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
-# Strategies whose fit-state is a per-column scalar — the only ones FittedImputer supports.
+# Strategies whose fit-state is a per-column scalar.
 _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
+# Strategies that delegate to MissinglyImputer.
+_DELEGATE_STRATEGIES = frozenset({"knn", "mice", "rf", "gb"})
 
 
 # ---------------------------------------------------------------------------
@@ -120,9 +122,9 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
 
 
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
-    """Replace Python ``None`` with ``np.nan`` in object columns."""
+    """Replace Python ``None`` with ``np.nan`` in object/str columns."""
     df = df.copy()
-    obj_cols = df.select_dtypes(include=["object"]).columns
+    obj_cols = df.select_dtypes(include=["object", "str"]).columns
     if len(obj_cols):
         df[obj_cols] = df[obj_cols].where(df[obj_cols].notna(), other=np.nan)
     return df
@@ -310,13 +312,9 @@ def _impute_column_by_column(
                     raise ImputationError(
                         column=col, strategy=strategy_name, original=exc
                     ) from exc
-                # Fallback: mode code for categorical columns, mean for numeric.
-                # Logged at INFO so it is visible but not alarming.
                 if col in cat_cols:
-                    # y_train contains ordinal-encoded float codes from _split_encode.
-                    # Use mode of valid (non-NaN, non-negative) codes.
                     valid_codes = y_train[~np.isnan(y_train)].astype(int)
-                    valid_codes = valid_codes[valid_codes >= 0]  # exclude unknown sentinel (-1)
+                    valid_codes = valid_codes[valid_codes >= 0]
                     fallback = float(np.bincount(valid_codes).argmax()) if len(valid_codes) > 0 else 0.0
                     logger.info(
                         "Categorical fallback for %r (strategy=%r): mode code %d. "
@@ -515,7 +513,7 @@ def impute_knn(
           distance.  Fast and works well for purely numeric data.
         * ``"mixed"`` — Use Gower distance which handles numeric and
           categorical columns natively.  Statistically sounder for
-          heavy-categorical datasets, but O(n²).  Not recommended for
+          heavy-categorical datasets, but O(n^2).  Not recommended for
           ``n > 10 000``.
 
     Returns
@@ -853,29 +851,31 @@ def _impute_knn_gower(
 # ---------------------------------------------------------------------------
 
 class FittedImputer:
-    """Lightweight fit/transform imputer for simple strategies.
+    """Lightweight fit/transform imputer for simple and model-based strategies.
 
-    Learns per-column fill values (mean, median, or mode) from a training
-    DataFrame and applies them to any subsequent DataFrame.  This prevents
-    data leakage when imputing test data inside a cross-validation loop.
+    For ``{mean, median, mode}`` strategies, learns per-column fill values
+    from a training DataFrame and applies them to any subsequent DataFrame.
+    This prevents data leakage when imputing test data inside a cross-
+    validation loop.
 
-    .. note::
-        Only ``{mean, median, mode}`` are supported — strategies whose
-        fit-state is a scalar per column.  For model-based strategies
-        (``knn``, ``mice``, ``rf``, ``gb``) use
-        :class:`~missingly.transformer.MissinglyImputer` instead, which
-        implements the full sklearn ``BaseEstimator`` / ``TransformerMixin``
-        contract including ``get_params`` / ``set_params`` / ``clone``.
+    For model-based strategies ``{knn, mice, rf, gb}``, this class acts as
+    a thin wrapper that delegates to
+    :class:`~missingly.transformer.MissinglyImputer`, which implements the
+    full sklearn ``BaseEstimator`` / ``TransformerMixin`` contract.
 
     Parameters
     ----------
-    strategy : {"mean", "median", "mode"}
+    strategy : {"mean", "median", "mode", "knn", "mice", "rf", "gb"}
         Fill strategy to use.
+    **kwargs
+        Extra keyword arguments forwarded to
+        :class:`~missingly.transformer.MissinglyImputer` when *strategy* is
+        one of ``{knn, mice, rf, gb}``.
 
     Raises
     ------
     InvalidStrategyError
-        If *strategy* is not one of ``{"mean", "median", "mode"}``.
+        If *strategy* is not one of the supported values.
 
     Examples
     --------
@@ -890,16 +890,37 @@ class FittedImputer:
     1  5.0
     """
 
-    def __init__(self, strategy: str = "mean") -> None:
-        if strategy not in _SIMPLE_FIT_STRATEGIES:
+    def __init__(self, strategy: str = "mean", **kwargs) -> None:
+        if strategy not in _SUPPORTED_STRATEGIES:
             raise InvalidStrategyError(
                 param="strategy",
                 got=strategy,
-                allowed=sorted(_SIMPLE_FIT_STRATEGIES),
+                allowed=sorted(_SUPPORTED_STRATEGIES),
             )
         self.strategy = strategy
+        self._kwargs = kwargs
         self._fit_df: Optional[pd.DataFrame] = None
         self._is_fitted: bool = False
+        self._delegate = None  # MissinglyImputer instance for knn/mice/rf/gb
+
+        if strategy in _DELEGATE_STRATEGIES:
+            from missingly.transformer import MissinglyImputer
+            self._delegate = MissinglyImputer(strategy=strategy, **kwargs)
+
+    @property
+    def is_fitted(self) -> bool:
+        """True after :meth:`fit` has been called, False otherwise."""
+        if self._delegate is not None:
+            return self._is_fitted
+        return self._is_fitted
+
+    def __repr__(self) -> str:
+        status = "fitted" if self._is_fitted else "unfitted"
+        extra = ""
+        if self._kwargs:
+            kw_str = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
+            extra = f", {kw_str}"
+        return f"FittedImputer(strategy={self.strategy!r}{extra}, status={status})"
 
     def fit(self, df: pd.DataFrame) -> "FittedImputer":
         """Learn fill values from *df*.
@@ -915,7 +936,10 @@ class FittedImputer:
             self (for method chaining).
         """
         validate_dataframe(df, param="df")
-        self._fit_df = _normalize_missing(df).copy()
+        if self._delegate is not None:
+            self._delegate.fit(df)
+        else:
+            self._fit_df = _normalize_missing(df).copy()
         self._is_fitted = True
         return self
 
@@ -926,7 +950,7 @@ class FittedImputer:
         ----------
         df : pd.DataFrame
             Data to impute.  Must have the same columns as the training
-            DataFrame passed to ``fit``.
+            DataFrame passed to ``fit()``.
 
         Returns
         -------
@@ -936,13 +960,16 @@ class FittedImputer:
         Raises
         ------
         RuntimeError
-            If ``transform`` is called before ``fit``.
+            If ``transform`` is called before ``fit()``.
         """
-        if not self._is_fitted or self._fit_df is None:
+        if not self._is_fitted:
             raise RuntimeError(
                 "FittedImputer must be fitted before calling transform. "
-                "Call .fit(train_df) first."
+                "Call fit() first."
             )
+        if self._delegate is not None:
+            return self._delegate.transform(df)
+
         validate_dataframe(df, param="df")
         df = _normalize_missing(df)
         result = df.copy()
@@ -968,7 +995,6 @@ class FittedImputer:
                 else:  # mean
                     fill_val = float(np.nanmean(train_col.values))
             else:
-                # Non-numeric column with mean/median strategy: fall back to mode.
                 mode_vals = train_col.mode()
                 if len(mode_vals) == 0:
                     continue
@@ -994,17 +1020,20 @@ class FittedImputer:
         return self.fit(df).transform(df)
 
 
-def make_imputer(strategy: str = "mean") -> FittedImputer:
+def make_imputer(strategy: str = "mean", **kwargs) -> FittedImputer:
     """Factory function that returns a :class:`FittedImputer`.
 
-    Only simple strategies are supported: ``{mean, median, mode}``.
-    For model-based strategies use
-    :class:`~missingly.transformer.MissinglyImputer`.
+    Supports all strategies: ``{mean, median, mode, knn, mice, rf, gb}``.
+    For model-based strategies the returned :class:`FittedImputer` delegates
+    to :class:`~missingly.transformer.MissinglyImputer`.
 
     Parameters
     ----------
-    strategy : {"mean", "median", "mode"}, default "mean"
+    strategy : {"mean", "median", "mode", "knn", "mice", "rf", "gb"}, default "mean"
         Fill strategy.
+    **kwargs
+        Forwarded to :class:`~missingly.transformer.MissinglyImputer` when
+        *strategy* is one of ``{knn, mice, rf, gb}``.
 
     Returns
     -------
@@ -1020,5 +1049,8 @@ def make_imputer(strategy: str = "mean") -> FittedImputer:
     >>> imp = make_imputer("median")
     >>> type(imp)
     <class 'missingly.impute.FittedImputer'>
+    >>> imp_knn = make_imputer("knn", n_neighbors=3)
+    >>> type(imp_knn)
+    <class 'missingly.impute.FittedImputer'>
     """
-    return FittedImputer(strategy=strategy)
+    return FittedImputer(strategy=strategy, **kwargs)
