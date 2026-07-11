@@ -246,7 +246,7 @@ exception types. Status corrected to `[x] DONE`.
 **Updated execution order going forward:**
 ```
 [x] C1 → [x] C2 → [x] X1 → [x] X2 → [x] X3 → [x] X4 → [x] A2 → [x] A1 →
-[ ] C4 (create config.py OR scrub missingly.config refs from impute.py docstrings) →
+[x] C4 (config.py verified present and complete — see session 7) →
 [ ] T1 (test layout restructure + coverage ≥ 85%) →
 [ ] C3 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
 ```
@@ -255,6 +255,44 @@ exception types. Status corrected to `[x] DONE`.
 `impute.py` docstrings reference `missingly.config` which does not exist.
 Either create `config.py` with `MissinglyConfig` (the real fix, ≈ 40 lines)
 or remove the references (the fast fix). C4 unblocks T2 (mypy --strict).
+
+---
+
+### [2026-07-11] Session 7 — C4 Verification
+
+**Finding:** `config.py` was already present and complete (SHA: `700712b`).
+The previous session log incorrectly left C4 as `[ ] TODO`. This session corrects
+the record after direct source verification.
+
+**Verified contents of `missingly/config.py`:**
+- `MissinglyConfig` dataclass with three fields:
+  - `large_df_threshold: int = 50_000`
+  - `knn_cat_neighbors_threshold: int = 5`
+  - `strict_mode: bool = False`
+- Package-level singleton `config: MissinglyConfig = MissinglyConfig()`
+- `__all__ = ["MissinglyConfig", "config"]`
+- No imports from other `missingly` sub-modules (circular-import safe)
+- Module-level docstring documents runtime mutation pattern
+
+**Verified that `impute.py` correctly imports and uses config:**
+- `from missingly.config import config as _config` ✓
+- `_warn_if_large` uses `_config.large_df_threshold` ✓
+- `_warn_if_knn_heavy_categorical` uses `_config.knn_cat_neighbors_threshold` ✓
+- `_impute_column_by_column` uses `_config.strict_mode` as fallback ✓
+
+**`grep -r "missingly.config" missingly/` now resolves to real code.** ✓
+
+**Status corrected:** C4 → `[x] DONE`
+
+**Updated execution order:**
+```
+[x] C1 → [x] C2 → [x] X1–X4 → [x] A2 → [x] A1 → [x] C4 →
+[ ] T1 → [ ] C3 → [ ] C5 → [ ] A3 → [ ] T2 → [ ] T3 → [ ] T4
+```
+
+**Next recommended step: T1**
+Test layout restructure into `unit/`, `integration/`, `fixtures/`.
+Coverage target ≥ 85%. Delete `manual_tests/`. Prerequisite: A1 done ✓, C4 done ✓.
 
 ---
 
@@ -305,7 +343,7 @@ missingly/
 ├── __init__.py          # [x] A2 complete
 ├── exceptions.py        # [x] DONE
 ├── _validation.py       # [x] DONE
-├── config.py            # [ ] TODO (C4)
+├── config.py            # [x] DONE (C4)
 ├── diagnostics.py       # [x] DONE — canonical stats + summary
 ├── impute.py            # [x] DONE
 ├── compare.py           # [x] DONE
@@ -357,12 +395,16 @@ missingly/
 - Deprecation path via `_deprecation.py`.
 - **Acceptance:** All public methods follow naming rule. `df.miss.impute(strategy="mean")` works.
 
-### [ ] C4. Configuration externalization
-- Create `config.py` with `MissinglyConfig` dataclass.
-- **First action:** Remove all `missingly.config` references from `impute.py` docstrings
-  until `config.py` actually exists.
-- **Acceptance:** `config.py` exists. No hardcoded threshold in imputation logic.
-  `grep -r "missingly.config" missingly/` returns matches only after this is done.
+### [x] C4. Configuration externalization
+
+**Completed — verified in session 7 (2026-07-11).**
+
+- `config.py` exists with `MissinglyConfig` dataclass.
+- Fields: `large_df_threshold=50_000`, `knn_cat_neighbors_threshold=5`, `strict_mode=False`.
+- Package singleton `config` exported in `__all__`.
+- `impute.py` imports and uses `_config` at all three call sites.
+- No hardcoded threshold remains in imputation logic.
+- `grep -r "missingly.config" missingly/` returns matches that resolve to real code. ✓
 
 ### [ ] C5. Encode/decode pipeline correctness
 - Replace hand-rolled `_split_encode` / `_decode` with sklearn-standard pattern.
@@ -383,7 +425,7 @@ missingly/
 
 ### [ ] T2. Docstring and typing policy
 - Google-style docstrings. English only. `mypy --strict` passes.
-- **Prerequisite: C4 done** (mypy --strict fails while missingly.config refs exist).
+- **Prerequisite: C4 done ✓** (mypy --strict fails while missingly.config refs exist).
 - **Acceptance:** `pydoclint --style=google missingly/` exits 0. `mypy --strict` exits 0.
 
 ### [ ] T3. CI pipeline
