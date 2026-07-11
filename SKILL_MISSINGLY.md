@@ -1,3 +1,12 @@
+---
+name: missingly
+description: AI co-pilot context for the missingly Python package — missing data analysis, imputation, diagnostics, simulation, and reporting.
+version: 1.0.0
+author: Ali Sadeghi Aghili
+repo: github.com/alisadeghiaghili/missingly
+updated: 2026-07-11
+---
+
 # SKILL: missingly — AI Co-Pilot Context File
 
 > **Caveman Skill**: This file is the ground truth for any AI assistant working on the `missingly` package.
