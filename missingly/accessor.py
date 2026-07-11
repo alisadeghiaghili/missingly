@@ -2,9 +2,7 @@
 
 Registers the ``miss`` namespace on :class:`pandas.DataFrame` via
 :func:`pandas.api.extensions.register_dataframe_accessor`.  This
-allows the entire missingly API to be used as fluent method chains:
-
-.. code-block:: python
+allows the entire missingly API to be used as fluent method chains::
 
     import pandas as pd
     import missingly  # noqa: F401 — import registers the accessor
@@ -12,10 +10,12 @@ allows the entire missingly API to be used as fluent method chains:
     cleaned = (
         df
         .miss.replace_with_na({'score': -99, 'label': 'N/A'})
-        .miss.remove_empty(thresh_col=0.9)
-        .miss.clean_names()
         .miss.miss_as_feature()
     )
+
+    # Unified imputation — delegates to MissinglyImputer
+    imputed = df.miss.impute(method="mean")
+    imputed = df.miss.impute(method="knn", columns=["age", "income"])
 
     # Visualisation — returns Axes, not DataFrame
     ax = df.miss.vis_miss()
@@ -31,6 +31,9 @@ Design notes
   Axes for multi-panel plots such as ``upset``).
 * The accessor never mutates ``self._df``; every manipulation method
   works on a copy.
+* ``miss.impute`` is a thin façade over
+  :class:`~missingly.transformer.MissinglyImputer`.  No imputation
+  algorithm is implemented inside the accessor.
 
 Compatibility
 -------------
@@ -39,7 +42,7 @@ Requires Python 3.9+ and pandas 2.0+.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import pandas as pd
 
@@ -57,6 +60,10 @@ from .impute import (
     impute_mice,
     impute_rf,
     impute_gb,
+)
+
+_VALID_IMPUTE_METHODS = frozenset(
+    {"mean", "median", "mode", "knn", "mice", "rf", "gb", "constant"}
 )
 
 
@@ -86,7 +93,7 @@ class MissinglyAccessor:
     >>> df = pd.DataFrame({'A': [1, None, 3], 'B': [None, 2, 3]})
     >>> df.miss.n_miss()
     2
-    >>> cleaned = df.miss.replace_with_na({'A': -99}).miss.remove_empty()
+    >>> imputed = df.miss.impute(method="mean")
     """
 
     def __init__(self, pandas_obj: pd.DataFrame) -> None:
@@ -98,12 +105,143 @@ class MissinglyAccessor:
         self._df = pandas_obj
 
     # ------------------------------------------------------------------
+    # Unified imputation façade
+    # ------------------------------------------------------------------
+
+    def impute(
+        self,
+        method: str = "mean",
+        *,
+        columns: Optional[List[str]] = None,
+        fill_value: object = None,
+        inplace: bool = False,
+        random_state: int = 0,
+    ) -> Optional[pd.DataFrame]:
+        """Impute missing values using a named strategy.
+
+        This method is a thin façade over
+        :class:`~missingly.transformer.MissinglyImputer`.  No imputation
+        algorithm is implemented here.
+
+        Parameters
+        ----------
+        method : str, default ``"mean"``
+            Imputation strategy.  One of:
+
+            * ``"mean"``     — fill numeric with mean, categorical with mode.
+            * ``"median"``   — fill numeric with median, categorical with mode.
+            * ``"mode"``     — fill all columns with most frequent value.
+            * ``"knn"``      — k-Nearest Neighbours (k=5 by default).
+            * ``"mice"``     — Multiple Imputation by Chained Equations.
+            * ``"rf"``       — Random Forest.
+            * ``"gb"``       — Gradient Boosting.
+            * ``"constant"`` — fill with *fill_value* (must be supplied).
+
+        columns : list of str, optional
+            Subset of columns to impute.  Untouched columns are copied
+            verbatim.  If *None*, all columns are imputed.
+        fill_value : scalar, optional
+            Value used when ``method="constant"``.  Required for that
+            strategy; ignored for all others.
+        inplace : bool, default False
+            * ``False`` — return a new DataFrame; leave caller unchanged.
+            * ``True``  — mutate the caller DataFrame in place and return
+              ``None``.
+        random_state : int, default 0
+            Random seed forwarded to stochastic strategies (knn, mice,
+            rf, gb).  Has no effect on deterministic strategies.
+
+        Returns
+        -------
+        pd.DataFrame or None
+            New imputed DataFrame when *inplace* is ``False``.
+            ``None`` when *inplace* is ``True``.
+
+        Raises
+        ------
+        ValueError
+            If *method* is not one of the supported strategies.
+        ValueError
+            If ``method="constant"`` and *fill_value* is ``None``.
+        MissingColumnError
+            If any name in *columns* is not present in the DataFrame.
+        TypeError
+            If the wrapped object is not a :class:`pandas.DataFrame`.
+
+        Examples
+        --------
+        >>> import pandas as pd, numpy as np, missingly
+        >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0], "b": ["x", None, "z"]})
+        >>> df.miss.impute(method="mean")
+             a  b
+        0  1.0  x
+        1  2.0  x
+        2  3.0  z
+        >>> df.miss.impute(method="constant", fill_value=0)
+             a  b
+        0  1.0  x
+        1  0.0  0
+        2  3.0  z
+        """
+        if method not in _VALID_IMPUTE_METHODS:
+            raise ValueError(
+                f"Unknown imputation method {method!r}. "
+                f"Valid methods: {sorted(_VALID_IMPUTE_METHODS)}"
+            )
+
+        if method == "constant" and fill_value is None:
+            raise ValueError(
+                "method='constant' requires fill_value to be provided. "
+                "Example: df.miss.impute(method='constant', fill_value=0)"
+            )
+
+        # Validate requested columns
+        if columns is not None:
+            bad = [c for c in columns if c not in self._df.columns]
+            if bad:
+                raise MissingColumnError(
+                    columns=bad,
+                    available=list(self._df.columns),
+                )
+
+        # Determine working subset
+        work_df = self._df[columns].copy() if columns is not None else self._df.copy()
+
+        # Delegate to canonical engine
+        if method == "constant":
+            imputed_work = work_df.fillna(fill_value)
+        else:
+            from .transformer import MissinglyImputer
+            imputer = MissinglyImputer(
+                strategy=method,
+                random_state=random_state,
+            )
+            imputed_work = imputer.fit_transform(work_df)
+
+        # Reconstruct full DataFrame preserving untouched columns
+        if columns is not None:
+            result = self._df.copy()
+            result[columns] = imputed_work
+        else:
+            result = imputed_work
+
+        # Preserve index name
+        result.index.name = self._df.index.name
+
+        if inplace:
+            for col in result.columns:
+                self._df[col] = result[col]
+            return None
+
+        return result
+
+    # ------------------------------------------------------------------
     # Manipulation — return DataFrame for chaining
     # ------------------------------------------------------------------
 
     def replace_with_na(
         self,
-        replace: Dict[str, Union[List, object, Callable]],
+        replace: dict,
     ) -> pd.DataFrame:
         """Replace specified values with NaN and return a new DataFrame.
 
@@ -118,7 +256,7 @@ class MissinglyAccessor:
         """
         return manipulation.replace_with_na(self._df, replace)
 
-    def replace_with_na_all(self, condition: Callable) -> pd.DataFrame:
+    def replace_with_na_all(self, condition: object) -> pd.DataFrame:
         """Replace all values matching *condition* with NaN.
 
         Parameters
@@ -129,81 +267,7 @@ class MissinglyAccessor:
         -------
         pd.DataFrame
         """
-        return manipulation.replace_with_na_all(self._df, condition)
-
-    def clean_names(
-        self,
-        *,
-        case: str = "lower",
-        sep: str = "_",
-        strip_accents: bool = False,
-    ) -> pd.DataFrame:
-        """Normalise column names and return a new DataFrame.
-
-        Parameters
-        ----------
-        case : str, optional
-        sep : str, optional
-        strip_accents : bool, optional
-
-        Returns
-        -------
-        pd.DataFrame
-        """
-        return manipulation.clean_names(
-            self._df, case=case, sep=sep, strip_accents=strip_accents
-        )
-
-    def remove_empty(
-        self,
-        *,
-        axis: Union[str, int] = "both",
-        missing_values: Optional[List] = None,
-        thresh_row: Optional[float] = None,
-        thresh_col: Optional[float] = None,
-    ) -> pd.DataFrame:
-        """Drop empty rows/columns and return a new DataFrame.
-
-        Parameters
-        ----------
-        axis : str or int, optional
-        missing_values : list, optional
-        thresh_row : float, optional
-        thresh_col : float, optional
-
-        Returns
-        -------
-        pd.DataFrame
-        """
-        return manipulation.remove_empty(
-            self._df,
-            axis=axis,
-            missing_values=missing_values,
-            thresh_row=thresh_row,
-            thresh_col=thresh_col,
-        )
-
-    def coalesce_columns(
-        self,
-        target: str,
-        *donors: str,
-        remove_donors: bool = False,
-    ) -> pd.DataFrame:
-        """Fill missing values in *target* from donor columns (SQL COALESCE).
-
-        Parameters
-        ----------
-        target : str
-        *donors : str
-        remove_donors : bool, optional
-
-        Returns
-        -------
-        pd.DataFrame
-        """
-        return manipulation.coalesce_columns(
-            self._df, target, *donors, remove_donors=remove_donors
-        )
+        return manipulation.replace_with_na_all(self._df, condition)  # type: ignore[arg-type]
 
     def miss_as_feature(
         self,
@@ -235,71 +299,144 @@ class MissinglyAccessor:
         )
 
     # ------------------------------------------------------------------
-    # Imputation — return DataFrame for chaining
+    # Imputation — typed wrappers, return DataFrame for chaining
     # ------------------------------------------------------------------
 
-    def impute_mean(self, **kwargs) -> pd.DataFrame:
+    def impute_mean(
+        self,
+        numeric_only: bool = False,
+    ) -> pd.DataFrame:
         """Impute missing values with column means.
 
+        Parameters
+        ----------
+        numeric_only : bool, default False
+            If True, only numeric columns are imputed.
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_mean(self._df, **kwargs)
+        return impute_mean(self._df, numeric_only=numeric_only)
 
-    def impute_median(self, **kwargs) -> pd.DataFrame:
+    def impute_median(
+        self,
+        numeric_only: bool = False,
+    ) -> pd.DataFrame:
         """Impute missing values with column medians.
 
-        Returns
-        -------
-        pd.DataFrame
-        """
-        return impute_median(self._df, **kwargs)
-
-    def impute_mode(self, **kwargs) -> pd.DataFrame:
-        """Impute missing values with column modes.
+        Parameters
+        ----------
+        numeric_only : bool, default False
+            If True, only numeric columns are imputed.
 
         Returns
         -------
         pd.DataFrame
         """
-        return impute_mode(self._df, **kwargs)
+        return impute_median(self._df, numeric_only=numeric_only)
 
-    def impute_knn(self, **kwargs) -> pd.DataFrame:
+    def impute_mode(self) -> pd.DataFrame:
+        """Impute missing values with column modes (most frequent values).
+
+        Returns
+        -------
+        pd.DataFrame
+        """
+        return impute_mode(self._df)
+
+    def impute_knn(
+        self,
+        n_neighbors: int = 5,
+        metric: str = "euclidean",
+    ) -> pd.DataFrame:
         """Impute missing values using k-nearest neighbours.
 
+        Parameters
+        ----------
+        n_neighbors : int, default 5
+        metric : {"euclidean", "mixed"}, default "euclidean"
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_knn(self._df, **kwargs)
+        return impute_knn(self._df, n_neighbors=n_neighbors, metric=metric)
 
-    def impute_mice(self, **kwargs) -> pd.DataFrame:
+    def impute_mice(
+        self,
+        max_iter: int = 10,
+        random_state: int = 0,
+        n_imputations: int = 1,
+    ) -> pd.DataFrame:
         """Impute missing values using MICE (iterative imputer).
 
+        Parameters
+        ----------
+        max_iter : int, default 10
+        random_state : int, default 0
+        n_imputations : int, default 1
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_mice(self._df, **kwargs)
+        return impute_mice(  # type: ignore[return-value]
+            self._df,
+            max_iter=max_iter,
+            random_state=random_state,
+            n_imputations=n_imputations,
+        )
 
-    def impute_rf(self, **kwargs) -> pd.DataFrame:
+    def impute_rf(
+        self,
+        max_iter: int = 1,
+        random_state: int = 0,
+        strict_mode: Optional[bool] = None,
+    ) -> pd.DataFrame:
         """Impute missing values using a random-forest model.
 
+        Parameters
+        ----------
+        max_iter : int, default 1
+        random_state : int, default 0
+        strict_mode : bool or None, default None
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_rf(self._df, **kwargs)
+        return impute_rf(
+            self._df,
+            max_iter=max_iter,
+            random_state=random_state,
+            strict_mode=strict_mode,
+        )
 
-    def impute_gb(self, **kwargs) -> pd.DataFrame:
+    def impute_gb(
+        self,
+        max_iter: int = 1,
+        random_state: int = 0,
+        strict_mode: Optional[bool] = None,
+    ) -> pd.DataFrame:
         """Impute missing values using a gradient-boosting model.
 
+        Parameters
+        ----------
+        max_iter : int, default 1
+        random_state : int, default 0
+        strict_mode : bool or None, default None
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_gb(self._df, **kwargs)
+        return impute_gb(
+            self._df,
+            max_iter=max_iter,
+            random_state=random_state,
+            strict_mode=strict_mode,
+        )
 
     # ------------------------------------------------------------------
     # Summary — return natural output type (not DataFrame)
@@ -394,28 +531,19 @@ class MissinglyAccessor:
         Returns
         -------
         dict
-            Keys: ``chi_square``, ``df``, ``p_value``, ``missing_patterns``,
-            ``amount_missing``.
         """
         return diagnostics.mcar_test(self._df)
 
     def mar_mnar_test(self, target: str) -> pd.DataFrame:
         """Test for MAR / MNAR patterns with respect to a target column.
 
-        Delegates to :func:`missingly.diagnostics.mar_mnar_test` with the
-        correct ``X`` / ``Y`` split.  The *target* column is used as the
-        outcome variable (``Y``); all remaining columns are used as
-        predictors (``X``).
-
         Parameters
         ----------
         target : str
-            Name of the outcome column.  Must exist in the DataFrame.
 
         Returns
         -------
         pd.DataFrame
-            Result from :func:`missingly.diagnostics.mar_mnar_test`.
 
         Raises
         ------
@@ -436,39 +564,19 @@ class MissinglyAccessor:
     # ------------------------------------------------------------------
 
     def matrix(self, ax=None, missing_values: Optional[List] = None, **kwargs):
-        """Render a missingness matrix plot.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a missingness matrix plot."""
         return visualise.matrix(self._df, ax=ax, missing_values=missing_values, **kwargs)
 
     def bar(self, ax=None, missing_values: Optional[List] = None, **kwargs):
-        """Render a bar chart of missing counts per column.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a bar chart of missing counts per column."""
         return visualise.bar(self._df, ax=ax, missing_values=missing_values, **kwargs)
 
     def upset(self, missing_values: Optional[List] = None, **kwargs):
-        """Render an UpSet plot of missing value combinations.
-
-        Returns
-        -------
-        dict
-        """
+        """Render an UpSet plot of missing value combinations."""
         return visualise.upset(self._df, missing_values=missing_values, **kwargs)
 
     def heatmap(self, ax=None, missing_values: Optional[List] = None, **kwargs):
-        """Render a nullity-correlation heatmap.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a nullity-correlation heatmap."""
         return visualise.heatmap(self._df, ax=ax, missing_values=missing_values, **kwargs)
 
     def vis_miss(
@@ -479,12 +587,7 @@ class MissinglyAccessor:
         cluster: bool = False,
         **kwargs,
     ):
-        """Render an annotated missingness overview matrix.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render an annotated missingness overview matrix."""
         return visualise.vis_miss(
             self._df,
             ax=ax,
@@ -501,12 +604,7 @@ class MissinglyAccessor:
         sort: bool = True,
         **kwargs,
     ):
-        """Render a horizontal bar chart of missingness % per variable.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a horizontal bar chart of missingness % per variable."""
         return visualise.miss_var_pct(
             self._df, ax=ax, missing_values=missing_values, sort=sort, **kwargs
         )
@@ -518,23 +616,13 @@ class MissinglyAccessor:
         method: str = "ward",
         **kwargs,
     ):
-        """Render a clustered missingness heatmap.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a clustered missingness heatmap."""
         return visualise.miss_cluster(
             self._df, ax=ax, missing_values=missing_values, method=method, **kwargs
         )
 
     def miss_which(self, ax=None, missing_values: Optional[List] = None, **kwargs):
-        """Render a binary tile plot showing which columns have missing data.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a binary tile plot showing which columns have missing data."""
         return visualise.miss_which(
             self._df, ax=ax, missing_values=missing_values, **kwargs
         )
@@ -547,23 +635,13 @@ class MissinglyAccessor:
         missing_values: Optional[List] = None,
         **kwargs,
     ):
-        """Render a scatter plot highlighting missing values.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a scatter plot highlighting missing values."""
         return visualise.scatter_miss(
             self._df, x=x, y=y, ax=ax, missing_values=missing_values, **kwargs
         )
 
     def miss_case(self, ax=None, missing_values: Optional[List] = None, **kwargs):
-        """Render a bar chart of missing values per row.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a bar chart of missing values per row."""
         return visualise.miss_case(
             self._df, ax=ax, missing_values=missing_values, **kwargs
         )
@@ -574,18 +652,7 @@ class MissinglyAccessor:
         ax=None,
         **kwargs,
     ):
-        """Compare distributions before and after imputation.
-
-        Parameters
-        ----------
-        imputed_df : pd.DataFrame
-        ax : matplotlib.axes.Axes, optional
-        **kwargs
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Compare distributions before and after imputation."""
         return visualise.vis_impute_dist(self._df, imputed_df, ax=ax, **kwargs)
 
     def vis_miss_fct(
@@ -595,12 +662,7 @@ class MissinglyAccessor:
         missing_values: Optional[List] = None,
         **kwargs,
     ):
-        """Render missingness by a categorical factor variable.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render missingness by a categorical factor variable."""
         return visualise.vis_miss_fct(
             self._df, fct=fct, ax=ax, missing_values=missing_values, **kwargs
         )
@@ -608,12 +670,7 @@ class MissinglyAccessor:
     def vis_miss_cumsum_var(
         self, ax=None, missing_values: Optional[List] = None, **kwargs
     ):
-        """Render cumulative missing count per variable.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render cumulative missing count per variable."""
         return visualise.vis_miss_cumsum_var(
             self._df, ax=ax, missing_values=missing_values, **kwargs
         )
@@ -621,12 +678,7 @@ class MissinglyAccessor:
     def vis_miss_cumsum_case(
         self, ax=None, missing_values: Optional[List] = None, **kwargs
     ):
-        """Render cumulative missing count per row.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render cumulative missing count per row."""
         return visualise.vis_miss_cumsum_case(
             self._df, ax=ax, missing_values=missing_values, **kwargs
         )
@@ -639,12 +691,7 @@ class MissinglyAccessor:
         missing_values: Optional[List] = None,
         **kwargs,
     ):
-        """Render rolling missing count for a single variable.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render rolling missing count for a single variable."""
         return visualise.vis_miss_span(
             self._df,
             column=column,
@@ -655,12 +702,7 @@ class MissinglyAccessor:
         )
 
     def vis_parallel_coords(self, missing_values: Optional[List] = None, **kwargs):
-        """Render a parallel coordinates missingness plot.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a parallel coordinates missingness plot."""
         return visualise.vis_parallel_coords(
             self._df, missing_values=missing_values, **kwargs
         )
@@ -672,12 +714,7 @@ class MissinglyAccessor:
         method: str = "ward",
         **kwargs,
     ):
-        """Render a dendrogram clustering variables by nullity correlation.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
+        """Render a dendrogram clustering variables by nullity correlation."""
         return visualise.dendrogram(
             self._df, ax=ax, missing_values=missing_values, method=method, **kwargs
         )
