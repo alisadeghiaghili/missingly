@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 matplotlib.use("Agg")
 
 from missingly.timeseries import (
+    _gaps_for_column,
+    _require_sorted,
     gap_table,
     impute_ts,
     miss_ts_summary,
@@ -193,3 +195,78 @@ class TestImpuseTs:
         df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]}, index=idx)
         with pytest.raises(ValueError, match="sorted"):
             impute_ts(df, "ffill")
+
+
+class TestGapsDuplicateTimestamps:
+    """Regression tests for Issue #9: duplicate DatetimeIndex crash."""
+
+    def test_duplicate_mid_gap_no_crash(self):
+        idx = pd.to_datetime(
+            ["2024-01-01", "2024-01-02", "2024-01-02", "2024-01-03", "2024-01-04"]
+        )
+        s = pd.Series([1.0, np.nan, np.nan, np.nan, 5.0], index=idx)
+        gaps = _gaps_for_column(s)
+        assert len(gaps) == 1
+        assert gaps[0]["length"] == 3
+        assert gaps[0]["start"] == idx[1]
+        assert gaps[0]["end"] == idx[-1]
+
+    def test_duplicate_leading_gap(self):
+        idx = pd.to_datetime(["2024-01-01", "2024-01-01", "2024-01-02", "2024-01-03"])
+        s = pd.Series([np.nan, np.nan, np.nan, 4.0], index=idx)
+        gaps = _gaps_for_column(s)
+        assert len(gaps) == 1
+        assert gaps[0]["length"] == 3
+
+    def test_duplicate_trailing_gap(self):
+        idx = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-03"])
+        s = pd.Series([1.0, 2.0, np.nan, np.nan], index=idx)
+        gaps = _gaps_for_column(s)
+        assert len(gaps) == 1
+        assert gaps[0]["length"] == 2
+
+    def test_unsorted_with_duplicates_raises(self):
+        df = pd.DataFrame(
+            {"a": [1.0, np.nan, 3.0]},
+            index=pd.to_datetime(["2024-01-02", "2024-01-01", "2024-01-02"]),
+        )
+        with pytest.raises(ValueError, match="monotonically increasing"):
+            _require_sorted(df)
+
+    def test_all_missing_column_with_duplicates(self):
+        idx = pd.to_datetime(["2024-01-01", "2024-01-01", "2024-01-02"])
+        s = pd.Series([np.nan, np.nan, np.nan], index=idx)
+        gaps = _gaps_for_column(s)
+        assert len(gaps) == 1
+        assert gaps[0]["length"] == 3
+
+    def test_no_missing_with_duplicates(self):
+        idx = pd.to_datetime(["2024-01-01", "2024-01-01", "2024-01-02"])
+        s = pd.Series([1.0, 2.0, 3.0], index=idx)
+        assert _gaps_for_column(s) == []
+
+    def test_mixed_dtype_dataframe_with_duplicate_index(self):
+        idx = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-02", "2024-01-03"])
+        df = pd.DataFrame(
+            {
+                "num": [1.0, np.nan, np.nan, 4.0],
+                "cat": ["a", None, None, "b"],
+            },
+            index=idx,
+        )
+        summary = miss_ts_summary(df)
+        assert summary.loc["num", "n_gaps"] == 1
+        assert summary.loc["num", "max_gap"] == 2
+        assert summary.loc["cat", "n_gaps"] == 1
+
+    def test_duplicate_parity_with_gap_table(self):
+        """Duplicate timestamps must not corrupt gap_table output shape."""
+        idx = pd.to_datetime(
+            ["2024-01-01", "2024-01-02", "2024-01-02", "2024-01-03", "2024-01-04"]
+        )
+        df = pd.DataFrame({"x": [1.0, np.nan, np.nan, np.nan, 5.0]}, index=idx)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            table = gap_table(df)
+        assert len(table) == 1
+        assert table.iloc[0]["length"] == 3
