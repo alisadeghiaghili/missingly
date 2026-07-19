@@ -15,10 +15,21 @@ from ._deprecation import deprecated_api
 
 
 def _require_sorted(df: pd.DataFrame) -> None:
+    """Validate that a DataFrame's index is sorted for time-series ops.
+
+    Duplicate timestamps are permitted as long as the index is
+    non-decreasing; only strictly out-of-order labels raise.
+
+    Raises
+    ------
+    ValueError
+        If ``df.index`` is not monotonically increasing.
+    """
     if not df.index.is_monotonic_increasing:
         raise ValueError(
             "DataFrame index must be monotonically increasing (sorted). "
-            "Call df.sort_index() before using time-series functions."
+            "Duplicate timestamps are allowed, but out-of-order timestamps "
+            "are not. Call df.sort_index() before using time-series functions."
         )
 
 
@@ -33,38 +44,74 @@ def _gaps_for_column(
     series: pd.Series,
     missing_values: Optional[List] = None,
 ) -> List[dict]:
+    """Detect contiguous missing-value gaps in a time-indexed Series.
+
+    Uses positional (integer) tracking instead of ``Index.get_loc()`` on
+    index *values*, because ``get_loc()`` returns a ``slice`` (not an
+    ``int``) when the index contains duplicate labels. Relying on
+    positions makes gap length computation correct and crash-free
+    regardless of whether the ``DatetimeIndex`` has duplicate timestamps.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Time-indexed series to scan for missing-value gaps. The index
+        must be monotonically increasing (sorted); duplicate timestamps
+        are allowed.
+    missing_values : list, optional
+        Additional sentinel values to treat as missing, on top of
+        ``NaN``/``None``.
+
+    Returns
+    -------
+    list of dict
+        Each dict has keys ``start`` (index label where gap begins),
+        ``end`` (index label where gap ends), and ``length`` (int,
+        number of consecutive rows in the gap).
+
+    Notes
+    -----
+    ``length`` counts rows (positions), not elapsed calendar time. If the
+    index has duplicate timestamps, a run of missing rows sharing the same
+    timestamp is counted correctly by position, not double-counted or
+    dropped.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> idx = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-02", "2024-01-03"])
+    >>> s = pd.Series([1.0, np.nan, np.nan, 4.0], index=idx)
+    >>> _gaps_for_column(s)
+    [{'start': Timestamp('2024-01-02 00:00:00'), 'end': Timestamp('2024-01-03 00:00:00'), 'length': 2}]
+    """
     null_mask = series.isnull()
     if missing_values:
         null_mask = null_mask | series.isin(missing_values)
 
-    gaps = []
+    gaps: List[dict] = []
     in_gap = False
     gap_start = None
+    gap_start_pos = None
+    index_vals = series.index
 
-    for idx, is_null in zip(series.index, null_mask):
+    for pos, (idx, is_null) in enumerate(zip(index_vals, null_mask)):
         if is_null and not in_gap:
             in_gap = True
             gap_start = idx
+            gap_start_pos = pos
         elif not is_null and in_gap:
             in_gap = False
-            gaps.append({"start": gap_start, "end": idx, "length": None})
+            gaps.append({"start": gap_start, "end": idx, "length": pos - gap_start_pos})
 
     if in_gap:
-        gaps.append({"start": gap_start, "end": series.index[-1], "length": None})
-
-    for gap in gaps:
-        start_loc = series.index.get_loc(gap["start"])
-        end_val = gap["end"]
-        if end_val == series.index[-1] and series.isnull().iloc[series.index.get_loc(end_val)]:
-            end_loc = series.index.get_loc(end_val)
-            length = end_loc - start_loc + 1
-        else:
-            try:
-                end_loc = series.index.get_loc(end_val)
-            except Exception:
-                end_loc = start_loc
-            length = end_loc - start_loc
-        gap["length"] = length
+        end_pos = len(series) - 1
+        gaps.append(
+            {
+                "start": gap_start,
+                "end": index_vals[-1],
+                "length": end_pos - gap_start_pos + 1,
+            }
+        )
 
     return gaps
 
