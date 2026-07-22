@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "missingly"
-version = "0.2.0"
+version = "0.3.0"
 authors = [
   { name="Ali Sadeghi Aghili", email="alisadeghiaghili@gmail.com" },
 ]
@@ -47,6 +47,7 @@ docs = [
 ]
 test = [
     "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
     "upsetplot>=0.9.0",
 ]
 interactive = [
@@ -84,4 +85,15 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 filterwarnings = [
     "ignore::FutureWarning:sklearn",
+]
+
+[tool.coverage.run]
+source = ["missingly"]
+omit = ["missingly/templates/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
