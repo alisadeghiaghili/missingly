@@ -73,7 +73,7 @@ from .impute import _fill_nan_with_col_means
 
 
 _VALID_STRATEGIES = frozenset(
-    {"mean", "median", "mode", "knn", "mice", "rf", "gb"}
+    {"mean", "median", "mode", "knn", "mice", "rf", "gb", "pmm", "logreg", "polyreg", "polr"}
 )
 
 
@@ -259,6 +259,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self._fit_knn(X)
         elif strategy == "mice":
             self._fit_mice(X)
+        elif strategy == "pmm":
+            self._fit_pmm(X)
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
 
@@ -307,6 +309,18 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             imputation_order="roman",
         )
         self.imputer_.fit(X_enc)
+
+    def _fit_pmm(self, X: pd.DataFrame) -> None:
+        """Fit PMM — store training data for donor matching."""
+        self._pmm_train_df_ = X.copy()
+        # Fit categorical encoder if needed
+        if self.cat_cols_:
+            self.encoder_ = OrdinalEncoder(
+                handle_unknown="use_encoded_value",
+                unknown_value=np.nan,
+                encoded_missing_value=np.nan,
+            )
+            self.encoder_.fit(X[self.cat_cols_])
 
     def _fit_tree(self, X: pd.DataFrame) -> None:
         """Fit per-column regressor/classifier for rf and gb strategies."""
@@ -438,6 +452,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
             result = self._decode_cats(df_enc)
 
+        elif strategy == "pmm":
+            result = self._transform_pmm(X)
+
         elif strategy in ("rf", "gb"):
             result = self._transform_tree(X)
 
@@ -471,6 +488,68 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             elif col not in cat_set and col in self.rf_reg_models_:
                 reg = self.rf_reg_models_[col]
                 result.loc[missing_mask, col] = reg.predict(X_pred)
+
+        return result
+
+    def _transform_pmm(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Apply PMM imputation using stored training data."""
+        import numpy as np
+        from sklearn.linear_model import BayesianRidge
+
+        train_df = self._pmm_train_df_
+        rng = np.random.default_rng(self.random_state)
+        result = X.copy()
+
+        num_cols = self.numeric_cols_
+        cat_cols = self.cat_cols_
+
+        # Impute numeric columns with PMM
+        for col in num_cols:
+            missing_mask = result[col].isna()
+            if not missing_mask.any():
+                continue
+
+            feature_cols = [c for c in num_cols if c != col]
+            if not feature_cols:
+                result.loc[missing_mask, col] = train_df[col].mean()
+                continue
+
+            # Get observed values from training data
+            train_obs_mask = ~train_df[col].isna()
+            X_train = train_df.loc[train_obs_mask, feature_cols].values
+            y_train = train_df.loc[train_obs_mask, col].values
+
+            # Fill NaN in features
+            X_train_clean = X_train.copy()
+            for j in range(X_train_clean.shape[1]):
+                col_mean = np.nanmean(X_train_clean[:, j])
+                X_train_clean[np.isnan(X_train_clean[:, j]), j] = col_mean
+
+            # Fit model
+            model = BayesianRidge()
+            model.fit(X_train_clean, y_train)
+
+            # Predict for missing values
+            X_miss = result.loc[missing_mask, feature_cols].values.copy()
+            for j in range(X_miss.shape[1]):
+                col_mean = np.nanmean(X_miss[:, j]) if not np.all(np.isnan(X_miss[:, j])) else 0
+                X_miss[np.isnan(X_miss[:, j]), j] = col_mean
+
+            y_pred = model.predict(X_miss)
+
+            # Find donors and randomly select
+            for i, pred_val in enumerate(y_pred):
+                distances = np.abs(y_train - pred_val)
+                donor_idx = np.argsort(distances)[:5]
+                donors = y_train[donor_idx]
+                result.loc[missing_mask.values[i], col] = donors[rng.integers(len(donors))]
+
+        # Handle categorical columns with mode from training
+        for col in cat_cols:
+            if result[col].isna().any():
+                observed = train_df[col].dropna()
+                if len(observed) > 0:
+                    result[col] = result[col].fillna(observed.mode().iloc[0])
 
         return result
 
