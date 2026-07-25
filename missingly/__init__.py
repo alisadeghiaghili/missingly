@@ -107,6 +107,8 @@ from missingly.diagnostics import (
     mcar_test,
     mar_mnar_test,
     diagnose_missing,
+    mice_convergence,
+    plot_mice_convergence,
 )
 
 # ---------------------------------------------------------------------------
@@ -118,6 +120,10 @@ from missingly.impute import (
     impute_mode,
     impute_knn,
     impute_mice,
+    impute_pmm,
+    impute_logreg,
+    impute_polyreg,
+    impute_polr,
     impute_rf,
     impute_gb,
     make_imputer,
@@ -169,6 +175,23 @@ from missingly.timeseries import (
     vis_ts_miss,
     vis_miss_over_time,
     impute_ts,
+)
+
+# ---------------------------------------------------------------------------
+# Tidy missingness exploration (naniar parity)
+# ---------------------------------------------------------------------------
+from missingly.naniar import (
+    shadow_matrix,
+    shadow_long,
+    shadow_wide,
+    special_missing,
+    n_miss_var,
+    n_miss_case,
+    pct_miss_var,
+    gg_miss_var,
+    gg_miss_case,
+    gg_miss_fct,
+    gg_miss_upset,
 )
 
 # ---------------------------------------------------------------------------
@@ -254,10 +277,11 @@ __all__ = [
     "miss_var_summary", "miss_case_summary", "summarise",
     "miss_scan_count", "miss_summary",
     # Diagnosis
-    "mcar_test", "mar_mnar_test", "diagnose_missing",
+    "mcar_test", "mar_mnar_test", "diagnose_missing", "mice_convergence", "plot_mice_convergence",
     # Imputation
     "impute_mean", "impute_median", "impute_mode",
-    "impute_knn", "impute_mice", "impute_rf", "impute_gb", "make_imputer",
+    "impute_knn", "impute_mice", "impute_pmm", "impute_logreg", "impute_polyreg", "impute_polr",
+    "impute_rf", "impute_gb", "make_imputer",
     # sklearn-style
     "MissinglyImputer", "FittedImputer",
     # MI pooling
@@ -270,6 +294,10 @@ __all__ = [
     "create_report",
     # Time-series
     "miss_ts_summary", "vis_ts_miss", "vis_miss_over_time", "impute_ts",
+    # Tidy missingness exploration (naniar parity)
+    "shadow_matrix", "shadow_long", "shadow_wide", "special_missing",
+    "n_miss_var", "n_miss_case", "pct_miss_var",
+    "gg_miss_var", "gg_miss_case", "gg_miss_fct", "gg_miss_upset",
     # Simulation
     "simulate_mcar", "simulate_mar", "simulate_mnar", "simulate_mixed",
     # Manipulation
