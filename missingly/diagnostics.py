@@ -577,6 +577,14 @@ def mar_mnar_test(
     if missing_values is not None:
         X = X.replace(missing_values, np.nan)
 
+    # Fill NaN in Y with mean if numeric
+    if hasattr(Y, 'fillna'):
+        if pd.api.types.is_numeric_dtype(Y):
+            Y = Y.fillna(Y.mean())
+        else:
+            Y = Y.fillna(Y.mode().iloc[0] if len(Y.mode()) > 0 else 0)
+    Y = np.asarray(Y)
+
     D_matrix = (~X.isna()).astype(int)
     results = []
 
