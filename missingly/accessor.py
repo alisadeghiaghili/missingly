@@ -428,7 +428,11 @@ class MissinglyAccessor:
                 available=list(self._df.columns),
             )
         X = self._df.drop(columns=[target])
-        Y = self._df[target].to_numpy()
+        Y = self._df[target]
+        # Drop rows where Y is NaN to avoid issues with LogisticRegression
+        valid_mask = Y.notna()
+        X = X[valid_mask]
+        Y = Y[valid_mask].to_numpy()
         return diagnostics.mar_mnar_test(X, Y)
 
     # ------------------------------------------------------------------
