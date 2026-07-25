@@ -478,6 +478,13 @@ def mcar_test(
     if missing_values is not None:
         X = X.replace(missing_values, np.nan)
 
+    # Check for missing values
+    if not X.isnull().any(axis=None):
+        raise ValueError(
+            "mcar_test requires at least one missing value in the DataFrame. "
+            "All values are present — MCAR test is not applicable."
+        )
+
     data_np = X.to_numpy(dtype=float)
     n, d = data_np.shape
 
@@ -755,3 +762,229 @@ def diagnose_missing(
         "high_missingness_cols": high_miss_cols,
         "max_nullity_corr": max_corr,
     }
+
+
+# ===========================================================================
+# Section 3 — MICE Convergence Diagnostics
+# ===========================================================================
+
+
+def mice_convergence(
+    chains: List[pd.DataFrame],
+    original_df: pd.DataFrame,
+    variables: Optional[List[str]] = None,
+) -> Dict:
+    """Assess convergence of multiple imputation chains.
+
+    This function implements convergence diagnostics similar to R's mice
+    package, including trace plots, R-hat statistics, and density comparison.
+
+    Parameters
+    ----------
+    chains : list of pd.DataFrame
+        List of *m* imputed DataFrames from independent MICE chains.
+    original_df : pd.DataFrame
+        The original DataFrame with missing values (before imputation).
+    variables : list of str, optional
+        Specific variables to diagnose. If None, all numeric variables
+        with missing values are included.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - ``"rhat"``: Gelman-Rubin R-hat statistic for each variable
+        - ``"trace_data"``: Data for trace plots
+        - ``"density_data"``: Data for density comparison plots
+        - ``"converged"``: Boolean indicating if all R-hat < 1.1
+
+    Raises
+    ------
+    ValueError
+        If fewer than 2 chains are provided.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> from missingly.impute import impute_mice
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, np.nan]})
+    >>> chains = [impute_mice(df, random_state=i) for i in range(3)]
+    >>> result = mice_convergence(chains, df)
+    >>> "rhat" in result
+    True
+
+    Notes
+    -----
+    The Gelman-Rubin R-hat statistic compares between-chain variance to
+    within-chain variance. Values close to 1.0 indicate convergence.
+    R-hat < 1.1 is generally considered acceptable; R-hat < 1.05 is preferred.
+    """
+    if len(chains) < 2:
+        raise ValueError(
+            f"mice_convergence requires at least 2 chains; got {len(chains)}."
+        )
+
+    m = len(chains)
+
+    # Determine which variables to diagnose
+    if variables is None:
+        variables = []
+        for col in original_df.columns:
+            if original_df[col].isna().any() and pd.api.types.is_numeric_dtype(original_df[col]):
+                variables.append(col)
+
+    if not variables:
+        return {
+            "rhat": {},
+            "trace_data": {},
+            "density_data": {},
+            "converged": True,
+        }
+
+    rhat_dict = {}
+    trace_data = {}
+    density_data = {}
+
+    for var in variables:
+        # Extract imputed values for this variable across chains
+        chain_values = []
+        for chain in chains:
+            if var in chain.columns:
+                imputed_mask = original_df[var].isna()
+                chain_values.append(chain.loc[imputed_mask, var].values)
+
+        if not chain_values or any(len(v) == 0 for v in chain_values):
+            continue
+
+        # Ensure all chains have same length
+        min_len = min(len(v) for v in chain_values)
+        chain_values = [v[:min_len] for v in chain_values]
+
+        # Calculate R-hat
+        chain_means = np.array([np.mean(v) for v in chain_values])
+        chain_vars = np.array([np.var(v, ddof=1) for v in chain_values])
+
+        # Between-chain variance
+        B = np.var(chain_means, ddof=1)
+
+        # Within-chain variance
+        W = np.mean(chain_vars)
+
+        # Pooled variance estimate
+        n = min_len
+        var_plus = ((n - 1) / n) * W + (1 / n) * B
+
+        # R-hat
+        rhat = np.sqrt(var_plus / W) if W > 0 else 1.0
+        rhat_dict[var] = float(rhat)
+
+        # Trace data: chain index vs imputed value
+        trace_data[var] = {
+            f"chain_{i}": values.tolist()
+            for i, values in enumerate(chain_values)
+        }
+
+        # Density data: histogram of imputed values
+        all_values = np.concatenate(chain_values)
+        hist_counts, hist_edges = np.histogram(all_values, bins=30)
+        density_data[var] = {
+            "counts": hist_counts.tolist(),
+            "edges": hist_edges.tolist(),
+        }
+
+    converged = all(r < 1.1 for r in rhat_dict.values()) if rhat_dict else True
+
+    return {
+        "rhat": rhat_dict,
+        "trace_data": trace_data,
+        "density_data": density_data,
+        "converged": converged,
+    }
+
+
+def plot_mice_convergence(
+    convergence_result: Dict,
+    variables: Optional[List[str]] = None,
+    figsize: tuple = (12, 8),
+) -> None:
+    """Plot MICE convergence diagnostics.
+
+    Generates trace plots and density comparison plots for visual
+    assessment of MICE chain convergence.
+
+    Parameters
+    ----------
+    convergence_result : dict
+        Output from :func:`mice_convergence`.
+    variables : list of str, optional
+        Variables to plot. If None, all variables in the result are plotted.
+    figsize : tuple, default (12, 8)
+        Figure size for each variable's diagnostic plot.
+
+    Returns
+    -------
+    None
+        Displays the plots.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> from missingly.impute import impute_mice
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, np.nan]})
+    >>> chains = [impute_mice(df, random_state=i) for i in range(3)]
+    >>> result = mice_convergence(chains, df)
+    >>> plot_mice_convergence(result)  # doctest: +SKIP
+    """
+    import matplotlib.pyplot as plt
+
+    if variables is None:
+        variables = list(convergence_result.get("trace_data", {}).keys())
+
+    n_vars = len(variables)
+    if n_vars == 0:
+        print("No variables to plot.")
+        return
+
+    fig, axes = plt.subplots(n_vars, 2, figsize=(figsize[0], figsize[1] * n_vars))
+    if n_vars == 1:
+        axes = axes.reshape(1, -1)
+
+    for i, var in enumerate(variables):
+        # Trace plot
+        ax_trace = axes[i, 0]
+        trace = convergence_result.get("trace_data", {}).get(var, {})
+        for chain_name, values in trace.items():
+            ax_trace.plot(values, alpha=0.7, label=chain_name)
+        ax_trace.set_title(f"Trace Plot: {var}")
+        ax_trace.set_xlabel("Iteration")
+        ax_trace.set_ylabel("Value")
+        ax_trace.legend(fontsize=8)
+
+        # Density plot
+        ax_density = axes[i, 1]
+        density = convergence_result.get("density_data", {}).get(var, {})
+        if density:
+            counts = np.array(density["counts"])
+            edges = np.array(density["edges"])
+            centers = (edges[:-1] + edges[1:]) / 2
+            ax_density.bar(centers, counts, width=edges[1] - edges[0], alpha=0.7)
+        ax_density.set_title(f"Imputed Values Distribution: {var}")
+        ax_density.set_xlabel("Value")
+        ax_density.set_ylabel("Count")
+
+        # Add R-hat annotation
+        rhat = convergence_result.get("rhat", {}).get(var, None)
+        if rhat is not None:
+            color = "green" if rhat < 1.1 else "red"
+            axes[i, 0].text(
+                0.02, 0.98,
+                f"R-hat = {rhat:.3f}",
+                transform=axes[i, 0].transAxes,
+                verticalalignment="top",
+                color=color,
+                fontsize=10,
+                fontweight="bold",
+            )
+
+    plt.tight_layout()
+    plt.show()

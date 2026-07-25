@@ -224,7 +224,13 @@ def clean_names(*args, **kwargs):
         DeprecationWarning,
         stacklevel=2,
     )
-    from data_quality_toolkit.cleaning import clean_names as _clean
+    try:
+        from data_quality_toolkit.cleaning import clean_names as _clean
+    except ImportError as exc:
+        raise ImportError(
+            "data_quality_toolkit is required for clean_names(). "
+            "Install it with: pip install data-quality-toolkit"
+        ) from exc
     return _clean(*args, **kwargs)
 
 
@@ -244,7 +250,13 @@ def remove_empty(*args, **kwargs):
         DeprecationWarning,
         stacklevel=2,
     )
-    from data_quality_toolkit.cleaning import remove_empty as _remove
+    try:
+        from data_quality_toolkit.cleaning import remove_empty as _remove
+    except ImportError as exc:
+        raise ImportError(
+            "data_quality_toolkit is required for remove_empty(). "
+            "Install it with: pip install data-quality-toolkit"
+        ) from exc
     return _remove(*args, **kwargs)
 
 
@@ -264,7 +276,13 @@ def coalesce_columns(*args, **kwargs):
         DeprecationWarning,
         stacklevel=2,
     )
-    from data_quality_toolkit.cleaning import coalesce_columns as _coal
+    try:
+        from data_quality_toolkit.cleaning import coalesce_columns as _coal
+    except ImportError as exc:
+        raise ImportError(
+            "data_quality_toolkit is required for coalesce_columns(). "
+            "Install it with: pip install data-quality-toolkit"
+        ) from exc
     return _coal(*args, **kwargs)
 
 

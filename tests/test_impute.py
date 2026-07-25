@@ -20,8 +20,10 @@ from missingly.impute import (
     impute_mice,
     impute_rf,
     impute_gb,
-    _LARGE_DF_ROW_THRESHOLD,
 )
+from missingly.config import config as _config
+
+_LARGE_DF_ROW_THRESHOLD = _config.large_df_threshold
 
 
 # ---------------------------------------------------------------------------
