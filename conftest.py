@@ -22,7 +22,7 @@ def df_no_missing():
 
 
 @pytest.fixture
-df_simple():
+def df_simple():
     """Small numeric DataFrame with some missing values."""
     return pd.DataFrame({
         "a": [1.0, np.nan, 3.0, 4.0],

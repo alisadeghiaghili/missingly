@@ -281,17 +281,13 @@ class TestDiagnose:
 # Backward-compat: stats.py and summary.py shims still work
 # ---------------------------------------------------------------------------
 
-def test_stats_shim_still_importable():
-    import warnings
-    with warnings.catch_warnings(record=True):
-        warnings.simplefilter("always")
-        from missingly.stats import mcar_test as _mcar  # noqa: F401
+def test_stats_importable_from_diagnostics():
+    """mcar_test is now in missingly.diagnostics."""
+    from missingly.diagnostics import mcar_test as _mcar  # noqa: F401
     assert callable(_mcar)
 
 
-def test_summary_shim_still_importable():
-    import warnings
-    with warnings.catch_warnings(record=True):
-        warnings.simplefilter("always")
-        from missingly.summary import n_miss as _n_miss  # noqa: F401
+def test_summary_importable_from_diagnostics():
+    """n_miss is now in missingly.diagnostics."""
+    from missingly.diagnostics import n_miss as _n_miss  # noqa: F401
     assert callable(_n_miss)

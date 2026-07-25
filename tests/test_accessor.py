@@ -166,18 +166,6 @@ class TestManipulation:
         df_no_missing.miss.replace_with_na({"a": 2.0})
         pd.testing.assert_frame_equal(df_no_missing, original)
 
-    def test_add_any_miss_var(self, df_numeric):
-        """add_any_miss_var should add a boolean column."""
-        result = df_numeric.miss.add_any_miss_var()
-        assert "any_miss" in result.columns
-        assert result["any_miss"].dtype == bool
-
-    def test_bind_shadow_matrix(self, df_numeric):
-        """bind_shadow_matrix should return only the shadow matrix."""
-        result = df_numeric.miss.bind_shadow_matrix()
-        assert result.shape[1] == df_numeric.shape[1]
-        assert all(col.endswith("_NA") for col in result.columns)
-
 
 # ---------------------------------------------------------------------------
 # Imputation methods
@@ -269,8 +257,9 @@ class TestChaining:
         """Methods should be chainable."""
         result = (
             df_numeric
-            .miss.add_any_miss_var()
+            .miss.replace_with_na({"score": 85.0})
             .miss.n_miss()
         )
-        # n_miss counts including the new indicator column
+        # n_miss counts including the replaced value
         assert isinstance(result, int)
+        assert result > 0

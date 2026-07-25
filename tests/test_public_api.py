@@ -116,14 +116,15 @@ def test_legacy_symbol_exists(sym):
     assert callable(getattr(missingly, sym))
 
 
-def test_simulate_mcar_emits_future_warning():
-    """simulate_mcar must emit FutureWarning (legacy API)."""
+def test_simulate_mcar_works():
+    """simulate_mcar should work without FutureWarning (no longer deprecated)."""
     df_complete = pd.DataFrame({
         "x": list(range(1, 11, 1)),
         "y": list(range(10, 0, -1)),
     }, dtype=float)
-    with pytest.warns(FutureWarning, match="experimental / legacy"):
-        missingly.simulate_mcar(df_complete, frac=0.2, random_state=0)
+    result = missingly.simulate_mcar(df_complete, frac=0.2, random_state=0)
+    assert result is not None
+    assert result.shape == df_complete.shape
 
 
 def test_missing_correlation_matrix_emits_future_warning():
@@ -151,14 +152,16 @@ def test_miss_as_feature_emits_future_warning():
 
 
 # ---------------------------------------------------------------------------
-# Backward-compat aliases
+# Backward-compat aliases (private — not in __all__)
 # ---------------------------------------------------------------------------
 
 def test_test_hotelling_alias_exists():
-    assert hasattr(missingly, "test_hotelling")
-    assert missingly.test_hotelling is missingly.hotelling_test
+    """test_hotelling is a private alias for hotelling_test."""
+    from missingly import _test_hotelling
+    assert _test_hotelling is missingly.hotelling_test
 
 
 def test_test_pattern_monotone_alias_exists():
-    assert hasattr(missingly, "test_pattern_monotone")
-    assert missingly.test_pattern_monotone is missingly.pattern_monotone_test
+    """test_pattern_monotone is a private alias for pattern_monotone_test."""
+    from missingly import _test_pattern_monotone
+    assert _test_pattern_monotone is missingly.pattern_monotone_test
