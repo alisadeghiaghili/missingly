@@ -32,6 +32,13 @@ Design decisions
 * ``estimator_kwargs`` is stored as a single ``Optional[dict]`` parameter
   (not ``**kwargs``) so that ``get_params()`` / ``set_params()`` /
   ``clone()`` work correctly per the sklearn estimator contract.
+* For ``logreg``, ``polyreg``, and ``polr`` strategies, ``fit`` stores the
+  training DataFrame and ``transform`` delegates to the stateless
+  ``impute_logreg`` / ``impute_polyreg`` / ``impute_polr`` functions,
+  re-fitting on the combined train+test data.  This is acceptable because
+  these methods re-fit per column on observed rows only — there is no
+  global state that would cause leakage beyond column-level statistics
+  already present in train.
 
 Example
 -------
@@ -69,7 +76,13 @@ from sklearn.ensemble import (
 )
 from sklearn.preprocessing import OrdinalEncoder
 
-from .impute import _fill_nan_with_col_means
+from .impute import (
+    _fill_nan_with_col_means,
+    _restore_categorical_dtype,
+    impute_logreg,
+    impute_polyreg,
+    impute_polr,
+)
 
 
 _VALID_STRATEGIES = frozenset(
@@ -94,13 +107,17 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     strategy : str, optional
         Imputation strategy.  One of:
 
-        * ``"mean"``   — fill numeric with mean, categorical with mode.
-        * ``"median"`` — fill numeric with median, categorical with mode.
-        * ``"mode"``   — fill all columns with most frequent value.
-        * ``"knn"``    — k-Nearest Neighbours (default k=5).
-        * ``"mice"``   — Multiple Imputation by Chained Equations.
-        * ``"rf"``     — Random Forest.
-        * ``"gb"``     — Gradient Boosting.
+        * ``"mean"``    — fill numeric with mean, categorical with mode.
+        * ``"median"``  — fill numeric with median, categorical with mode.
+        * ``"mode"``    — fill all columns with most frequent value.
+        * ``"knn"``     — k-Nearest Neighbours (default k=5).
+        * ``"mice"``    — Multiple Imputation by Chained Equations.
+        * ``"rf"``      — Random Forest.
+        * ``"gb"``      — Gradient Boosting.
+        * ``"pmm"``     — Predictive Mean Matching.
+        * ``"logreg"``  — Logistic Regression (binary columns).
+        * ``"polyreg"`` — Multinomial Logistic Regression (3+ levels).
+        * ``"polr"``    — Ordinal Logistic Regression (ordered categories).
 
         Default is ``"mean"``.
     n_neighbors : int, optional
@@ -199,14 +216,16 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         if not self.cat_cols_ or self.encoder_ is None:
             return df
         result = df.copy()
-        rounded = np.round(result[self.cat_cols_].to_numpy()).clip(0).copy()
-        decoded = self.encoder_.inverse_transform(rounded)
+        # Clip to valid range [0, n_categories-1] per column to prevent
+        # inverse_transform from crashing or producing unknown sentinels.
+        cat_array = result[self.cat_cols_].to_numpy().copy().astype(float)
+        for i, col in enumerate(self.cat_cols_):
+            n_cats = len(self.encoder_.categories_[i])
+            cat_array[:, i] = np.clip(np.round(cat_array[:, i]), 0, n_cats - 1)
+        decoded = self.encoder_.inverse_transform(cat_array)
         for i, col in enumerate(self.cat_cols_):
             result[col] = decoded[:, i]
-            try:
-                result[col] = result[col].astype(self.cat_dtypes_[col])
-            except (ValueError, TypeError):
-                pass
+            result[col] = _restore_categorical_dtype(result[col], self.cat_dtypes_[col])
         return result
 
     # ------------------------------------------------------------------
@@ -245,6 +264,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.rf_clf_models_: Dict[str, object] = {}
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
         self._knn_train_df_: Optional[pd.DataFrame] = None
+        self._train_df_: Optional[pd.DataFrame] = None  # used by pmm/logreg/polyreg/polr
 
         strategy = self.strategy
 
@@ -263,6 +283,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self._fit_pmm(X)
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
+        elif strategy in ("logreg", "polyreg", "polr"):
+            # These methods re-fit per column on observed rows during transform.
+            # Store training data so transform can use it as the donor/fit pool.
+            self._train_df_ = X.copy()
 
         self._is_fitted = True
         return self
@@ -312,8 +336,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
     def _fit_pmm(self, X: pd.DataFrame) -> None:
         """Fit PMM — store training data for donor matching."""
-        self._pmm_train_df_ = X.copy()
-        # Fit categorical encoder if needed
+        self._train_df_ = X.copy()
         if self.cat_cols_:
             self.encoder_ = OrdinalEncoder(
                 handle_unknown="use_encoded_value",
@@ -421,13 +444,17 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                     X[self.numeric_cols_]
                 )
             if self.cat_cols_ and self.cat_imputer_ is not None:
-                result[self.cat_cols_] = self.cat_imputer_.transform(
-                    X[self.cat_cols_]
-                )
+                imputed = self.cat_imputer_.transform(X[self.cat_cols_])
+                for i, col in enumerate(self.cat_cols_):
+                    filled = pd.Series(imputed[:, i], index=X.index)
+                    result[col] = _restore_categorical_dtype(filled, self.cat_dtypes_[col])
 
         elif strategy == "mode":
             arr = self.imputer_.transform(X)
             result = pd.DataFrame(arr, index=X.index, columns=X.columns)
+            # Restore categorical dtypes lost by SimpleImputer → numpy conversion.
+            for col in X.columns:
+                result[col] = _restore_categorical_dtype(result[col], X[col].dtype)
 
         elif strategy == "knn":
             if self.metric == "mixed":
@@ -457,6 +484,21 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
         elif strategy in ("rf", "gb"):
             result = self._transform_tree(X)
+
+        elif strategy == "logreg":
+            result = impute_logreg(
+                X, max_iter=self.max_iter, random_state=self.random_state
+            )
+
+        elif strategy == "polyreg":
+            result = impute_polyreg(
+                X, max_iter=self.max_iter, random_state=self.random_state
+            )
+
+        elif strategy == "polr":
+            result = impute_polr(
+                X, max_iter=self.max_iter, random_state=self.random_state
+            )
 
         return result[self.feature_names_in_]
 
@@ -491,19 +533,34 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
         return result
 
-    def _transform_pmm(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply PMM imputation using stored training data."""
-        import numpy as np
-        from sklearn.linear_model import BayesianRidge
+    def _transform_pmm(
+        self,
+        X: pd.DataFrame,
+        n_nearest_donors: int = 5,
+    ) -> pd.DataFrame:
+        """Apply PMM imputation using stored training data as donor pool.
 
-        train_df = self._pmm_train_df_
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Data to impute.
+        n_nearest_donors : int, default 5
+            Number of nearest training observations to draw donors from.
+
+        Returns
+        -------
+        pd.DataFrame
+            Imputed copy of *X*.
+        """
+        from .impute import _fill_feature_matrix
+
+        train_df = self._train_df_
         rng = np.random.default_rng(self.random_state)
         result = X.copy()
 
         num_cols = self.numeric_cols_
         cat_cols = self.cat_cols_
 
-        # Impute numeric columns with PMM
         for col in num_cols:
             missing_mask = result[col].isna()
             if not missing_mask.any():
@@ -511,40 +568,42 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
             feature_cols = [c for c in num_cols if c != col]
             if not feature_cols:
-                result.loc[missing_mask, col] = train_df[col].mean()
+                fill_val = train_df[col].mean()
+                result.loc[missing_mask, col] = fill_val
                 continue
 
-            # Get observed values from training data
             train_obs_mask = ~train_df[col].isna()
-            X_train = train_df.loc[train_obs_mask, feature_cols].values
-            y_train = train_df.loc[train_obs_mask, col].values
+            if train_obs_mask.sum() == 0:
+                warnings.warn(
+                    f"PMM: column {col!r} has no observed training values; "
+                    "skipping imputation for this column.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
 
-            # Fill NaN in features
-            X_train_clean = X_train.copy()
-            for j in range(X_train_clean.shape[1]):
-                col_mean = np.nanmean(X_train_clean[:, j])
-                X_train_clean[np.isnan(X_train_clean[:, j]), j] = col_mean
+            X_train = train_df.loc[train_obs_mask, feature_cols].values.astype(np.float64)
+            y_train = train_df.loc[train_obs_mask, col].values.astype(np.float64)
+            X_miss = result.loc[missing_mask, feature_cols].values.astype(np.float64)
 
-            # Fit model
+            X_train_clean, X_miss_clean = _fill_feature_matrix(X_train, X_miss)
+
             model = BayesianRidge()
             model.fit(X_train_clean, y_train)
+            y_pred = model.predict(X_miss_clean)
 
-            # Predict for missing values
-            X_miss = result.loc[missing_mask, feature_cols].values.copy()
-            for j in range(X_miss.shape[1]):
-                col_mean = np.nanmean(X_miss[:, j]) if not np.all(np.isnan(X_miss[:, j])) else 0
-                X_miss[np.isnan(X_miss[:, j]), j] = col_mean
+            # Vectorised donor selection
+            k = min(n_nearest_donors, len(y_train))
+            distances = np.abs(y_train[np.newaxis, :] - y_pred[:, np.newaxis])
+            donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
+            rand_col = rng.integers(0, k, size=len(y_pred))
+            chosen_idx = donor_idx[np.arange(len(y_pred)), rand_col]
+            imputed_vals = y_train[chosen_idx]
 
-            y_pred = model.predict(X_miss)
+            # Correct index assignment using actual pandas index labels
+            miss_indices = missing_mask[missing_mask].index
+            result.loc[miss_indices, col] = imputed_vals
 
-            # Find donors and randomly select
-            for i, pred_val in enumerate(y_pred):
-                distances = np.abs(y_train - pred_val)
-                donor_idx = np.argsort(distances)[:5]
-                donors = y_train[donor_idx]
-                result.loc[missing_mask.values[i], col] = donors[rng.integers(len(donors))]
-
-        # Handle categorical columns with mode from training
         for col in cat_cols:
             if result[col].isna().any():
                 observed = train_df[col].dropna()

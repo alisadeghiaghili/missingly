@@ -34,6 +34,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import KFold, StratifiedKFold
 
 from . import impute as _impute_module
+from .exceptions import MissinglyError
 from .transformer import MissinglyImputer
 
 
@@ -168,7 +169,8 @@ def compare_imputations(
         name = _method_name(method)
         try:
             df_imputed = method(df_missing)
-        except (ValueError, TypeError, RuntimeError, MemoryError, np.linalg.LinAlgError) as exc:
+        except (ValueError, TypeError, RuntimeError, MemoryError,
+                np.linalg.LinAlgError, MissinglyError) as exc:
             errors[name] = str(exc)
             row: dict = {}
             if numeric_cols:
@@ -261,8 +263,9 @@ def cv_compare_imputations(
         ``predict_proba``) method.  A fresh clone is used for each fold.
     strategies : list of str, optional
         List of imputation strategy names to compare.  Each must be one
-        of: ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``, ``"mice"``,
-        ``"rf"``, ``"gb"``.
+        of the strategies supported by :class:`~missingly.transformer.MissinglyImputer`:
+        ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``, ``"mice"``,
+        ``"rf"``, ``"gb"``, ``"pmm"``, ``"logreg"``, ``"polyreg"``, ``"polr"``.
         Defaults to ``["mean", "median", "mode", "knn", "mice"]``.
     n_splits : int, optional
         Number of CV folds.  Default 5.
@@ -307,12 +310,15 @@ def cv_compare_imputations(
     >>> results = cv_compare_imputations(
     ...     X, y,
     ...     estimator=LogisticRegression(),
-    ...     strategies=['mean', 'knn'],
+    ...     strategies=['mean', 'knn', 'pmm'],
     ...     n_splits=3,
     ... )
     >>> print(results)
     """
-    _VALID = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
+    _VALID = frozenset(
+        {"mean", "median", "mode", "knn", "mice", "rf", "gb",
+         "pmm", "logreg", "polyreg", "polr"}
+    )
 
     if strategies is None:
         strategies = ["mean", "median", "mode", "knn", "mice"]
