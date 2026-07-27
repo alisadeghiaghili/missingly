@@ -21,7 +21,9 @@ Public API
 **Imputation**::
 
     impute_mean, impute_median, impute_mode,
-    impute_knn, impute_mice, impute_rf, impute_gb, make_imputer
+    impute_knn, impute_mice, impute_rf, impute_gb,
+    impute_hotdeck_random, impute_hotdeck_sequential, impute_hotdeck_weighted,
+    make_imputer
 
 **sklearn-style**::
 
@@ -128,6 +130,13 @@ from missingly.impute import (
     impute_gb,
     make_imputer,
     FittedImputer,
+)
+
+# Hot-deck imputation
+from missingly.hotdeck import (
+    impute_hotdeck_random,
+    impute_hotdeck_sequential,
+    impute_hotdeck_weighted,
 )
 
 # ---------------------------------------------------------------------------
@@ -239,7 +248,7 @@ from missingly.performance import (
     optimize_dtypes as _optimize_dtypes,
 )
 
-# Deprecated aliases — still callable, emit DeprecationWarning, NOT in __all__
+# Deprecated aliases
 hotelling_test = _deprecated_api(since="0.2.0")(_hotelling_test)
 pattern_monotone_test = _deprecated_api(since="0.2.0")(_pattern_monotone_test)
 missing_correlation_matrix = _deprecated_api(since="0.2.0")(_missing_correlation_matrix)
@@ -253,9 +262,6 @@ chunk_apply = _deprecated_api(since="0.2.0")(_chunk_apply)
 memory_usage_mb = _deprecated_api(since="0.2.0")(_memory_usage_mb)
 optimize_dtypes = _deprecated_api(since="0.2.0")(_optimize_dtypes)
 
-# test_hotelling / test_pattern_monotone were the root cause of
-# missingly/conftest.py having collect_ignore_glob = ["*.py"].
-# They are now private aliases only — NOT in __all__, NOT in public namespace.
 _test_hotelling = hotelling_test
 _test_pattern_monotone = pattern_monotone_test
 
@@ -278,12 +284,18 @@ __all__ = [
     "miss_scan_count", "miss_summary",
     # Diagnosis
     "mcar_test", "mar_mnar_test", "diagnose_missing", "mice_convergence", "plot_mice_convergence",
-    # Imputation
+    # Imputation — simple
     "impute_mean", "impute_median", "impute_mode",
-    "impute_knn", "impute_mice", "impute_pmm", "impute_logreg", "impute_polyreg", "impute_polr",
-    "impute_rf", "impute_gb", "make_imputer",
+    # Imputation — model-based
+    "impute_knn", "impute_mice", "impute_pmm",
+    "impute_logreg", "impute_polyreg", "impute_polr",
+    "impute_rf", "impute_gb",
+    # Imputation — hot-deck
+    "impute_hotdeck_random", "impute_hotdeck_sequential", "impute_hotdeck_weighted",
+    # FittedImputer factory
+    "make_imputer", "FittedImputer",
     # sklearn-style
-    "MissinglyImputer", "FittedImputer",
+    "MissinglyImputer",
     # MI pooling
     "pool_scalar_estimates", "pool_linear_regression_results",
     # MI Workflow
@@ -302,9 +314,6 @@ __all__ = [
     "simulate_mcar", "simulate_mar", "simulate_mnar", "simulate_mixed",
     # Manipulation
     "replace_with_na", "replace_with_na_all", "add_any_miss_var", "bind_shadow_matrix",
-    # NOTE: ALL deprecated symbols (hotelling_test, chunk_apply, test_hotelling, etc.)
-    # are intentionally EXCLUDED from __all__. They remain callable for backward
-    # compatibility but will not appear in tab-completion or API docs.
 ]
 
 __version__ = "0.3.0"

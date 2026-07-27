@@ -39,6 +39,9 @@ Design decisions
   these methods re-fit per column on observed rows only — there is no
   global state that would cause leakage beyond column-level statistics
   already present in train.
+* For ``hotdeck`` strategy, ``fit`` stores the training DataFrame and
+  ``transform`` uses it as the donor pool.  ``hotdeck_method`` selects
+  between ``'random'``, ``'sequential'``, and ``'weighted'`` variants.
 
 Example
 -------
@@ -83,10 +86,19 @@ from .impute import (
     impute_polyreg,
     impute_polr,
 )
+from .hotdeck import (
+    impute_hotdeck_random,
+    impute_hotdeck_sequential,
+    impute_hotdeck_weighted,
+)
 
 
 _VALID_STRATEGIES = frozenset(
-    {"mean", "median", "mode", "knn", "mice", "rf", "gb", "pmm", "logreg", "polyreg", "polr"}
+    {
+        "mean", "median", "mode", "knn", "mice", "rf", "gb", "pmm",
+        "logreg", "polyreg", "polr",
+        "hotdeck",
+    }
 )
 
 
@@ -107,17 +119,19 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     strategy : str, optional
         Imputation strategy.  One of:
 
-        * ``"mean"``    — fill numeric with mean, categorical with mode.
-        * ``"median"``  — fill numeric with median, categorical with mode.
-        * ``"mode"``    — fill all columns with most frequent value.
-        * ``"knn"``     — k-Nearest Neighbours (default k=5).
-        * ``"mice"``    — Multiple Imputation by Chained Equations.
-        * ``"rf"``      — Random Forest.
-        * ``"gb"``      — Gradient Boosting.
-        * ``"pmm"``     — Predictive Mean Matching.
-        * ``"logreg"``  — Logistic Regression (binary columns).
-        * ``"polyreg"`` — Multinomial Logistic Regression (3+ levels).
-        * ``"polr"``    — Ordinal Logistic Regression (ordered categories).
+        * ``"mean"``      — fill numeric with mean, categorical with mode.
+        * ``"median"``    — fill numeric with median, categorical with mode.
+        * ``"mode"``      — fill all columns with most frequent value.
+        * ``"knn"``       — k-Nearest Neighbours (default k=5).
+        * ``"mice"``      — Multiple Imputation by Chained Equations.
+        * ``"rf"``        — Random Forest.
+        * ``"gb"``        — Gradient Boosting.
+        * ``"pmm"``       — Predictive Mean Matching.
+        * ``"logreg"``    — Logistic Regression (binary columns).
+        * ``"polyreg"``   — Multinomial Logistic Regression (3+ levels).
+        * ``"polr"``      — Ordinal Logistic Regression (ordered categories).
+        * ``"hotdeck"``   — Hot-deck imputation; variant selected by
+          ``hotdeck_method``.
 
         Default is ``"mean"``.
     n_neighbors : int, optional
@@ -134,13 +148,22 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         estimator (e.g. ``{'n_estimators': 200}`` for RF/GB strategies).
         Stored as-is so that ``get_params()`` / ``set_params()`` /
         ``clone()`` behave correctly.
+    hotdeck_method : {"random", "sequential", "weighted"}, optional
+        Hot-deck variant to use when ``strategy="hotdeck"``.
+        Default is ``"random"``.
+    hotdeck_direction : {"forward", "backward", "nearest"}, optional
+        Direction for ``hotdeck_method="sequential"``.
+        Default is ``"nearest"``.
+    hotdeck_n_donors : int, optional
+        Donor pool size for ``hotdeck_method="weighted"``.
+        Default is 5.
 
     Example
     -------
     >>> from sklearn.pipeline import Pipeline
     >>> from sklearn.linear_model import LogisticRegression
     >>> pipe = Pipeline([
-    ...     ("imputer", MissinglyImputer(strategy="knn", n_neighbors=3)),
+    ...     ("imputer", MissinglyImputer(strategy="hotdeck", hotdeck_method="weighted")),
     ...     ("clf",     LogisticRegression()),
     ... ])
     """
@@ -153,6 +176,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         max_iter: int = 10,
         random_state: int = 0,
         estimator_kwargs: Optional[dict] = None,
+        hotdeck_method: str = "random",
+        hotdeck_direction: str = "nearest",
+        hotdeck_n_donors: int = 5,
     ) -> None:
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
@@ -165,6 +191,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.max_iter = max_iter
         self.random_state = random_state
         self.estimator_kwargs = estimator_kwargs
+        self.hotdeck_method = hotdeck_method
+        self.hotdeck_direction = hotdeck_direction
+        self.hotdeck_n_donors = hotdeck_n_donors
         self._is_fitted: bool = False
 
     # ------------------------------------------------------------------
@@ -267,7 +296,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self._fit_pmm(X)
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
-        elif strategy in ("logreg", "polyreg", "polr"):
+        elif strategy in ("logreg", "polyreg", "polr", "hotdeck"):
+            # These methods use the training data as the donor/fit pool.
             self._train_df_ = X.copy()
 
         self._is_fitted = True
@@ -487,15 +517,46 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 X, max_iter=self.max_iter, random_state=self.random_state
             )
 
+        elif strategy == "hotdeck":
+            result = self._transform_hotdeck(X)
+
         return result[self.feature_names_in_]
 
-    def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply fitted per-column tree models to impute missing values.
+    def _transform_hotdeck(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Dispatch hot-deck transform to the appropriate variant.
 
-        After predicting values for categorical columns, the original
-        CategoricalDtype is restored via ``_restore_categorical_dtype``
-        so that downstream code sees the correct dtype.
+        Uses the training DataFrame stored during ``fit`` as the donor
+        pool: training donors are concatenated with the test rows, the
+        hot-deck function fills all NaN cells, and then the original
+        test rows (now imputed) are extracted.  This ensures that only
+        training-set values are used as donors for test-set recipients.
         """
+        train_df = self._train_df_
+        n_train = len(train_df)
+        combined = pd.concat([train_df, X], ignore_index=True)
+
+        method = self.hotdeck_method
+        if method == "sequential":
+            imputed = impute_hotdeck_sequential(
+                combined, direction=self.hotdeck_direction
+            )
+        elif method == "weighted":
+            imputed = impute_hotdeck_weighted(
+                combined,
+                n_donors=self.hotdeck_n_donors,
+                random_state=self.random_state,
+            )
+        else:  # default: random
+            imputed = impute_hotdeck_random(
+                combined, random_state=self.random_state
+            )
+
+        result = imputed.iloc[n_train:].copy()
+        result.index = X.index
+        return result
+
+    def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Apply fitted per-column tree models to impute missing values."""
         is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
         X_enc = self._encode_cats(X).values
@@ -519,8 +580,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 y_pred_enc = clf.predict(X_pred).reshape(-1, 1)
                 y_pred = enc_y.inverse_transform(y_pred_enc).ravel()
                 result.loc[missing_mask, col] = y_pred
-                # Restore CategoricalDtype that was lost when we assigned
-                # plain object strings back into the result column.
                 result[col] = _restore_categorical_dtype(
                     result[col], self.cat_dtypes_[col]
                 )
