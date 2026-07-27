@@ -154,11 +154,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         random_state: int = 0,
         estimator_kwargs: Optional[dict] = None,
     ) -> None:
-        """Initialise the imputer.
-
-        All parameters are stored verbatim (no coercion) so that
-        ``get_params()`` / ``set_params()`` round-trip correctly.
-        """
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"strategy must be one of {sorted(_VALID_STRATEGIES)}; "
@@ -170,8 +165,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.max_iter = max_iter
         self.random_state = random_state
         self.estimator_kwargs = estimator_kwargs
-        # Fitted-state sentinel — NOT a trailing-underscore attribute so that
-        # sklearn's check_is_fitted does not treat it as a fitted attribute.
         self._is_fitted: bool = False
 
     # ------------------------------------------------------------------
@@ -179,12 +172,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     # ------------------------------------------------------------------
 
     def __sklearn_is_fitted__(self) -> bool:
-        """Return whether this estimator has been fitted.
-
-        sklearn calls this method (when present) in ``check_is_fitted``
-        instead of inspecting attributes.  Returning ``False`` before
-        ``fit`` guarantees a ``NotFittedError`` is raised on ``transform``.
-        """
         return self._is_fitted
 
     # ------------------------------------------------------------------
@@ -216,8 +203,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         if not self.cat_cols_ or self.encoder_ is None:
             return df
         result = df.copy()
-        # Clip to valid range [0, n_categories-1] per column to prevent
-        # inverse_transform from crashing or producing unknown sentinels.
         cat_array = result[self.cat_cols_].to_numpy().copy().astype(float)
         for i, col in enumerate(self.cat_cols_):
             n_cats = len(self.encoder_.categories_[i])
@@ -252,7 +237,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
         X = self._normalize(X)
 
-        # Fitted-state attributes — only set inside fit(), never in __init__.
         self.feature_names_in_: List[str] = X.columns.tolist()
         self.numeric_cols_: List[str] = X.select_dtypes(include=[np.number]).columns.tolist()
         self.cat_cols_: List[str] = X.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -264,7 +248,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.rf_clf_models_: Dict[str, object] = {}
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
         self._knn_train_df_: Optional[pd.DataFrame] = None
-        self._train_df_: Optional[pd.DataFrame] = None  # used by pmm/logreg/polyreg/polr
+        self._train_df_: Optional[pd.DataFrame] = None
 
         strategy = self.strategy
 
@@ -284,8 +268,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
         elif strategy in ("logreg", "polyreg", "polr"):
-            # These methods re-fit per column on observed rows during transform.
-            # Store training data so transform can use it as the donor/fit pool.
             self._train_df_ = X.copy()
 
         self._is_fitted = True
@@ -458,7 +440,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy == "mode":
             arr = self.imputer_.transform(X)
             result = pd.DataFrame(arr, index=X.index, columns=X.columns)
-            # Restore categorical dtypes lost by SimpleImputer → numpy conversion.
             for col in X.columns:
                 result[col] = _restore_categorical_dtype(result[col], X[col].dtype)
 
@@ -509,7 +490,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         return result[self.feature_names_in_]
 
     def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply fitted per-column tree models to impute missing values."""
+        """Apply fitted per-column tree models to impute missing values.
+
+        After predicting values for categorical columns, the original
+        CategoricalDtype is restored via ``_restore_categorical_dtype``
+        so that downstream code sees the correct dtype.
+        """
         is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
         X_enc = self._encode_cats(X).values
@@ -533,6 +519,11 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 y_pred_enc = clf.predict(X_pred).reshape(-1, 1)
                 y_pred = enc_y.inverse_transform(y_pred_enc).ravel()
                 result.loc[missing_mask, col] = y_pred
+                # Restore CategoricalDtype that was lost when we assigned
+                # plain object strings back into the result column.
+                result[col] = _restore_categorical_dtype(
+                    result[col], self.cat_dtypes_[col]
+                )
             elif col not in cat_set and col in self.rf_reg_models_:
                 reg = self.rf_reg_models_[col]
                 result.loc[missing_mask, col] = reg.predict(X_pred)
@@ -544,20 +535,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         X: pd.DataFrame,
         n_nearest_donors: int = 5,
     ) -> pd.DataFrame:
-        """Apply PMM imputation using stored training data as donor pool.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Data to impute.
-        n_nearest_donors : int, default 5
-            Number of nearest training observations to draw donors from.
-
-        Returns
-        -------
-        pd.DataFrame
-            Imputed copy of *X*.
-        """
+        """Apply PMM imputation using stored training data as donor pool."""
         from .impute import _fill_feature_matrix
 
         train_df = self._train_df_
@@ -598,7 +576,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             model.fit(X_train_clean, y_train)
             y_pred = model.predict(X_miss_clean)
 
-            # Vectorised donor selection
             k = min(n_nearest_donors, len(y_train))
             distances = np.abs(y_train[np.newaxis, :] - y_pred[:, np.newaxis])
             donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
@@ -606,7 +583,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             chosen_idx = donor_idx[np.arange(len(y_pred)), rand_col]
             imputed_vals = y_train[chosen_idx]
 
-            # Correct index assignment using actual pandas index labels
             miss_indices = missing_mask[missing_mask].index
             result.loc[miss_indices, col] = imputed_vals
 
