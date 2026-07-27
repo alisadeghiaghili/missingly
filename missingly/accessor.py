@@ -429,11 +429,55 @@ class MissinglyAccessor:
             )
         X = self._df.drop(columns=[target])
         Y = self._df[target]
-        # Drop rows where Y is NaN to avoid issues with LogisticRegression
         valid_mask = Y.notna()
         X = X[valid_mask]
         Y = Y[valid_mask].to_numpy()
         return diagnostics.mar_mnar_test(X, Y)
+
+    def mice_convergence(
+        self,
+        histories: List[Dict[str, List[float]]],
+        variables: Optional[List[str]] = None,
+        rhat_threshold: float = 1.1,
+    ) -> dict:
+        """Assess convergence of multiple MICE chains using iteration history.
+
+        This is a convenience wrapper around
+        :func:`missingly.diagnostics.mice_convergence` that keeps the
+        accessor pattern consistent.  The DataFrame context (``self._df``)
+        is not used directly — pass *histories* from
+        ``impute_mice(..., n_imputations=m, return_history=True)``.
+
+        Parameters
+        ----------
+        histories : list of dict
+            One history dict per chain as returned by
+            ``impute_mice(..., return_history=True)`` in multi-chain mode.
+        variables : list of str, optional
+            Specific variables to diagnose.
+        rhat_threshold : float, default 1.1
+
+        Returns
+        -------
+        dict
+            See :func:`missingly.diagnostics.mice_convergence`.
+
+        Examples
+        --------
+        >>> import pandas as pd, numpy as np, missingly
+        >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, np.nan]})
+        >>> _, histories = missingly.impute_mice(
+        ...     df, n_imputations=3, max_iter=5, return_history=True
+        ... )
+        >>> result = df.miss.mice_convergence(histories)
+        >>> result["n_chains"]
+        3
+        """
+        return diagnostics.mice_convergence(
+            histories,
+            variables=variables,
+            rhat_threshold=rhat_threshold,
+        )
 
     # ------------------------------------------------------------------
     # Visualisation — return Axes (or dict of Axes)
