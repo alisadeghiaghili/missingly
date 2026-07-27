@@ -210,14 +210,18 @@ def compare_imputations(
         result_df["Error"] = pd.Series(errors)
 
     if numeric_cols and cat_cols:
-        valid = result_df["RMSE"].notna() & result_df["Accuracy"].notna()
-        rmse_vals_s = result_df.loc[valid, "RMSE"]
-        rmse_min, rmse_max = rmse_vals_s.min(), rmse_vals_s.max()
-        if rmse_max > rmse_min:
-            norm_rmse = (result_df["RMSE"] - rmse_min) / (rmse_max - rmse_min)
+        rmse_col = result_df["RMSE"]
+        acc_col = result_df["Accuracy"]
+        valid = rmse_col.notna() & acc_col.notna()
+        rmse_valid = rmse_col[valid]
+        acc_valid = acc_col[valid]
+
+        if len(rmse_valid) > 0 and rmse_valid.max() > rmse_valid.min():
+            norm_rmse = (rmse_col - rmse_valid.min()) / (rmse_valid.max() - rmse_valid.min())
         else:
             norm_rmse = pd.Series(0.0, index=result_df.index)
-        result_df["Score"] = (norm_rmse + (1.0 - result_df["Accuracy"])) / 2.0
+
+        result_df["Score"] = (norm_rmse + (1.0 - acc_col.fillna(0.0))) / 2.0
         return result_df.sort_values(by="Score", na_position="last")
     elif numeric_cols:
         return result_df.sort_values(by="RMSE", na_position="last")

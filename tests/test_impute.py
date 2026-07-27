@@ -103,6 +103,27 @@ def test_simple_imputers_cat_only(fn, cat_only_df):
     _assert_no_missing(result)
 
 
+def test_categorical_dtype_preserved():
+    """CategoricalDtype must survive imputation for all imputers."""
+    import pandas.api.types as pdtypes
+    from missingly.impute import impute_knn, impute_rf, impute_gb
+
+    methods = [
+        impute_mean, impute_median, impute_mode,
+        impute_knn, impute_rf, impute_gb,
+    ]
+    df = pd.DataFrame({
+        "num": [1.0, np.nan, 3.0, 4.0, 5.0],
+        "cat": pd.Categorical(["a", np.nan, "b", "a", "b"]),
+    })
+    for fn in methods:
+        result = fn(df)
+        assert isinstance(result["cat"].dtype, pd.CategoricalDtype), (
+            f"{fn.__name__} lost CategoricalDtype: got {result['cat'].dtype}"
+        )
+        assert result["cat"].isna().sum() == 0
+
+
 # ---------------------------------------------------------------------------
 # Mean imputer — value checks
 # ---------------------------------------------------------------------------

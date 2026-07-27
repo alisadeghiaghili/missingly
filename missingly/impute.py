@@ -124,7 +124,7 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
     """Replace Python ``None`` with ``np.nan`` in object columns."""
     df = df.copy()
-    obj_cols = df.select_dtypes(include=["object"]).columns
+    obj_cols = df.select_dtypes(include=["object", "string"]).columns
     if len(obj_cols):
         df[obj_cols] = df[obj_cols].where(df[obj_cols].notna(), other=np.nan)
     return df
@@ -148,7 +148,9 @@ def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
         Columns that are entirely NaN are filled with ``0.0``.
     """
     X = X.copy()
-    col_means = np.nanmean(X, axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        col_means = np.nanmean(X, axis=0)
     col_means = np.where(np.isnan(col_means), 0.0, col_means)
     nan_mask = np.isnan(X)
     X[nan_mask] = np.take(col_means, np.where(nan_mask)[1])

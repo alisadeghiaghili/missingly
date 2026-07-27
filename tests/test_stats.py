@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.stats import mcar_test, mar_mnar_test, diagnose_missing
+from missingly.diagnostics import mcar_test, mar_mnar_test, diagnose_missing
 import missingly
 
 
@@ -107,6 +107,12 @@ def test_mcar_test_amount_missing_shape(numeric_df_with_missing):
     am = result['amount_missing']
     assert isinstance(am, pd.DataFrame)
     assert am.shape == (2, numeric_df_with_missing.shape[1])
+
+
+def test_mcar_test_raises_on_all_complete(no_missing_df):
+    """mcar_test raises ValueError when DataFrame has no missing values."""
+    with pytest.raises(ValueError, match="at least one missing"):
+        mcar_test(no_missing_df)
 
 
 def test_mcar_test_sentinel(numeric_df_with_missing):

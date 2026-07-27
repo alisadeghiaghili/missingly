@@ -19,6 +19,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
+try:
+    import gower
+    HAS_GOWER = True
+except ImportError:
+    HAS_GOWER = False
+
+pytestmark = pytest.mark.skipif(
+    not HAS_GOWER,
+    reason="gower package not installed"
+)
+
 from missingly.impute import impute_knn
 from missingly._distance import gower_distance
 from missingly.transformer import MissinglyImputer

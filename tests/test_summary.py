@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.summary import (
+from missingly.diagnostics import (
     bind_shadow,
     n_miss,
     n_complete,

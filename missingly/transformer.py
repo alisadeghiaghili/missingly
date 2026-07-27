@@ -428,10 +428,16 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
 
         missing_cols = set(self.feature_names_in_) - set(X.columns)
+        extra_cols = set(X.columns) - set(self.feature_names_in_)
         if missing_cols:
             raise ValueError(
                 f"Columns present during fit but missing in transform: "
                 f"{sorted(missing_cols)}"
+            )
+        if extra_cols:
+            raise ValueError(
+                f"Columns present in transform but not seen during fit: "
+                f"{sorted(extra_cols)}"
             )
 
         X = self._normalize(X)
