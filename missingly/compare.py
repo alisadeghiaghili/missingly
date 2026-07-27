@@ -214,14 +214,30 @@ def compare_imputations(
         acc_col = result_df["Accuracy"]
         valid = rmse_col.notna() & acc_col.notna()
         rmse_valid = rmse_col[valid]
-        acc_valid = acc_col[valid]
 
-        if len(rmse_valid) > 0 and rmse_valid.max() > rmse_valid.min():
-            norm_rmse = (rmse_col - rmse_valid.min()) / (rmse_valid.max() - rmse_valid.min())
+        # Always initialise norm_rmse with a safe default (NaN for failed
+        # rows, 0.0 when normalisation is impossible) so the variable is
+        # guaranteed to exist regardless of which branch executes.
+        norm_rmse = pd.Series(np.nan, index=result_df.index, dtype=float)
+
+        if len(rmse_valid) == 0:
+            # All methods failed — keep Score as NaN so they sort last.
+            result_df["Score"] = np.nan
+            return result_df.sort_values(by="Score", na_position="last")
+
+        if rmse_valid.max() > rmse_valid.min():
+            # Standard min-max normalisation, applied only to the full column
+            # so failed rows (NaN) stay NaN rather than getting a bogus 0.5.
+            norm_rmse = (rmse_col - rmse_valid.min()) / (
+                rmse_valid.max() - rmse_valid.min()
+            )
         else:
-            norm_rmse = pd.Series(0.0, index=result_df.index)
+            # All successful methods produced identical RMSE — treat as 0.
+            norm_rmse.loc[valid] = 0.0
 
-        result_df["Score"] = (norm_rmse + (1.0 - acc_col.fillna(0.0))) / 2.0
+        # For successful rows: composite score in [0, 1] (lower is better).
+        # Failed rows keep NaN and are pushed to the bottom by na_position.
+        result_df["Score"] = (norm_rmse + (1.0 - acc_col)) / 2.0
         return result_df.sort_values(by="Score", na_position="last")
     elif numeric_cols:
         return result_df.sort_values(by="RMSE", na_position="last")
