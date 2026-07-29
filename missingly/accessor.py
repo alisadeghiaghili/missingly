@@ -13,9 +13,12 @@ allows the entire missingly API to be used as fluent method chains:
         df
         .miss.replace_with_na({'score': -99, 'label': 'N/A'})
         .miss.remove_empty(thresh_col=0.9)
-        .miss.clean_names()
         .miss.miss_as_feature()
     )
+
+    # Imputation — returns new DataFrame by default
+    imputed = df.miss.impute(method="mean")
+    imputed_inplace = df.miss.impute(method="knn", inplace=False)
 
     # Visualisation — returns Axes, not DataFrame
     ax = df.miss.vis_miss()
@@ -30,7 +33,7 @@ Design notes
 * Visualisation methods return the matplotlib Axes object (or dict of
   Axes for multi-panel plots such as ``upset``).
 * The accessor never mutates ``self._df``; every manipulation method
-  works on a copy.
+  works on a copy unless ``inplace=True`` is explicitly passed.
 
 Compatibility
 -------------
@@ -39,7 +42,7 @@ Requires Python 3.9+ and pandas 2.0+.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import pandas as pd
 
@@ -57,7 +60,9 @@ from .impute import (
     impute_mice,
     impute_rf,
     impute_gb,
+    _SUPPORTED_STRATEGIES,
 )
+from .transformer import MissinglyImputer
 
 
 @pd.api.extensions.register_dataframe_accessor("miss")
@@ -86,7 +91,9 @@ class MissinglyAccessor:
     >>> df = pd.DataFrame({'A': [1, None, 3], 'B': [None, 2, 3]})
     >>> df.miss.n_miss()
     2
-    >>> cleaned = df.miss.replace_with_na({'A': -99}).miss.remove_empty()
+    >>> imputed = df.miss.impute(method="mean")
+    >>> imputed.isna().any().any()
+    False
     """
 
     def __init__(self, pandas_obj: pd.DataFrame) -> None:
@@ -98,12 +105,142 @@ class MissinglyAccessor:
         self._df = pandas_obj
 
     # ------------------------------------------------------------------
+    # Imputation — unified dispatcher (C3)
+    # ------------------------------------------------------------------
+
+    def impute(
+        self,
+        method: str = "mean",
+        *,
+        columns: Optional[List[str]] = None,
+        fill_value: Optional[object] = None,
+        inplace: bool = False,
+        random_state: int = 0,
+        **kwargs,
+    ) -> Optional[pd.DataFrame]:
+        """Impute missing values using any missingly strategy.
+
+        This is a thin facade over :class:`~missingly.transformer.MissinglyImputer`.
+        No imputation logic lives here — all computation is delegated to
+        the canonical engine so that accessor and transformer results are
+        always consistent.
+
+        Parameters
+        ----------
+        method : str, default ``"mean"``
+            Imputation strategy.  One of:
+            ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``,
+            ``"mice"``, ``"rf"``, ``"gb"``.
+        columns : list of str or None, default None
+            Columns to impute.  If ``None``, all columns are imputed.
+            Untouched columns are preserved as-is.
+        fill_value : object or None, default None
+            Reserved for future ``"constant"`` strategy.  Unused by
+            current strategies; passing it with other methods raises
+            ``ValueError``.
+        inplace : bool, default False
+            If ``False`` (default), return a new DataFrame and leave the
+            caller unchanged.  If ``True``, mutate the caller DataFrame
+            in-place and return ``None``.
+        random_state : int, default 0
+            Random seed forwarded to stochastic strategies
+            (``"mice"``, ``"rf"``, ``"gb"``).
+        **kwargs
+            Additional keyword arguments forwarded to
+            :class:`~missingly.transformer.MissinglyImputer`
+            (e.g. ``n_neighbors=3`` for ``"knn"``).
+
+        Returns
+        -------
+        pd.DataFrame or None
+            New imputed DataFrame when ``inplace=False``;
+            ``None`` when ``inplace=True``.
+
+        Raises
+        ------
+        ValueError
+            If *method* is not a recognised strategy.
+        MissingColumnError
+            If any name in *columns* does not exist in the DataFrame.
+        ValueError
+            If *fill_value* is supplied with a non-``"constant"`` method.
+
+        Examples
+        --------
+        >>> import pandas as pd, numpy as np, missingly
+        >>> df = pd.DataFrame({'a': [1.0, np.nan, 3.0], 'b': ['x', None, 'z']})
+        >>> df.miss.impute(method="mean")  # numeric mean, categorical mode
+             a  b
+        0  1.0  x
+        1  2.0  x
+        2  3.0  z
+        >>> df.miss.impute(method="mean", columns=["a"])  # only column 'a'
+             a     b
+        0  1.0     x
+        1  2.0  None
+        2  3.0     z
+        """
+        if method not in _SUPPORTED_STRATEGIES:
+            raise ValueError(
+                f"Unknown imputation method {method!r}. "
+                f"Supported methods: {sorted(_SUPPORTED_STRATEGIES)}"
+            )
+
+        if fill_value is not None:
+            raise ValueError(
+                "fill_value is reserved for strategy='constant' which is not "
+                "yet implemented. Do not pass fill_value with other strategies."
+            )
+
+        df = self._df
+
+        # Validate requested columns
+        if columns is not None:
+            unknown = [c for c in columns if c not in df.columns]
+            if unknown:
+                raise MissingColumnError(
+                    columns=unknown,
+                    available=list(df.columns),
+                )
+
+        # Select the sub-frame to impute; keep the rest untouched
+        if columns is not None:
+            sub = df[columns].copy()
+        else:
+            sub = df.copy()
+
+        # Delegate entirely to MissinglyImputer — no logic here
+        imputer = MissinglyImputer(
+            strategy=method,
+            random_state=random_state,
+            **kwargs,
+        )
+        imputed_sub = imputer.fit_transform(sub)
+
+        # Reconstruct full DataFrame preserving column order
+        if columns is not None:
+            result = df.copy()
+            result[columns] = imputed_sub[columns].values
+        else:
+            result = imputed_sub
+
+        # Preserve index
+        result.index = df.index
+
+        if inplace:
+            for col in df.columns:
+                df[col] = result[col]
+            return None
+
+        return result
+
+    # ------------------------------------------------------------------
     # Manipulation — return DataFrame for chaining
     # ------------------------------------------------------------------
 
     def replace_with_na(
         self,
-        replace: Dict[str, Union[List, object, Callable]],
+        replace: dict,
     ) -> pd.DataFrame:
         """Replace specified values with NaN and return a new DataFrame.
 
@@ -118,7 +255,7 @@ class MissinglyAccessor:
         """
         return manipulation.replace_with_na(self._df, replace)
 
-    def replace_with_na_all(self, condition: Callable) -> pd.DataFrame:
+    def replace_with_na_all(self, condition) -> pd.DataFrame:
         """Replace all values matching *condition* with NaN.
 
         Parameters
@@ -235,71 +372,155 @@ class MissinglyAccessor:
         )
 
     # ------------------------------------------------------------------
-    # Imputation — return DataFrame for chaining
+    # Imputation wrappers — typed signatures, delegate to impute module
     # ------------------------------------------------------------------
 
-    def impute_mean(self, **kwargs) -> pd.DataFrame:
+    def impute_mean(
+        self,
+        numeric_only: bool = False,
+    ) -> pd.DataFrame:
         """Impute missing values with column means.
 
+        Parameters
+        ----------
+        numeric_only : bool, default False
+            If True, only numeric columns are imputed.
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_mean(self._df, **kwargs)
+        return impute_mean(self._df, numeric_only=numeric_only)
 
-    def impute_median(self, **kwargs) -> pd.DataFrame:
+    def impute_median(
+        self,
+        numeric_only: bool = False,
+    ) -> pd.DataFrame:
         """Impute missing values with column medians.
 
-        Returns
-        -------
-        pd.DataFrame
-        """
-        return impute_median(self._df, **kwargs)
-
-    def impute_mode(self, **kwargs) -> pd.DataFrame:
-        """Impute missing values with column modes.
+        Parameters
+        ----------
+        numeric_only : bool, default False
+            If True, only numeric columns are imputed.
 
         Returns
         -------
         pd.DataFrame
         """
-        return impute_mode(self._df, **kwargs)
+        return impute_median(self._df, numeric_only=numeric_only)
 
-    def impute_knn(self, **kwargs) -> pd.DataFrame:
-        """Impute missing values using k-nearest neighbours.
+    def impute_mode(self) -> pd.DataFrame:
+        """Impute missing values with column modes (most frequent values).
 
         Returns
         -------
         pd.DataFrame
         """
-        return impute_knn(self._df, **kwargs)
+        return impute_mode(self._df)
 
-    def impute_mice(self, **kwargs) -> pd.DataFrame:
+    def impute_knn(
+        self,
+        n_neighbors: int = 5,
+        metric: str = "euclidean",
+    ) -> pd.DataFrame:
+        """Impute missing values using k-Nearest Neighbours.
+
+        Parameters
+        ----------
+        n_neighbors : int, default 5
+            Number of nearest neighbours.
+        metric : {"euclidean", "mixed"}, default "euclidean"
+            Distance metric.
+
+        Returns
+        -------
+        pd.DataFrame
+        """
+        return impute_knn(self._df, n_neighbors=n_neighbors, metric=metric)
+
+    def impute_mice(
+        self,
+        max_iter: int = 10,
+        random_state: int = 0,
+        n_imputations: int = 1,
+    ) -> pd.DataFrame:
         """Impute missing values using MICE (iterative imputer).
 
+        Parameters
+        ----------
+        max_iter : int, default 10
+            Maximum MICE iterations.
+        random_state : int, default 0
+            Random seed.
+        n_imputations : int, default 1
+            Number of imputed datasets to generate.
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_mice(self._df, **kwargs)
+        return impute_mice(
+            self._df,
+            max_iter=max_iter,
+            random_state=random_state,
+            n_imputations=n_imputations,
+        )
 
-    def impute_rf(self, **kwargs) -> pd.DataFrame:
+    def impute_rf(
+        self,
+        max_iter: int = 1,
+        random_state: int = 0,
+        strict_mode: Optional[bool] = None,
+    ) -> pd.DataFrame:
         """Impute missing values using a random-forest model.
 
+        Parameters
+        ----------
+        max_iter : int, default 1
+            Number of imputation passes.
+        random_state : int, default 0
+            Random seed.
+        strict_mode : bool or None, default None
+            If True, raise on estimator failure instead of falling back.
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_rf(self._df, **kwargs)
+        return impute_rf(
+            self._df,
+            max_iter=max_iter,
+            random_state=random_state,
+            strict_mode=strict_mode,
+        )
 
-    def impute_gb(self, **kwargs) -> pd.DataFrame:
+    def impute_gb(
+        self,
+        max_iter: int = 1,
+        random_state: int = 0,
+        strict_mode: Optional[bool] = None,
+    ) -> pd.DataFrame:
         """Impute missing values using a gradient-boosting model.
 
+        Parameters
+        ----------
+        max_iter : int, default 1
+            Number of imputation passes.
+        random_state : int, default 0
+            Random seed.
+        strict_mode : bool or None, default None
+            If True, raise on estimator failure instead of falling back.
+
         Returns
         -------
         pd.DataFrame
         """
-        return impute_gb(self._df, **kwargs)
+        return impute_gb(
+            self._df,
+            max_iter=max_iter,
+            random_state=random_state,
+            strict_mode=strict_mode,
+        )
 
     # ------------------------------------------------------------------
     # Summary — return natural output type (not DataFrame)
@@ -402,11 +623,6 @@ class MissinglyAccessor:
     def mar_mnar_test(self, target: str) -> pd.DataFrame:
         """Test for MAR / MNAR patterns with respect to a target column.
 
-        Delegates to :func:`missingly.diagnostics.mar_mnar_test` with the
-        correct ``X`` / ``Y`` split.  The *target* column is used as the
-        outcome variable (``Y``); all remaining columns are used as
-        predictors (``X``).
-
         Parameters
         ----------
         target : str
@@ -415,7 +631,6 @@ class MissinglyAccessor:
         Returns
         -------
         pd.DataFrame
-            Result from :func:`missingly.diagnostics.mar_mnar_test`.
 
         Raises
         ------
@@ -441,12 +656,6 @@ class MissinglyAccessor:
         rhat_threshold: float = 1.1,
     ) -> dict:
         """Assess convergence of multiple MICE chains using iteration history.
-
-        This is a convenience wrapper around
-        :func:`missingly.diagnostics.mice_convergence` that keeps the
-        accessor pattern consistent.  The DataFrame context (``self._df``)
-        is not used directly — pass *histories* from
-        ``impute_mice(..., n_imputations=m, return_history=True)``.
 
         Parameters
         ----------
@@ -605,7 +814,9 @@ class MissinglyAccessor:
             self._df, x=x, y=y, ax=ax, missing_values=missing_values, **kwargs
         )
 
-    def miss_case(self, ax=None, missing_values: Optional[List] = None, **kwargs):
+    def miss_case(
+        self, ax=None, missing_values: Optional[List] = None, **kwargs
+    ):
         """Render a bar chart of missing values per row.
 
         Returns
@@ -628,7 +839,6 @@ class MissinglyAccessor:
         ----------
         imputed_df : pd.DataFrame
         ax : matplotlib.axes.Axes, optional
-        **kwargs
 
         Returns
         -------
@@ -702,7 +912,9 @@ class MissinglyAccessor:
             **kwargs,
         )
 
-    def vis_parallel_coords(self, missing_values: Optional[List] = None, **kwargs):
+    def vis_parallel_coords(
+        self, missing_values: Optional[List] = None, **kwargs
+    ):
         """Render a parallel coordinates missingness plot.
 
         Returns
