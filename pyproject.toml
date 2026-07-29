@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "missingly"
-version = "0.3.0"
+version = "1.0.0"
 authors = [
   { name="Ali Sadeghi Aghili", email="alisadeghiaghili@gmail.com" },
 ]
@@ -36,13 +36,15 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/alisadeghiaghili/missingly"
 "Bug Tracker" = "https://github.com/alisadeghiaghili/missingly/issues"
+Documentation = "https://missingly.readthedocs.io"
 
 [project.optional-dependencies]
 docs = [
     "sphinx>=7.0.0",
     "furo>=2023.9.10",
     "nbsphinx>=0.9.0",
-    "ipykernel"
+    "numpydoc>=1.6.0",
+    "ipykernel",
 ]
 test = [
     "pytest>=7.0.0",
