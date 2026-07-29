@@ -165,6 +165,16 @@ def test_column_mismatch_raises(numeric_df):
         imputer.transform(bad_df)
 
 
+def test_extra_columns_raises(numeric_df):
+    """transform raises ValueError when test has columns not seen during fit."""
+    imputer = MissinglyImputer(strategy="mean")
+    imputer.fit(numeric_df)
+    extra_df = numeric_df.copy()
+    extra_df["extra"] = 1.0
+    with pytest.raises(ValueError, match="not seen during fit"):
+        imputer.transform(extra_df)
+
+
 # ---------------------------------------------------------------------------
 # Invalid strategy
 # ---------------------------------------------------------------------------
@@ -232,3 +242,25 @@ def test_fit_transform_convenience(numeric_df):
     result_b = imputer_b.fit(numeric_df).transform(numeric_df)
 
     pd.testing.assert_frame_equal(result_a, result_b)
+
+
+# ---------------------------------------------------------------------------
+# Categorical dtype preservation (Bug #1)
+# ---------------------------------------------------------------------------
+
+def test_categorical_dtype_preserved_by_strategy():
+    """CategoricalDtype must be preserved after imputation for all strategies."""
+    df = pd.DataFrame({
+        "num": [1.0, np.nan, 3.0, 4.0, 5.0],
+        "cat": pd.Categorical(["a", np.nan, "b", "a", "b"]),
+    })
+    for strategy in ["mean", "median", "mode", "knn", "rf", "gb"]:
+        imputer = MissinglyImputer(strategy=strategy)
+        result = imputer.fit_transform(df)
+        assert isinstance(result["cat"].dtype, pd.CategoricalDtype), (
+            f"Strategy '{strategy}' lost CategoricalDtype: "
+            f"got {result['cat'].dtype}"
+        )
+        assert not result["cat"].isna().any(), (
+            f"Strategy '{strategy}' left NaN in categorical column"
+        )

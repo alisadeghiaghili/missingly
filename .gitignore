@@ -86,3 +86,10 @@ missing_data_report.html
 manual_tests/output_*/
 manual_tests/*.csv
 manual_tests/*.npy
+
+# AI assistant working files
+.mimocode/
+mice.md
+missing_ecosystem_table.png
+missingly_context_handoff.md
+problems/

@@ -32,6 +32,16 @@ Design decisions
 * ``estimator_kwargs`` is stored as a single ``Optional[dict]`` parameter
   (not ``**kwargs``) so that ``get_params()`` / ``set_params()`` /
   ``clone()`` work correctly per the sklearn estimator contract.
+* For ``logreg``, ``polyreg``, and ``polr`` strategies, ``fit`` stores the
+  training DataFrame and ``transform`` delegates to the stateless
+  ``impute_logreg`` / ``impute_polyreg`` / ``impute_polr`` functions,
+  re-fitting on the combined train+test data.  This is acceptable because
+  these methods re-fit per column on observed rows only — there is no
+  global state that would cause leakage beyond column-level statistics
+  already present in train.
+* For ``hotdeck`` strategy, ``fit`` stores the training DataFrame and
+  ``transform`` uses it as the donor pool.  ``hotdeck_method`` selects
+  between ``'random'``, ``'sequential'``, and ``'weighted'`` variants.
 
 Example
 -------
@@ -69,11 +79,26 @@ from sklearn.ensemble import (
 )
 from sklearn.preprocessing import OrdinalEncoder
 
-from .impute import _fill_nan_with_col_means
+from .impute import (
+    _fill_nan_with_col_means,
+    _restore_categorical_dtype,
+    impute_logreg,
+    impute_polyreg,
+    impute_polr,
+)
+from .hotdeck import (
+    impute_hotdeck_random,
+    impute_hotdeck_sequential,
+    impute_hotdeck_weighted,
+)
 
 
 _VALID_STRATEGIES = frozenset(
-    {"mean", "median", "mode", "knn", "mice", "rf", "gb"}
+    {
+        "mean", "median", "mode", "knn", "mice", "rf", "gb", "pmm",
+        "logreg", "polyreg", "polr",
+        "hotdeck",
+    }
 )
 
 
@@ -94,13 +119,19 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     strategy : str, optional
         Imputation strategy.  One of:
 
-        * ``"mean"``   — fill numeric with mean, categorical with mode.
-        * ``"median"`` — fill numeric with median, categorical with mode.
-        * ``"mode"``   — fill all columns with most frequent value.
-        * ``"knn"``    — k-Nearest Neighbours (default k=5).
-        * ``"mice"``   — Multiple Imputation by Chained Equations.
-        * ``"rf"``     — Random Forest.
-        * ``"gb"``     — Gradient Boosting.
+        * ``"mean"``      — fill numeric with mean, categorical with mode.
+        * ``"median"``    — fill numeric with median, categorical with mode.
+        * ``"mode"``      — fill all columns with most frequent value.
+        * ``"knn"``       — k-Nearest Neighbours (default k=5).
+        * ``"mice"``      — Multiple Imputation by Chained Equations.
+        * ``"rf"``        — Random Forest.
+        * ``"gb"``        — Gradient Boosting.
+        * ``"pmm"``       — Predictive Mean Matching.
+        * ``"logreg"``    — Logistic Regression (binary columns).
+        * ``"polyreg"``   — Multinomial Logistic Regression (3+ levels).
+        * ``"polr"``      — Ordinal Logistic Regression (ordered categories).
+        * ``"hotdeck"``   — Hot-deck imputation; variant selected by
+          ``hotdeck_method``.
 
         Default is ``"mean"``.
     n_neighbors : int, optional
@@ -117,13 +148,22 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         estimator (e.g. ``{'n_estimators': 200}`` for RF/GB strategies).
         Stored as-is so that ``get_params()`` / ``set_params()`` /
         ``clone()`` behave correctly.
+    hotdeck_method : {"random", "sequential", "weighted"}, optional
+        Hot-deck variant to use when ``strategy="hotdeck"``.
+        Default is ``"random"``.
+    hotdeck_direction : {"forward", "backward", "nearest"}, optional
+        Direction for ``hotdeck_method="sequential"``.
+        Default is ``"nearest"``.
+    hotdeck_n_donors : int, optional
+        Donor pool size for ``hotdeck_method="weighted"``.
+        Default is 5.
 
     Example
     -------
     >>> from sklearn.pipeline import Pipeline
     >>> from sklearn.linear_model import LogisticRegression
     >>> pipe = Pipeline([
-    ...     ("imputer", MissinglyImputer(strategy="knn", n_neighbors=3)),
+    ...     ("imputer", MissinglyImputer(strategy="hotdeck", hotdeck_method="weighted")),
     ...     ("clf",     LogisticRegression()),
     ... ])
     """
@@ -136,12 +176,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         max_iter: int = 10,
         random_state: int = 0,
         estimator_kwargs: Optional[dict] = None,
+        hotdeck_method: str = "random",
+        hotdeck_direction: str = "nearest",
+        hotdeck_n_donors: int = 5,
     ) -> None:
-        """Initialise the imputer.
-
-        All parameters are stored verbatim (no coercion) so that
-        ``get_params()`` / ``set_params()`` round-trip correctly.
-        """
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"strategy must be one of {sorted(_VALID_STRATEGIES)}; "
@@ -153,8 +191,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.max_iter = max_iter
         self.random_state = random_state
         self.estimator_kwargs = estimator_kwargs
-        # Fitted-state sentinel — NOT a trailing-underscore attribute so that
-        # sklearn's check_is_fitted does not treat it as a fitted attribute.
+        self.hotdeck_method = hotdeck_method
+        self.hotdeck_direction = hotdeck_direction
+        self.hotdeck_n_donors = hotdeck_n_donors
         self._is_fitted: bool = False
 
     # ------------------------------------------------------------------
@@ -162,12 +201,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     # ------------------------------------------------------------------
 
     def __sklearn_is_fitted__(self) -> bool:
-        """Return whether this estimator has been fitted.
-
-        sklearn calls this method (when present) in ``check_is_fitted``
-        instead of inspecting attributes.  Returning ``False`` before
-        ``fit`` guarantees a ``NotFittedError`` is raised on ``transform``.
-        """
         return self._is_fitted
 
     # ------------------------------------------------------------------
@@ -199,14 +232,14 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         if not self.cat_cols_ or self.encoder_ is None:
             return df
         result = df.copy()
-        rounded = np.round(result[self.cat_cols_].to_numpy()).clip(0).copy()
-        decoded = self.encoder_.inverse_transform(rounded)
+        cat_array = result[self.cat_cols_].to_numpy().copy().astype(float)
+        for i, col in enumerate(self.cat_cols_):
+            n_cats = len(self.encoder_.categories_[i])
+            cat_array[:, i] = np.clip(np.round(cat_array[:, i]), 0, n_cats - 1)
+        decoded = self.encoder_.inverse_transform(cat_array)
         for i, col in enumerate(self.cat_cols_):
             result[col] = decoded[:, i]
-            try:
-                result[col] = result[col].astype(self.cat_dtypes_[col])
-            except (ValueError, TypeError):
-                pass
+            result[col] = _restore_categorical_dtype(result[col], self.cat_dtypes_[col])
         return result
 
     # ------------------------------------------------------------------
@@ -233,7 +266,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
         X = self._normalize(X)
 
-        # Fitted-state attributes — only set inside fit(), never in __init__.
         self.feature_names_in_: List[str] = X.columns.tolist()
         self.numeric_cols_: List[str] = X.select_dtypes(include=[np.number]).columns.tolist()
         self.cat_cols_: List[str] = X.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -245,6 +277,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.rf_clf_models_: Dict[str, object] = {}
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
         self._knn_train_df_: Optional[pd.DataFrame] = None
+        self._train_df_: Optional[pd.DataFrame] = None
 
         strategy = self.strategy
 
@@ -259,8 +292,13 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self._fit_knn(X)
         elif strategy == "mice":
             self._fit_mice(X)
+        elif strategy == "pmm":
+            self._fit_pmm(X)
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
+        elif strategy in ("logreg", "polyreg", "polr", "hotdeck"):
+            # These methods use the training data as the donor/fit pool.
+            self._train_df_ = X.copy()
 
         self._is_fitted = True
         return self
@@ -307,6 +345,17 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             imputation_order="roman",
         )
         self.imputer_.fit(X_enc)
+
+    def _fit_pmm(self, X: pd.DataFrame) -> None:
+        """Fit PMM — store training data for donor matching."""
+        self._train_df_ = X.copy()
+        if self.cat_cols_:
+            self.encoder_ = OrdinalEncoder(
+                handle_unknown="use_encoded_value",
+                unknown_value=np.nan,
+                encoded_missing_value=np.nan,
+            )
+            self.encoder_.fit(X[self.cat_cols_])
 
     def _fit_tree(self, X: pd.DataFrame) -> None:
         """Fit per-column regressor/classifier for rf and gb strategies."""
@@ -391,10 +440,16 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
 
         missing_cols = set(self.feature_names_in_) - set(X.columns)
+        extra_cols = set(X.columns) - set(self.feature_names_in_)
         if missing_cols:
             raise ValueError(
                 f"Columns present during fit but missing in transform: "
                 f"{sorted(missing_cols)}"
+            )
+        if extra_cols:
+            raise ValueError(
+                f"Columns present in transform but not seen during fit: "
+                f"{sorted(extra_cols)}"
             )
 
         X = self._normalize(X)
@@ -407,13 +462,16 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                     X[self.numeric_cols_]
                 )
             if self.cat_cols_ and self.cat_imputer_ is not None:
-                result[self.cat_cols_] = self.cat_imputer_.transform(
-                    X[self.cat_cols_]
-                )
+                imputed = self.cat_imputer_.transform(X[self.cat_cols_])
+                for i, col in enumerate(self.cat_cols_):
+                    filled = pd.Series(imputed[:, i], index=X.index)
+                    result[col] = _restore_categorical_dtype(filled, self.cat_dtypes_[col])
 
         elif strategy == "mode":
             arr = self.imputer_.transform(X)
             result = pd.DataFrame(arr, index=X.index, columns=X.columns)
+            for col in X.columns:
+                result[col] = _restore_categorical_dtype(result[col], X[col].dtype)
 
         elif strategy == "knn":
             if self.metric == "mixed":
@@ -438,10 +496,64 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
             result = self._decode_cats(df_enc)
 
+        elif strategy == "pmm":
+            result = self._transform_pmm(X)
+
         elif strategy in ("rf", "gb"):
             result = self._transform_tree(X)
 
+        elif strategy == "logreg":
+            result = impute_logreg(
+                X, max_iter=self.max_iter, random_state=self.random_state
+            )
+
+        elif strategy == "polyreg":
+            result = impute_polyreg(
+                X, max_iter=self.max_iter, random_state=self.random_state
+            )
+
+        elif strategy == "polr":
+            result = impute_polr(
+                X, max_iter=self.max_iter, random_state=self.random_state
+            )
+
+        elif strategy == "hotdeck":
+            result = self._transform_hotdeck(X)
+
         return result[self.feature_names_in_]
+
+    def _transform_hotdeck(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Dispatch hot-deck transform to the appropriate variant.
+
+        Uses the training DataFrame stored during ``fit`` as the donor
+        pool: training donors are concatenated with the test rows, the
+        hot-deck function fills all NaN cells, and then the original
+        test rows (now imputed) are extracted.  This ensures that only
+        training-set values are used as donors for test-set recipients.
+        """
+        train_df = self._train_df_
+        n_train = len(train_df)
+        combined = pd.concat([train_df, X], ignore_index=True)
+
+        method = self.hotdeck_method
+        if method == "sequential":
+            imputed = impute_hotdeck_sequential(
+                combined, direction=self.hotdeck_direction
+            )
+        elif method == "weighted":
+            imputed = impute_hotdeck_weighted(
+                combined,
+                n_donors=self.hotdeck_n_donors,
+                random_state=self.random_state,
+            )
+        else:  # default: random
+            imputed = impute_hotdeck_random(
+                combined, random_state=self.random_state
+            )
+
+        result = imputed.iloc[n_train:].copy()
+        result.index = X.index
+        return result
 
     def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
         """Apply fitted per-column tree models to impute missing values."""
@@ -468,9 +580,76 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 y_pred_enc = clf.predict(X_pred).reshape(-1, 1)
                 y_pred = enc_y.inverse_transform(y_pred_enc).ravel()
                 result.loc[missing_mask, col] = y_pred
+                result[col] = _restore_categorical_dtype(
+                    result[col], self.cat_dtypes_[col]
+                )
             elif col not in cat_set and col in self.rf_reg_models_:
                 reg = self.rf_reg_models_[col]
                 result.loc[missing_mask, col] = reg.predict(X_pred)
+
+        return result
+
+    def _transform_pmm(
+        self,
+        X: pd.DataFrame,
+        n_nearest_donors: int = 5,
+    ) -> pd.DataFrame:
+        """Apply PMM imputation using stored training data as donor pool."""
+        from .impute import _fill_feature_matrix
+
+        train_df = self._train_df_
+        rng = np.random.default_rng(self.random_state)
+        result = X.copy()
+
+        num_cols = self.numeric_cols_
+        cat_cols = self.cat_cols_
+
+        for col in num_cols:
+            missing_mask = result[col].isna()
+            if not missing_mask.any():
+                continue
+
+            feature_cols = [c for c in num_cols if c != col]
+            if not feature_cols:
+                fill_val = train_df[col].mean()
+                result.loc[missing_mask, col] = fill_val
+                continue
+
+            train_obs_mask = ~train_df[col].isna()
+            if train_obs_mask.sum() == 0:
+                warnings.warn(
+                    f"PMM: column {col!r} has no observed training values; "
+                    "skipping imputation for this column.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+
+            X_train = train_df.loc[train_obs_mask, feature_cols].values.astype(np.float64)
+            y_train = train_df.loc[train_obs_mask, col].values.astype(np.float64)
+            X_miss = result.loc[missing_mask, feature_cols].values.astype(np.float64)
+
+            X_train_clean, X_miss_clean = _fill_feature_matrix(X_train, X_miss)
+
+            model = BayesianRidge()
+            model.fit(X_train_clean, y_train)
+            y_pred = model.predict(X_miss_clean)
+
+            k = min(n_nearest_donors, len(y_train))
+            distances = np.abs(y_train[np.newaxis, :] - y_pred[:, np.newaxis])
+            donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
+            rand_col = rng.integers(0, k, size=len(y_pred))
+            chosen_idx = donor_idx[np.arange(len(y_pred)), rand_col]
+            imputed_vals = y_train[chosen_idx]
+
+            miss_indices = missing_mask[missing_mask].index
+            result.loc[miss_indices, col] = imputed_vals
+
+        for col in cat_cols:
+            if result[col].isna().any():
+                observed = train_df[col].dropna()
+                if len(observed) > 0:
+                    result[col] = result[col].fillna(observed.mode().iloc[0])
 
         return result
 

@@ -22,6 +22,17 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+try:
+    import data_quality_toolkit
+    HAS_DQT = True
+except ImportError:
+    HAS_DQT = False
+
+pytestmark = pytest.mark.skipif(
+    not HAS_DQT,
+    reason="data_quality_toolkit not installed"
+)
+
 
 @pytest.fixture(autouse=True)
 def close_plots():

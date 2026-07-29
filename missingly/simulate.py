@@ -1,15 +1,10 @@
-"""Missing data simulation utilities (experimental)."""
+"""Missing data simulation utilities."""
 from __future__ import annotations
 from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
-from ._deprecation import deprecated_api
 
 
-@deprecated_api(
-    "Simulation utilities are experimental and may move to a dedicated benchmarking package in a future release.",
-    since="0.2.0",
-)
 def simulate_mcar(
     df: pd.DataFrame,
     frac: float = 0.1,
@@ -40,10 +35,6 @@ def simulate_mcar(
     return result
 
 
-@deprecated_api(
-    "Simulation utilities are experimental and may move to a dedicated benchmarking package in a future release.",
-    since="0.2.0",
-)
 def simulate_mar(
     df: pd.DataFrame,
     frac: float = 0.1,
@@ -85,10 +76,6 @@ def simulate_mar(
     return result
 
 
-@deprecated_api(
-    "Simulation utilities are experimental and may move to a dedicated benchmarking package in a future release.",
-    since="0.2.0",
-)
 def simulate_mnar(
     df: pd.DataFrame,
     frac: float = 0.1,
@@ -122,10 +109,6 @@ def simulate_mnar(
     return result
 
 
-@deprecated_api(
-    "Simulation utilities are experimental and may move to a dedicated benchmarking package in a future release.",
-    since="0.2.0",
-)
 def simulate_mixed(
     df: pd.DataFrame,
     mechanisms: List[Dict],

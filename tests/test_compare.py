@@ -196,6 +196,27 @@ class TestCompareImputationsSchema:
         acc = result["Accuracy"].dropna()
         assert (acc >= 0).all() and (acc <= 1).all()
 
+    def test_mixed_all_methods_fail(self, df_mixed):
+        """When all methods fail, the result should still be a valid DataFrame."""
+        def bad_fn(df):
+            raise RuntimeError("fail")
+        result = compare_imputations(
+            df_mixed,
+            methods=[bad_fn, bad_fn],
+            mask_frac=0.2,
+        )
+        assert isinstance(result, pd.DataFrame)
+        assert "Score" in result.columns
+
+    def test_mixed_single_method_returns_finite(self, df_mixed):
+        """A single method should not produce NaN Score."""
+        result = compare_imputations(
+            df_mixed,
+            methods=[_impute.impute_mean],
+            mask_frac=0.2,
+        )
+        assert not pd.isna(result["Score"].iloc[0])
+
 
 # ---------------------------------------------------------------------------
 # compare_imputations — error isolation

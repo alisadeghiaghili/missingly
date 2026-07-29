@@ -34,6 +34,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import KFold, StratifiedKFold
 
 from . import impute as _impute_module
+from .exceptions import MissinglyError
 from .transformer import MissinglyImputer
 
 
@@ -168,7 +169,8 @@ def compare_imputations(
         name = _method_name(method)
         try:
             df_imputed = method(df_missing)
-        except (ValueError, TypeError, RuntimeError, MemoryError, np.linalg.LinAlgError) as exc:
+        except (ValueError, TypeError, RuntimeError, MemoryError,
+                np.linalg.LinAlgError, MissinglyError) as exc:
             errors[name] = str(exc)
             row: dict = {}
             if numeric_cols:
@@ -208,14 +210,34 @@ def compare_imputations(
         result_df["Error"] = pd.Series(errors)
 
     if numeric_cols and cat_cols:
-        valid = result_df["RMSE"].notna() & result_df["Accuracy"].notna()
-        rmse_vals_s = result_df.loc[valid, "RMSE"]
-        rmse_min, rmse_max = rmse_vals_s.min(), rmse_vals_s.max()
-        if rmse_max > rmse_min:
-            norm_rmse = (result_df["RMSE"] - rmse_min) / (rmse_max - rmse_min)
+        rmse_col = result_df["RMSE"]
+        acc_col = result_df["Accuracy"]
+        valid = rmse_col.notna() & acc_col.notna()
+        rmse_valid = rmse_col[valid]
+
+        # Always initialise norm_rmse with a safe default (NaN for failed
+        # rows, 0.0 when normalisation is impossible) so the variable is
+        # guaranteed to exist regardless of which branch executes.
+        norm_rmse = pd.Series(np.nan, index=result_df.index, dtype=float)
+
+        if len(rmse_valid) == 0:
+            # All methods failed — keep Score as NaN so they sort last.
+            result_df["Score"] = np.nan
+            return result_df.sort_values(by="Score", na_position="last")
+
+        if rmse_valid.max() > rmse_valid.min():
+            # Standard min-max normalisation, applied only to the full column
+            # so failed rows (NaN) stay NaN rather than getting a bogus 0.5.
+            norm_rmse = (rmse_col - rmse_valid.min()) / (
+                rmse_valid.max() - rmse_valid.min()
+            )
         else:
-            norm_rmse = pd.Series(0.0, index=result_df.index)
-        result_df["Score"] = (norm_rmse + (1.0 - result_df["Accuracy"])) / 2.0
+            # All successful methods produced identical RMSE — treat as 0.
+            norm_rmse.loc[valid] = 0.0
+
+        # For successful rows: composite score in [0, 1] (lower is better).
+        # Failed rows keep NaN and are pushed to the bottom by na_position.
+        result_df["Score"] = (norm_rmse + (1.0 - acc_col)) / 2.0
         return result_df.sort_values(by="Score", na_position="last")
     elif numeric_cols:
         return result_df.sort_values(by="RMSE", na_position="last")
@@ -261,8 +283,9 @@ def cv_compare_imputations(
         ``predict_proba``) method.  A fresh clone is used for each fold.
     strategies : list of str, optional
         List of imputation strategy names to compare.  Each must be one
-        of: ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``, ``"mice"``,
-        ``"rf"``, ``"gb"``.
+        of the strategies supported by :class:`~missingly.transformer.MissinglyImputer`:
+        ``"mean"``, ``"median"``, ``"mode"``, ``"knn"``, ``"mice"``,
+        ``"rf"``, ``"gb"``, ``"pmm"``, ``"logreg"``, ``"polyreg"``, ``"polr"``.
         Defaults to ``["mean", "median", "mode", "knn", "mice"]``.
     n_splits : int, optional
         Number of CV folds.  Default 5.
@@ -307,12 +330,15 @@ def cv_compare_imputations(
     >>> results = cv_compare_imputations(
     ...     X, y,
     ...     estimator=LogisticRegression(),
-    ...     strategies=['mean', 'knn'],
+    ...     strategies=['mean', 'knn', 'pmm'],
     ...     n_splits=3,
     ... )
     >>> print(results)
     """
-    _VALID = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
+    _VALID = frozenset(
+        {"mean", "median", "mode", "knn", "mice", "rf", "gb",
+         "pmm", "logreg", "polyreg", "polr"}
+    )
 
     if strategies is None:
         strategies = ["mean", "median", "mode", "knn", "mice"]

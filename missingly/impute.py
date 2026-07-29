@@ -47,10 +47,12 @@ Functions that are O(n^2) or slow on large DataFrames emit a
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Union
+import warnings
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, RegressorMixin, clone
 from sklearn.ensemble import (
     GradientBoostingClassifier,
     GradientBoostingRegressor,
@@ -59,7 +61,7 @@ from sklearn.ensemble import (
 )
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer, KNNImputer, SimpleImputer
-from sklearn.linear_model import BayesianRidge
+from sklearn.linear_model import BayesianRidge, LogisticRegression
 from sklearn.preprocessing import OrdinalEncoder
 from sklearn.exceptions import NotFittedError
 
@@ -77,7 +79,10 @@ from missingly.config import config as _config
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_STRATEGIES = frozenset({"mean", "median", "mode", "knn", "mice", "rf", "gb"})
+_SUPPORTED_STRATEGIES = frozenset({
+    "mean", "median", "mode", "knn", "mice", "rf", "gb",
+    "pmm", "logreg", "polyreg", "polr",
+})
 _SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
 # Strategies whose fit-state is a per-column scalar.
 _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
@@ -92,7 +97,6 @@ _DELEGATE_STRATEGIES = frozenset({"knn", "mice", "rf", "gb"})
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
     """Emit a UserWarning when *df* exceeds the large-DataFrame threshold."""
     if len(df) > _config.large_df_threshold:
-        import warnings
         warnings.warn(
             f"{method_name}: DataFrame has {len(df):,} rows which may result in "
             f"very long runtimes or high memory usage. "
@@ -108,7 +112,6 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
     n_cat = len(df.select_dtypes(exclude=[np.number]).columns)
     n_num = len(df.select_dtypes(include=[np.number]).columns)
     if n_cat > n_num and n_neighbors > _config.knn_cat_neighbors_threshold:
-        import warnings
         warnings.warn(
             f"KNN imputation may be unreliable: the DataFrame has {n_cat} categorical "
             f"column(s) but only {n_num} numeric column(s), and n_neighbors={n_neighbors} "
@@ -124,7 +127,7 @@ def _warn_if_knn_heavy_categorical(df: pd.DataFrame, n_neighbors: int) -> None:
 def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
     """Replace Python ``None`` with ``np.nan`` in object/str columns."""
     df = df.copy()
-    obj_cols = df.select_dtypes(include=["object", "str"]).columns
+    obj_cols = df.select_dtypes(include=["object", "string"]).columns
     if len(obj_cols):
         df[obj_cols] = df[obj_cols].where(df[obj_cols].notna(), other=np.nan)
     return df
@@ -148,11 +151,121 @@ def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
         Columns that are entirely NaN are filled with ``0.0``.
     """
     X = X.copy()
-    col_means = np.nanmean(X, axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        col_means = np.nanmean(X, axis=0)
     col_means = np.where(np.isnan(col_means), 0.0, col_means)
     nan_mask = np.isnan(X)
     X[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
     return X
+
+
+def _encode_features(X: np.ndarray) -> np.ndarray:
+    """Encode a 2-D object/mixed array to float, replacing non-numeric with ordinal codes.
+
+    Each column is processed independently:
+    * Numeric-castable columns are kept as-is after float conversion.
+    * String/object columns are label-encoded to integer codes (0-based),
+      with NaN preserved as ``np.nan``.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Raw feature matrix of shape ``(n_samples, n_features)``.
+
+    Returns
+    -------
+    np.ndarray of float64
+        Encoded matrix safe to pass to sklearn estimators that require
+        a numeric input.
+    """
+    n_samples, n_features = X.shape
+    X_out = np.empty((n_samples, n_features), dtype=np.float64)
+    for j in range(n_features):
+        col = X[:, j]
+        try:
+            X_out[:, j] = col.astype(np.float64)
+        except (ValueError, TypeError):
+            # Object/string column — label-encode, NaN stays NaN
+            unique_vals = [v for v in col if v is not None and not _is_nan_scalar(v)]
+            unique_vals = sorted(set(unique_vals), key=str)
+            mapping = {v: float(i) for i, v in enumerate(unique_vals)}
+            X_out[:, j] = np.array(
+                [mapping.get(v, np.nan) if not _is_nan_scalar(v) else np.nan for v in col],
+                dtype=np.float64,
+            )
+    return X_out
+
+
+def _is_nan_scalar(v) -> bool:
+    """Return True if *v* is a NaN-like scalar (float NaN or pd.NA)."""
+    try:
+        return v is None or (isinstance(v, float) and np.isnan(v))
+    except (TypeError, ValueError):
+        return False
+
+
+def _fill_feature_matrix(
+    X_obs: np.ndarray,
+    X_miss: np.ndarray,
+) -> tuple:
+    """Fill NaN in feature matrices with column means derived from X_obs.
+
+    Parameters
+    ----------
+    X_obs : np.ndarray
+        Feature matrix for observed rows.
+    X_miss : np.ndarray
+        Feature matrix for rows to predict.
+
+    Returns
+    -------
+    tuple of (np.ndarray, np.ndarray)
+        ``(X_obs_clean, X_miss_clean)`` with no NaN values.
+    """
+    X_obs_clean = X_obs.copy()
+    X_miss_clean = X_miss.copy()
+    for j in range(X_obs_clean.shape[1]):
+        col_mean = np.nanmean(X_obs_clean[:, j])
+        if np.isnan(col_mean):
+            col_mean = 0.0
+        X_obs_clean[np.isnan(X_obs_clean[:, j]), j] = col_mean
+        X_miss_clean[np.isnan(X_miss_clean[:, j]), j] = col_mean
+    return X_obs_clean, X_miss_clean
+
+
+def _restore_categorical_dtype(
+    series: pd.Series,
+    orig_dtype,
+) -> pd.Series:
+    """Restore a Series to its original categorical or plain dtype.
+
+    Safer than ``series.astype(orig_dtype)`` for CategoricalDtype because
+    it reconstructs the Categorical explicitly, preserving the ``ordered``
+    flag without crashing when new values appear.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Imputed series (dtype may be object/string after SimpleImputer).
+    orig_dtype : dtype
+        Original dtype of the column before imputation.
+
+    Returns
+    -------
+    pd.Series
+        Series with dtype restored as closely as possible.
+    """
+    if hasattr(orig_dtype, "categories"):
+        ordered = getattr(orig_dtype, "ordered", False)
+        return pd.Series(
+            pd.Categorical(series, categories=orig_dtype.categories, ordered=ordered),
+            index=series.index,
+        )
+    try:
+        return series.astype(orig_dtype)
+    except (ValueError, TypeError):
+        return series
 
 
 def _split_encode(
@@ -219,8 +332,9 @@ def _decode(
 
         orig_dtype = cat_dtypes[col]
         if hasattr(orig_dtype, "categories"):
+            ordered = orig_dtype.ordered if hasattr(orig_dtype, "ordered") else False
             result[col] = pd.Categorical(
-                decoded_col, categories=orig_dtype.categories
+                decoded_col, categories=orig_dtype.categories, ordered=ordered
             )
         else:
             result[col] = decoded_col
@@ -336,6 +450,124 @@ def _impute_column_by_column(
 
 
 # ---------------------------------------------------------------------------
+# MICE history tracking helpers
+# ---------------------------------------------------------------------------
+
+class _HistoryTrackingEstimator(BaseEstimator, RegressorMixin):
+    """Thin wrapper around a base estimator that records per-predict means.
+
+    Used internally by :func:`impute_mice` when ``return_history=True``.
+    Each call to ``predict`` appends the mean of the predictions to
+    ``self.history_`` for the given column key.
+
+    Parameters
+    ----------
+    base_estimator : sklearn estimator
+        The underlying regression estimator.
+    history : dict
+        Shared mutable dict mapping column-name → list of floats.
+    col_name : str
+        Key into *history* for this column's trace.
+    """
+
+    def __init__(self, base_estimator, history: dict, col_name: str) -> None:
+        self.base_estimator = base_estimator
+        self.history = history
+        self.col_name = col_name
+
+    def fit(self, X, y):
+        self.base_estimator_ = clone(self.base_estimator)
+        self.base_estimator_.fit(X, y)
+        return self
+
+    def predict(self, X):
+        preds = self.base_estimator_.predict(X)
+        self.history.setdefault(self.col_name, []).append(float(np.mean(preds)))
+        return preds
+
+
+def _run_mice_with_history(
+    df_work: pd.DataFrame,
+    missing_mask_df: pd.DataFrame,
+    base_estimator,
+    max_iter: int,
+    seed: int,
+    use_sample_posterior: bool,
+) -> Tuple[np.ndarray, Dict[str, List[float]]]:
+    """Run MICE manually iteration-by-iteration to capture per-iteration means.
+
+    sklearn's ``IterativeImputer`` does not expose intermediate states after
+    each iteration.  This function replicates the imputation order ("roman"
+    = left-to-right) manually so that we can snapshot the imputed means at
+    the end of every full sweep.
+
+    Parameters
+    ----------
+    df_work : pd.DataFrame
+        Ordinal-encoded, numeric-only working DataFrame.
+    missing_mask_df : pd.DataFrame
+        Boolean DataFrame; True where a value was originally missing.
+    base_estimator : sklearn estimator
+        Regressor to use for each column.
+    max_iter : int
+        Number of full sweeps.
+    seed : int
+        Random seed passed to the estimator where applicable.
+    use_sample_posterior : bool
+        Whether the estimator supports ``sample_posterior`` (BayesianRidge).
+
+    Returns
+    -------
+    imputed_array : np.ndarray
+        Final imputed values, same shape as ``df_work``.
+    history : Dict[str, List[float]]
+        ``{col: [mean_iter1, mean_iter2, ...]}``.  Only columns that had
+        missing values are included.
+    """
+    rng = np.random.default_rng(seed)
+    cols = list(df_work.columns)
+    # Initialise missing cells with column means (same as sklearn default)
+    X = df_work.values.astype(float).copy()
+    for j in range(X.shape[1]):
+        col_missing = np.isnan(X[:, j])
+        if col_missing.any():
+            col_mean = np.nanmean(X[:, j])
+            X[col_missing, j] = col_mean if not np.isnan(col_mean) else 0.0
+
+    history: Dict[str, List[float]] = {}
+
+    for _ in range(max_iter):
+        for j, col in enumerate(cols):
+            orig_missing = missing_mask_df[col].values
+            if not orig_missing.any():
+                continue
+
+            feature_idx = [k for k in range(len(cols)) if k != j]
+            X_train = X[~orig_missing][:, feature_idx]
+            y_train = X[~orig_missing, j]
+            X_pred_rows = X[orig_missing][:, feature_idx]
+
+            est = clone(base_estimator)
+            # Seed estimators that accept random_state
+            if hasattr(est, "random_state"):
+                est.set_params(random_state=int(rng.integers(0, 2**31)))
+            try:
+                est.fit(X_train, y_train)
+                if use_sample_posterior and hasattr(est, "sample_y"):
+                    preds, _ = est.sample_y(X_pred_rows, n_samples=1, random_state=int(rng.integers(0, 2**31)))
+                    preds = preds.ravel()
+                else:
+                    preds = est.predict(X_pred_rows)
+            except Exception:
+                preds = np.full(orig_missing.sum(), float(np.mean(y_train)))
+
+            X[orig_missing, j] = preds
+            history.setdefault(col, []).append(float(np.mean(preds)))
+
+    return X, history
+
+
+# ---------------------------------------------------------------------------
 # Public imputation functions
 # ---------------------------------------------------------------------------
 
@@ -387,7 +619,10 @@ def impute_mean(
 
     if not numeric_only and len(cat_cols):
         mode_imputer = SimpleImputer(strategy="most_frequent")
-        result[cat_cols] = mode_imputer.fit_transform(df[cat_cols])
+        imputed = mode_imputer.fit_transform(df[cat_cols])
+        for i, col in enumerate(cat_cols):
+            filled = pd.Series(imputed[:, i], index=df.index)
+            result[col] = _restore_categorical_dtype(filled, df[col].dtype)
 
     return result
 
@@ -439,7 +674,10 @@ def impute_median(
 
     if not numeric_only and len(cat_cols):
         mode_imputer = SimpleImputer(strategy="most_frequent")
-        result[cat_cols] = mode_imputer.fit_transform(df[cat_cols])
+        imputed = mode_imputer.fit_transform(df[cat_cols])
+        for i, col in enumerate(cat_cols):
+            filled = pd.Series(imputed[:, i], index=df.index)
+            result[col] = _restore_categorical_dtype(filled, df[col].dtype)
 
     return result
 
@@ -479,16 +717,10 @@ def impute_mode(
     validate_dataframe(df, param="df")
     df = _normalize_missing(df)
     imputer = SimpleImputer(strategy="most_frequent")
-    result = pd.DataFrame(
-        imputer.fit_transform(df),
-        index=df.index,
-        columns=df.columns,
-    )
+    imputed = imputer.fit_transform(df)
+    result = pd.DataFrame(imputed, index=df.index, columns=df.columns)
     for col in df.columns:
-        try:
-            result[col] = result[col].astype(df[col].dtype)
-        except (ValueError, TypeError):
-            pass
+        result[col] = _restore_categorical_dtype(result[col], df[col].dtype)
     return result
 
 
@@ -574,8 +806,14 @@ def impute_mice(
     random_state: int = 0,
     estimator=None,
     n_imputations: int = 1,
-) -> Union[pd.DataFrame, List[pd.DataFrame]]:
-    """Impute missing values using MICE (IterativeImputer).
+    return_history: bool = False,
+) -> Union[
+    pd.DataFrame,
+    List[pd.DataFrame],
+    Tuple[pd.DataFrame, Dict[str, List[float]]],
+    Tuple[List[pd.DataFrame], List[Dict[str, List[float]]]],
+]:
+    """Impute missing values using MICE (Multiple Imputation by Chained Equations).
 
     When ``n_imputations > 1`` runs independent chains each with a distinct
     random seed so the returned DataFrames differ from one another.
@@ -589,16 +827,29 @@ def impute_mice(
     random_state : int, default 0
         Base random seed.
     estimator : sklearn estimator or None, default None
-        Regression estimator used by IterativeImputer.  Defaults to
-        ``BayesianRidge()`` with ``sample_posterior=True``.
+        Regression estimator used per column.  Defaults to
+        ``BayesianRidge()`` with posterior sampling enabled.
     n_imputations : int, default 1
         Number of independently imputed DataFrames to generate.
         Returns a single DataFrame when 1, a list when > 1.
+    return_history : bool, default False
+        If True, also return per-iteration imputed means for each variable
+        that had missing values.  Used by :func:`~missingly.diagnostics.mice_convergence`
+        for trace plots and Gelman-Rubin R-hat computation.
+
+        When ``n_imputations == 1`` and ``return_history=True`` the return
+        value is ``(imputed_df, history)`` where *history* is
+        ``Dict[str, List[float]]`` mapping column name to a list of
+        per-iteration mean imputed values.
+
+        When ``n_imputations > 1`` and ``return_history=True`` the return
+        value is ``(list_of_dfs, list_of_histories)``.
 
     Returns
     -------
     pd.DataFrame or list of pd.DataFrame
-        Imputed copy (or list of *m* copies) of *df*.
+        Imputed copy (or list of *m* copies) of *df*.  When
+        ``return_history=True`` a tuple is returned instead — see above.
 
     Raises
     ------
@@ -614,6 +865,10 @@ def impute_mice(
     >>> result = impute_mice(df, max_iter=2, random_state=0)
     >>> result["a"].isna().any()
     False
+
+    >>> imputed, history = impute_mice(df, max_iter=5, return_history=True)
+    >>> len(history["a"])  # one entry per iteration
+    5
     """
     validate_dataframe(df, param="df")
     validate_positive_int(n_imputations, param="n_imputations")
@@ -622,8 +877,41 @@ def impute_mice(
     _warn_if_large(df, "impute_mice")
     df_norm = _normalize_missing(df)
 
-    def _single_chain(seed: int) -> pd.DataFrame:
+    def _single_chain(
+        seed: int,
+    ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, List[float]]]]:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
+
+        if return_history:
+            # Use our manual per-iteration loop so we can capture history.
+            missing_mask_df = df_work.isna()
+            if estimator is None:
+                base_est = BayesianRidge()
+                use_posterior = True
+            else:
+                base_est = estimator
+                use_posterior = False
+
+            imputed_array, history = _run_mice_with_history(
+                df_work=df_work,
+                missing_mask_df=missing_mask_df,
+                base_estimator=base_est,
+                max_iter=max_iter,
+                seed=seed,
+                use_sample_posterior=use_posterior,
+            )
+            df_imputed = pd.DataFrame(
+                imputed_array, index=df_norm.index, columns=df_work.columns
+            )
+            result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
+            for col in cat_cols:
+                if result[col].isna().any():
+                    observed = df_norm[col].dropna()
+                    if len(observed) > 0:
+                        result[col] = result[col].fillna(observed.mode().iloc[0])
+            return result, history
+
+        # Fast path: delegate to sklearn's IterativeImputer (no history).
         if estimator is None:
             est = BayesianRidge()
             use_sample_posterior = True
@@ -642,20 +930,487 @@ def impute_mice(
             imputed_array, index=df_norm.index, columns=df_work.columns
         )
         result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
-
         for col in cat_cols:
             if result[col].isna().any():
                 observed = df_norm[col].dropna()
                 if len(observed) > 0:
                     fallback = observed.mode().iloc[0]
                     result[col] = result[col].fillna(fallback)
-
         return result
 
     if n_imputations == 1:
         return _single_chain(random_state)
 
-    return [_single_chain(random_state + i) for i in range(n_imputations)]
+    results = [_single_chain(random_state + i) for i in range(n_imputations)]
+    if return_history:
+        dfs, histories = zip(*results)
+        return list(dfs), list(histories)
+    return list(results)
+
+
+def impute_pmm(
+    df: pd.DataFrame,
+    max_iter: int = 10,
+    random_state: int = 0,
+    n_nearest_donors: int = 5,
+) -> pd.DataFrame:
+    """Impute missing values using Predictive Mean Matching (PMM).
+
+    PMM is the most commonly used method in R's mice package. It works by:
+
+    1. Fitting a predictive model for each variable with missing values.
+    2. Using the model to predict values for missing observations.
+    3. Finding the closest observed values (donors) to each predicted value.
+    4. Randomly selecting one donor as the imputed value.
+
+    This preserves the distribution of the observed data better than direct
+    regression imputation.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with missing values.
+    max_iter : int, default 10
+        Maximum number of MICE iterations per chain.
+    random_state : int, default 0
+        Random seed for reproducibility.
+    n_nearest_donors : int, default 5
+        Number of nearest observed values to consider as donors for each
+        missing value. Larger values increase randomness.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
+    >>> result = impute_pmm(df, random_state=0)
+    >>> result["a"].isna().any()
+    False
+
+    Notes
+    -----
+    PMM is preferred over direct regression imputation because it:
+
+    - Preserves the distribution of observed values.
+    - Does not create impossible values (e.g., negative ages).
+    - Handles non-linear relationships through the matching step.
+    - Is the gold standard method in R's mice package.
+    """
+    validate_dataframe(df, param="df")
+    validate_positive_int(max_iter, param="max_iter")
+    validate_positive_int(n_nearest_donors, param="n_nearest_donors")
+
+    _warn_if_large(df, "impute_pmm")
+    df_norm = _normalize_missing(df)
+
+    num_cols = df_norm.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df_norm.select_dtypes(exclude=[np.number]).columns.tolist()
+
+    if not num_cols:
+        return impute_mode(df)
+
+    rng = np.random.default_rng(random_state)
+    result = df_norm.copy()
+
+    for _ in range(max_iter):
+        for col in num_cols:
+            missing_mask = result[col].isna()
+            if not missing_mask.any():
+                continue
+
+            feature_cols = [c for c in num_cols if c != col]
+            if not feature_cols:
+                result.loc[missing_mask, col] = result[col].mean()
+                continue
+
+            observed_mask = ~missing_mask
+            X_obs = result.loc[observed_mask, feature_cols].values.astype(np.float64)
+            y_obs = result.loc[observed_mask, col].values.astype(np.float64)
+            X_miss = result.loc[missing_mask, feature_cols].values.astype(np.float64)
+
+            X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs, X_miss)
+
+            model = BayesianRidge()
+            model.fit(X_obs_clean, y_obs)
+            y_pred = model.predict(X_miss_clean)
+
+            distances = np.abs(y_obs[np.newaxis, :] - y_pred[:, np.newaxis])
+            k = min(n_nearest_donors, len(y_obs))
+            donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
+            rand_col = rng.integers(0, k, size=len(y_pred))
+            chosen_idx = donor_idx[np.arange(len(y_pred)), rand_col]
+            imputed_vals = y_obs[chosen_idx]
+
+            miss_indices = missing_mask[missing_mask].index
+            result.loc[miss_indices, col] = imputed_vals
+
+    for col in cat_cols:
+        if result[col].isna().any():
+            observed = result[col].dropna()
+            if len(observed) > 0:
+                result[col] = result[col].fillna(observed.mode().iloc[0])
+
+    return result
+
+
+def impute_logreg(
+    df: pd.DataFrame,
+    max_iter: int = 10,
+    random_state: int = 0,
+) -> pd.DataFrame:
+    """Impute missing values using Logistic Regression (for binary variables).
+
+    This method is equivalent to R's mice ``logreg`` method. It fits a
+    logistic regression model for each binary variable with missing values,
+    then samples from the predicted Bernoulli probability.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with missing values.
+    max_iter : int, default 10
+        Maximum number of MICE iterations.
+    random_state : int, default 0
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 0.0, 1.0, 0.0]})
+    >>> result = impute_logreg(df, random_state=0)
+    >>> result["a"].isna().any()
+    False
+
+    Notes
+    -----
+    This method is best suited for binary variables (0/1 or two-level
+    categorical). For categorical variables with more than 2 levels,
+    use ``impute_polyreg`` instead.
+    """
+    validate_dataframe(df, param="df")
+    validate_positive_int(max_iter, param="max_iter")
+
+    _warn_if_large(df, "impute_logreg")
+    df_norm = _normalize_missing(df)
+
+    rng = np.random.default_rng(random_state)
+    result = df_norm.copy()
+
+    binary_cols = [
+        col for col in df_norm.columns
+        if len(df_norm[col].dropna().unique()) == 2
+    ]
+
+    for _ in range(max_iter):
+        for col in binary_cols:
+            missing_mask = result[col].isna()
+            if not missing_mask.any():
+                continue
+
+            feature_cols = [c for c in df_norm.columns if c != col]
+            if not feature_cols:
+                result.loc[missing_mask, col] = result[col].mode().iloc[0]
+                continue
+
+            observed_mask = ~missing_mask
+            X_obs_raw = result.loc[observed_mask, feature_cols].values
+            X_miss_raw = result.loc[missing_mask, feature_cols].values
+            X_obs_enc = _encode_features(X_obs_raw)
+            X_miss_enc = _encode_features(X_miss_raw)
+            X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs_enc, X_miss_enc)
+
+            y_obs = result.loc[observed_mask, col].values
+
+            model = LogisticRegression(random_state=random_state, max_iter=1000)
+            try:
+                model.fit(X_obs_clean, y_obs)
+                y_pred_proba = model.predict_proba(X_miss_clean)[:, 1]
+                imputed = np.where(
+                    y_pred_proba > rng.random(len(y_pred_proba)),
+                    model.classes_[1],
+                    model.classes_[0],
+                )
+                result.loc[missing_mask, col] = imputed
+            except Exception as exc:
+                fallback = result[col].mode().iloc[0]
+                warnings.warn(
+                    f"impute_logreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
+                    f"Falling back to mode={fallback!r}. Set strict_mode=True to raise.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                result.loc[missing_mask, col] = fallback
+
+    return result
+
+
+def impute_polyreg(
+    df: pd.DataFrame,
+    max_iter: int = 10,
+    random_state: int = 0,
+) -> pd.DataFrame:
+    """Impute missing values using Multinomial Logistic Regression.
+
+    This method is equivalent to R's mice ``polyreg`` method. It fits a
+    multinomial logistic regression model for each categorical variable
+    with more than 2 levels.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with missing values.
+    max_iter : int, default 10
+        Maximum number of MICE iterations.
+    random_state : int, default 0
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"color": ["red", np.nan, "blue", "green", "red"]})
+    >>> result = impute_polyreg(df, random_state=0)
+    >>> result["color"].isna().any()
+    False
+
+    Notes
+    -----
+    Best suited for nominal categorical variables with 3+ levels.
+    For binary variables use ``impute_logreg``.
+    """
+    validate_dataframe(df, param="df")
+    validate_positive_int(max_iter, param="max_iter")
+
+    _warn_if_large(df, "impute_polyreg")
+    df_norm = _normalize_missing(df)
+
+    result = df_norm.copy()
+
+    cat_cols = [
+        col for col in df_norm.columns
+        if (
+            len(df_norm[col].dropna().unique()) >= 3
+            and not pd.api.types.is_numeric_dtype(df_norm[col])
+        )
+    ]
+
+    for _ in range(max_iter):
+        for col in cat_cols:
+            missing_mask = result[col].isna()
+            if not missing_mask.any():
+                continue
+
+            feature_cols = [c for c in df_norm.columns if c != col]
+            if not feature_cols:
+                result.loc[missing_mask, col] = result[col].mode().iloc[0]
+                continue
+
+            observed_mask = ~missing_mask
+            X_obs_raw = result.loc[observed_mask, feature_cols].values
+            X_miss_raw = result.loc[missing_mask, feature_cols].values
+            X_obs_enc = _encode_features(X_obs_raw)
+            X_miss_enc = _encode_features(X_miss_raw)
+            X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs_enc, X_miss_enc)
+
+            y_obs = result.loc[observed_mask, col].values
+
+            model = LogisticRegression(
+                random_state=random_state, max_iter=1000, multi_class="multinomial"
+            )
+            try:
+                model.fit(X_obs_clean, y_obs)
+                y_pred = model.predict(X_miss_clean)
+                result.loc[missing_mask, col] = y_pred
+            except Exception as exc:
+                fallback = result[col].mode().iloc[0]
+                warnings.warn(
+                    f"impute_polyreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
+                    f"Falling back to mode={fallback!r}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                result.loc[missing_mask, col] = fallback
+
+    return result
+
+
+def impute_polr(
+    df: pd.DataFrame,
+    max_iter: int = 10,
+    random_state: int = 0,
+) -> pd.DataFrame:
+    """Impute missing values using Ordinal Logistic Regression.
+
+    This method is equivalent to R's mice ``polr`` method. It fits an
+    ordinal logistic regression model for each ordered categorical variable.
+    Falls back to multinomial logistic regression when statsmodels is
+    unavailable or the ordinal model fails to converge.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with missing values.
+    max_iter : int, default 10
+        Maximum number of MICE iterations.
+    random_state : int, default 0
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy of *df*.
+
+    Raises
+    ------
+    TypeError
+        If *df* is not a :class:`pandas.DataFrame`.
+    ValueError
+        If *df* is empty.
+
+    Examples
+    --------
+    >>> import pandas as pd, numpy as np
+    >>> df = pd.DataFrame({"grade": ["A", np.nan, "B", "C", "A"]})
+    >>> result = impute_polr(df, random_state=0)
+    >>> result["grade"].isna().any()
+    False
+
+    Notes
+    -----
+    Best suited for ordinal categorical variables (natural ordering).
+    For nominal categoricals use ``impute_polyreg`` instead.
+
+    Uses ``statsmodels.miscmodels.ordinal_model.OrderedModel`` when
+    available.  If statsmodels is not installed or the model fails to
+    converge, falls back to sklearn multinomial logistic regression with
+    an audible ``UserWarning``.
+    """
+    validate_dataframe(df, param="df")
+    validate_positive_int(max_iter, param="max_iter")
+
+    _warn_if_large(df, "impute_polr")
+    df_norm = _normalize_missing(df)
+
+    result = df_norm.copy()
+
+    cat_cols = [
+        col for col in df_norm.columns
+        if (
+            len(df_norm[col].dropna().unique()) >= 3
+            and not pd.api.types.is_numeric_dtype(df_norm[col])
+        )
+    ]
+
+    try:
+        from statsmodels.miscmodels.ordinal_model import OrderedModel as _OrderedModel
+        _HAS_STATSMODELS = True
+    except ImportError:
+        _HAS_STATSMODELS = False
+        warnings.warn(
+            "impute_polr: statsmodels not found. Falling back to multinomial "
+            "logistic regression for all columns. Install statsmodels for proper "
+            "ordinal logistic regression: pip install statsmodels",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    for _ in range(max_iter):
+        for col in cat_cols:
+            missing_mask = result[col].isna()
+            if not missing_mask.any():
+                continue
+
+            feature_cols = [c for c in df_norm.columns if c != col]
+            if not feature_cols:
+                result.loc[missing_mask, col] = result[col].mode().iloc[0]
+                continue
+
+            observed_mask = ~missing_mask
+            X_obs_raw = result.loc[observed_mask, feature_cols].values
+            X_miss_raw = result.loc[missing_mask, feature_cols].values
+            X_obs_enc = _encode_features(X_obs_raw)
+            X_miss_enc = _encode_features(X_miss_raw)
+            X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs_enc, X_miss_enc)
+
+            y_obs = result.loc[observed_mask, col].values
+            categories = sorted(df_norm[col].dropna().unique(), key=str)
+
+            imputed_ok = False
+            if _HAS_STATSMODELS:
+                try:
+                    ord_model = _OrderedModel(y_obs, X_obs_clean, distr="logit")
+                    fit_result = ord_model.fit(method="bfgs", disp=False)
+                    proba = fit_result.predict(X_miss_clean)
+                    if hasattr(proba, "values"):
+                        proba = proba.values
+                    proba = np.asarray(proba)
+                    best_idx = np.argmax(proba, axis=1)
+                    y_pred = np.array(categories)[best_idx]
+                    result.loc[missing_mask, col] = y_pred
+                    imputed_ok = True
+                except Exception as exc:
+                    warnings.warn(
+                        f"impute_polr: OrderedModel failed for column {col!r} "
+                        f"({type(exc).__name__}: {exc}). "
+                        "Falling back to multinomial logistic regression.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
+            if not imputed_ok:
+                model = LogisticRegression(
+                    random_state=random_state, max_iter=1000, multi_class="multinomial"
+                )
+                try:
+                    model.fit(X_obs_clean, y_obs)
+                    y_pred = model.predict(X_miss_clean)
+                    result.loc[missing_mask, col] = y_pred
+                except Exception as exc:
+                    fallback = result[col].mode().iloc[0]
+                    warnings.warn(
+                        f"impute_polr: multinomial fallback also failed for column {col!r} "
+                        f"({type(exc).__name__}: {exc}). "
+                        f"Using mode={fallback!r}.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    result.loc[missing_mask, col] = fallback
+
+    return result
 
 
 def impute_rf(
@@ -824,7 +1579,6 @@ def _impute_knn_gower(
         ) from exc
 
     result = df.copy()
-    n = len(df)
     dist_matrix = gower.gower_matrix(df)
 
     for col in df.columns:

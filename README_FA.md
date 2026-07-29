@@ -8,7 +8,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/missingly)](https://pypi.org/project/missingly/)
 [![Python](https://img.shields.io/pypi/pyversions/missingly)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![API stability](https://img.shields.io/badge/API-v1.0.0%20stable-brightgreen)](https://github.com/alisadeghiaghili/missingly/releases/tag/v1.0.0)
 
 🌐 [English](README.md) | [Deutsch](README_DE.md) | فارسی
@@ -126,14 +126,9 @@ mi.upset(df)             # نمودار UpSet از مجموعه‌های گمش�
 #### همبستگی / خوشه‌بندی
 
 ```python
-# heatmap همبستگی nullity (پیرسون روی شاخص‌های گمشدگی باینری)
 mi.heatmap(df)
-mi.heatmap(df, mask_insignificant=True)  # سلول‌های غیرمعنادار را خاکستری کن
-
-# خوشه‌بندی سلسله‌مراتبی سطرها بر اساس الگوی گمشدگی
+mi.heatmap(df, mask_insignificant=True)
 ax = mi.miss_cluster(df)
-
-# دندروگرام متغیرها خوشه‌بندی‌شده بر اساس همبستگی nullity
 mi.dendrogram(df)
 ```
 
@@ -156,63 +151,15 @@ mi.miss_patterns(df, interactive=True)
 ### Imputation (جایگزینی)
 
 ```python
-mi.impute_mean(df)           # جایگزینی با میانگین
-mi.impute_median(df)         # جایگزینی با میانه
-mi.impute_mode(df)           # جایگزینی با مد
-mi.impute_knn(df)            # جایگزینی k-NN
-mi.impute_mice(df)           # MICE (IterativeImputer + BayesianRidge)
-mi.impute_rf(df)             # جایگزینی Random Forest
-mi.impute_gb(df)             # جایگزینی Gradient Boosting
+mi.impute_mean(df)
+mi.impute_median(df)
+mi.impute_mode(df)
+mi.impute_knn(df)
+mi.impute_mice(df)
+mi.impute_rf(df)
+mi.impute_gb(df)
 
-# Multiple Imputation — تولید m مجموعه داده برای pooling Rubin
 dfs = mi.impute_mice(df, n_imputations=5)
-```
-
-#### KNN با فاصله Gower (ترکیب عددی + دسته‌ای)
-
-```python
-df_mixed = pd.DataFrame({
-    "سن":    [25, np.nan, 35, 40],
-    "شهر":   ["لندن", "پاریس", None, "برلین"],
-    "درجه":  ["A", "B", "A", None],
-})
-
-# KNN اقلیدسی (پیش‌فرض) — سریع
-result = mi.impute_knn(df_mixed, n_neighbors=3)
-
-# KNN با فاصله Gower — برای داده‌های غالباً دسته‌ای
-result = mi.impute_knn(df_mixed, n_neighbors=3, metric="mixed")
-```
-
-> **توجه عملکردی:** فاصله Gower **O(n²)** در حافظه و زمان اجراست.
-> از `metric="mixed"` برای مجموعه‌داده‌های با بیش از ۱۰٬۰۰۰ سطر پرهیز کنید.
-
-### Imputation چندگانه (پیشرفته)
-
-برای استنباط آماری معتبر پس از imputation، از `impute_mice(..., n_imputations=m)` استفاده کنید و نتایج مدل را با قوانین Rubin از طریق ابزارهای `missingly.mi` ادغام کنید:
-
-```python
-import numpy as np
-import pandas as pd
-from missingly import impute_mice
-from missingly.mi import pool_scalar_estimates
-from sklearn.linear_model import LinearRegression
-
-# ۱. تولید m مجموعه داده imputed
-dfs = impute_mice(df, n_imputations=5)
-
-# ۲. fit مدل روی هر مجموعه داده
-beta1_ests, beta1_vars = [], []
-for d in dfs:
-    reg = LinearRegression().fit(d[["x"]], d["y"])
-    beta1_ests.append(float(reg.coef_[0]))
-    resid = d["y"] - reg.predict(d[["x"]])
-    ss_x = float(((d["x"] - d["x"].mean()) ** 2).sum())
-    beta1_vars.append(float(np.var(resid, ddof=2)) / ss_x)
-
-# ۳. ادغام با قوانین Rubin
-result = pool_scalar_estimates(beta1_ests, beta1_vars)
-print(f"beta1 ادغام‌شده = {result['q_bar']:.3f}  (واریانس کل = {result['t']:.4f})")
 ```
 
 ### سری‌زمانی
@@ -227,17 +174,10 @@ temp  = [5.1, 4.8, np.nan, np.nan, 6.2, 6.5, np.nan, 7.0,
          7.3, np.nan, np.nan, np.nan, 8.1, 8.4]
 ts = pd.DataFrame({"دما": temp}, index=index)
 
-# ۱. خلاصه gap‌ها
 summary = mi.miss_ts_summary(ts, col="دما")
-
-# ۲. تجسم گمشدگی در محور زمان
 ax = mi.vis_ts_miss(ts)
-
-# ۳. جایگزینی با درون‌یابی خطی
 ts_filled = mi.impute_ts(ts, strategy="linear")
 ```
-
-**استراتژی‌های موجود برای `impute_ts`:** `ffill`، `bfill`، `linear`، `time`، `spline`.
 
 ### یکپارچگی با Pipeline sklearn
 
@@ -256,6 +196,6 @@ pipe.fit(X_train, y_train)
 
 ## مجوز
 
-MIT — به [LICENSE](LICENSE) مراجعه کنید.
+Apache 2.0 — حق نشر ۲۰۲۵ علی صادقی آقیلی. به [LICENSE](LICENSE) مراجعه کنید.
 
 </div>

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "missingly"
-version = "0.2.0"
+version = "1.0.0"
 authors = [
   { name="Ali Sadeghi Aghili", email="alisadeghiaghili@gmail.com" },
 ]
@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -30,23 +30,25 @@ dependencies = [
     "seaborn>=0.12.0",
     "scipy>=1.10.0",
     "scikit-learn>=1.2.0",
-    "statsmodels>=0.14.0",
     "jinja2>=3.1.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/alisadeghiaghili/missingly"
 "Bug Tracker" = "https://github.com/alisadeghiaghili/missingly/issues"
+Documentation = "https://missingly.readthedocs.io"
 
 [project.optional-dependencies]
 docs = [
     "sphinx>=7.0.0",
     "furo>=2023.9.10",
     "nbsphinx>=0.9.0",
-    "ipykernel"
+    "numpydoc>=1.6.0",
+    "ipykernel",
 ]
 test = [
     "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
     "upsetplot>=0.9.0",
 ]
 interactive = [
@@ -84,4 +86,15 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 filterwarnings = [
     "ignore::FutureWarning:sklearn",
+]
+
+[tool.coverage.run]
+source = ["missingly"]
+omit = ["missingly/templates/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]

@@ -7,8 +7,7 @@ import pandas as pd
 import pytest
 
 from missingly.diagnostics import (
-    miss_var_summary,
-    miss_case_summary,
+    bind_shadow,
     n_miss,
     pct_miss,
     n_complete,

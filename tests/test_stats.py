@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 from missingly.diagnostics import mcar_test, mar_mnar_test, diagnose_missing
+import missingly
+
 
 
 @pytest.fixture()
@@ -47,13 +49,25 @@ class TestMcarTest:
         result = mcar_test(numeric_df)
         assert 0.0 <= result["p_value"] <= 1.0 or np.isnan(result["p_value"])
 
-    def test_no_missing_raises_or_nan(self, no_missing_df):
-        """With no missing data, mcar_test should raise or return NaN p-value."""
-        try:
-            result = mcar_test(no_missing_df)
-            assert np.isnan(result["p_value"])
-        except (ValueError, TypeError):
-            pass
+def test_mcar_test_amount_missing_shape(numeric_df_with_missing):
+    """amount_missing must be a (2, n_cols) DataFrame."""
+    result = mcar_test(numeric_df_with_missing)
+    am = result['amount_missing']
+    assert isinstance(am, pd.DataFrame)
+    assert am.shape == (2, numeric_df_with_missing.shape[1])
+
+
+def test_mcar_test_raises_on_all_complete(no_missing_df):
+    """mcar_test raises ValueError when DataFrame has no missing values."""
+    with pytest.raises(ValueError, match="at least one missing"):
+        mcar_test(no_missing_df)
+
+
+def test_mcar_test_sentinel(numeric_df_with_missing):
+    """mcar_test handles sentinel missing_values without raising."""
+    df = numeric_df_with_missing.fillna(-99)
+    result = mcar_test(df, missing_values=[-99])
+    assert isinstance(result, dict)
 
 
 # ---------------------------------------------------------------------------

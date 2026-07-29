@@ -11,10 +11,13 @@ from missingly.impute import (
     impute_median,
     impute_mode,
     impute_knn,
-    FittedImputer,
-    make_imputer,
+    impute_mice,
+    impute_rf,
+    impute_gb,
 )
-from missingly.transformer import MissinglyImputer
+from missingly.config import config as _config
+
+_LARGE_DF_ROW_THRESHOLD = _config.large_df_threshold
 
 
 @pytest.fixture()
@@ -37,6 +40,30 @@ def simple_categorical_df():
         }
     )
 
+def test_categorical_dtype_preserved():
+    """CategoricalDtype must survive imputation for all imputers."""
+    import pandas.api.types as pdtypes
+    from missingly.impute import impute_knn, impute_rf, impute_gb
+
+    methods = [
+        impute_mean, impute_median, impute_mode,
+        impute_knn, impute_rf, impute_gb,
+    ]
+    df = pd.DataFrame({
+        "num": [1.0, np.nan, 3.0, 4.0, 5.0],
+        "cat": pd.Categorical(["a", np.nan, "b", "a", "b"]),
+    })
+    for fn in methods:
+        result = fn(df)
+        assert isinstance(result["cat"].dtype, pd.CategoricalDtype), (
+            f"{fn.__name__} lost CategoricalDtype: got {result['cat'].dtype}"
+        )
+        assert result["cat"].isna().sum() == 0
+
+
+# ---------------------------------------------------------------------------
+# Mean imputer — value checks
+# ---------------------------------------------------------------------------
 
 @pytest.fixture()
 def no_missing_df():

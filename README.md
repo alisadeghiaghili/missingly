@@ -6,7 +6,9 @@
 
 [![PyPI](https://img.shields.io/pypi/v/missingly)](https://pypi.org/project/missingly/)
 [![Python](https://img.shields.io/pypi/pyversions/missingly)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/alisadeghiaghili/missingly/actions/workflows/ci.yml/badge.svg)](https://github.com/alisadeghiaghili/missingly/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/alisadeghiaghili/missingly/branch/main/graph/badge.svg)](https://codecov.io/gh/alisadeghiaghili/missingly)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![API stability](https://img.shields.io/badge/API-v1.0.0%20stable-brightgreen)](https://github.com/alisadeghiaghili/missingly/releases/tag/v1.0.0)
 
 🌐 English | [Deutsch](README_DE.md) | [فارسی](README_FA.md)
@@ -320,4 +322,4 @@ pip install missingly[all]
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache 2.0 — Copyright 2025 Ali Sadeghi Aghili. See [LICENSE](LICENSE).
