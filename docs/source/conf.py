@@ -1,64 +1,87 @@
 # Configuration file for the Sphinx documentation builder.
 #
-# For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-# -- Path setup --------------------------------------------------------------
-
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
-
 # -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'missingly'
-copyright = '2025, Ali Sadeghi Aghili'
+copyright = '2026, Ali Sadeghi Aghili'
 author = 'Ali Sadeghi Aghili'
 
-version = '0.1.0'
-release = '0.1.0'
+version = '1.0'
+release = '1.0.0'
 
 # -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.doctest',
+    'sphinx.ext.napoleon',
+    'numpydoc',
     'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'sphinx.ext.mathjax',
+    'sphinx.ext.todo',
+    'sphinx.ext.coverage',
     'nbsphinx',
 ]
 
+# Napoleon settings (for Google-style docstrings too)
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = True
+napoleon_include_private_with_doc = False
+napoleon_use_param = True
+napoleon_use_rtype = True
+
+# numpydoc settings
+numpydoc_show_class_members = False
+numpydoc_class_members_toctree = False
+
+# autodoc settings
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': False,
+    'show-inheritance': True,
+    'member-order': 'bysource',
+}
+autodoc_typehints = 'description'
+autodoc_mock_imports = [
+    'plotly', 'upsetplot', 'arabic_reshaper', 'bidi',
+    'data_quality_toolkit',
+]
+
 templates_path = ['_templates']
-exclude_patterns = []
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 language = 'en'
 
+todo_include_todos = True
+
 # -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'furo'
 html_static_path = ['_static']
+html_title = 'missingly 1.0.0'
+html_short_title = 'missingly'
 
-# -- Options for intersphinx extension ---------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/extensions/intersphinx.html#configuration
+html_theme_options = {
+    'source_repository': 'https://github.com/alisadeghiaghili/missingly',
+    'source_branch': 'main',
+    'source_directory': 'docs/source/',
+}
+
+# -- Options for intersphinx -------------------------------------------------
 
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
+    'pandas': ('https://pandas.pydata.org/docs', None),
+    'numpy': ('https://numpy.org/doc/stable', None),
+    'sklearn': ('https://scikit-learn.org/stable', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy', None),
+    'matplotlib': ('https://matplotlib.org/stable', None),
 }
-
-# -- Options for todo extension ----------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/extensions/todo.html#configuration
-
-todo_include_todos = True
