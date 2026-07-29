@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-29
+
+### Added
+- **ReadTheDocs deployment**: `.readthedocs.yaml` added; live docs at
+  https://missingly.readthedocs.io
+- `Documentation` URL added to `pyproject.toml`.
+- `numpydoc` added to `[docs]` optional dependencies.
+
+### Changed
+- `docs/source/conf.py`: version bumped to `1.0.0`, `numpydoc` + `napoleon`
+  extensions enabled, `intersphinx` expanded to pandas/numpy/sklearn/scipy/matplotlib,
+  `autodoc_mock_imports` added for optional deps, copyright year updated to 2026.
+- Public API frozen: all modules expose `__all__`; breaking changes now
+  require a major version bump.
+
+### Fixed
+- `conf.py` version was stale at `0.1.0` — now reads `1.0.0` / `1.0`.
+
 ## [0.3.0] - 2026-07-22
 
 ### Changed
