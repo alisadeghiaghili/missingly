@@ -404,8 +404,10 @@ def impute_hotdeck_weighted(
             lo, hi = df[col].min(), df[col].max()
             col_ranges[j] = float(hi - lo) if pd.notna(lo) and pd.notna(hi) else 0.0
 
-    # Encode categoricals as object arrays for Gower (string comparison)
-    X = df[cols].to_numpy(dtype=object)
+    # Encode categoricals as object arrays for Gower (string comparison).
+    # .copy() ensures the array is always writable regardless of whether
+    # pandas returns a view or a read-only block-backed array.
+    X = df[cols].to_numpy(dtype=object).copy()
     for j, col in enumerate(cols):
         if col_is_numeric[j]:
             X[:, j] = pd.to_numeric(df[col], errors="coerce")
