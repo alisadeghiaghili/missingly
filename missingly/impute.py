@@ -1651,6 +1651,26 @@ class FittedImputer:
         self._fit_df: Optional[pd.DataFrame] = None
         self._is_fitted: bool = False
 
+    def __repr__(self) -> str:
+        """Return a human-readable string representation.
+
+        Returns
+        -------
+        str
+            Shows the strategy and whether the imputer has been fitted.
+
+        Examples
+        --------
+        >>> imp = FittedImputer(strategy="mean")
+        >>> repr(imp)
+        "FittedImputer(strategy='mean', fitted=False)"
+        >>> imp.fit(pd.DataFrame({"a": [1.0, 2.0]}))
+        >>> repr(imp)
+        "FittedImputer(strategy='mean', fitted=True)"
+        """
+        fitted_status = self._is_fitted
+        return f"FittedImputer(strategy={self.strategy!r}, fitted={fitted_status})"
+
     def fit(self, df: pd.DataFrame) -> "FittedImputer":
         """Learn fill values from *df*.
 
