@@ -629,6 +629,7 @@ class MixedLinearModelRequest(DatasetAnalysisRequest):
     outcome: str = Field(min_length=1, max_length=128)
     predictors: list[str] = Field(min_length=1, max_length=30)
     group_column: str = Field(min_length=1, max_length=128)
+    random_slope_column: str | None = Field(default=None, min_length=1, max_length=128)
     categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
     category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
     interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
@@ -3095,6 +3096,7 @@ async def analyze_mixed_linear(
             body.categorical_predictors,
             body.category_references,
             body.interactions,
+            body.random_slope_column,
         )
     except AnalyticsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

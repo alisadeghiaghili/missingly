@@ -25,7 +25,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 ## Clustered and weighted continuous outcomes
 
-- `/analysis/mixed-linear` fits a Gaussian linear mixed-effects model with one random intercept grouping column and numeric or explicitly treatment-coded categorical fixed predictors, using REML. Selected pairwise fixed-effect interactions are supported. It reports fixed-effect z inference, variance components, and the intraclass correlation. Random slopes, crossed effects, generalized mixed models, and repeated-measures covariance structures are not yet supported.
+- `/analysis/mixed-linear` fits a Gaussian linear mixed-effects model with a random intercept and an optional single numeric random slope, using REML. Fixed predictors may be numeric or explicitly treatment-coded categorical, with selected pairwise fixed-effect interactions. It reports fixed-effect z inference, random-intercept/slope variance and correlation, and the intraclass correlation at a slope value of zero. Crossed effects, multiple random slopes, generalized mixed models, and repeated-measures covariance structures are not yet supported.
 - `/analysis/weighted-ols` fits weighted least squares with strictly positive numeric analytic weights. It reports coefficient t inference and weighted R-squared. It is not a complex-survey estimator: strata, primary sampling units, finite-population corrections, calibration, and design-based standard errors are intentionally out of scope.
 
 ## Count outcomes
@@ -75,6 +75,6 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Numeric methods reject columns with mixed observed numeric/non-numeric values rather than silently coercing them.
 - Pearson requires at least three non-constant paired values; Welch requires two observations per group; OLS rejects perfect collinearity and insufficient degrees of freedom.
 - Chi-square reports a warning when an expected cell count is below five.
-- This phase does not claim support for Little's MCAR test, full complex-survey estimation, hurdle negative-binomial models, random-slope or generalized mixed models, a formal global proportional-hazards test, time-varying Cox effects, or causal inference. Those require separate validated implementations.
+- This phase does not claim support for Little's MCAR test, full complex-survey estimation, hurdle negative-binomial models, multiple/crossed random slopes, generalized mixed models, a formal global proportional-hazards test, time-varying Cox effects, or causal inference. Those require separate validated implementations.
 
 The contracts in `tests/test_analytics.py` are the initial numerical benchmark suite. Any new method must add known-result tests and document assumptions before it is exposed in the API.

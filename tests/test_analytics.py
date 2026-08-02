@@ -177,6 +177,21 @@ def _categorical_mixed_records():
     return records
 
 
+def _random_slope_records():
+    generator = np.random.default_rng(127)
+    random_intercepts = generator.normal(0, 1.2, size=16)
+    random_slopes = generator.normal(0, 0.35, size=16)
+    return [
+        {
+            "patient": f"patient-{group}",
+            "time": float(time),
+            "y": float(8 + (1.1 + random_slopes[group]) * time + random_intercepts[group] + generator.normal(0, 0.15)),
+        }
+        for group in range(16)
+        for time in range(8)
+    ]
+
+
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
     profile = profile_dataset(RECORDS)
     assert profile["dataset"]["rows"] == 6
@@ -480,6 +495,14 @@ def test_mixed_effects_supports_categorical_fixed_effects_and_interactions():
     assert mixed["random_intercept_variance"] > 0
 
 
+def test_mixed_effects_supports_one_numeric_random_slope():
+    mixed = linear_mixed_effects(_random_slope_records(), "y", ["time"], "patient", random_slope_column="time")
+    assert mixed["method"].endswith("random intercept + slope)")
+    assert mixed["random_slope_column"] == "time"
+    assert mixed["random_slope_variance"] > 0
+    assert abs(mixed["random_intercept_slope_correlation"]) < 1
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -710,6 +733,13 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert categorical_mixed.status_code == 200
     assert categorical_mixed.json()["categorical_encoding"][0]["reference"] == "control"
+    random_slope = client.post(
+        "/analysis/mixed-linear",
+        headers=headers,
+        json={"records": _random_slope_records(), "outcome": "y", "predictors": ["time"], "group_column": "patient", "random_slope_column": "time"},
+    )
+    assert random_slope.status_code == 200
+    assert random_slope.json()["random_slope_variance"] > 0
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

@@ -92,7 +92,8 @@
             <label for="multinomialReference">طبقهٔ مرجع multinomial</label><input id="multinomialReference" placeholder="control">
             <button id="multinomialLogistic" class="secondary">Multinomial logistic</button>
             <label for="mixedGroup">ستون خوشه برای mixed-effects</label><input id="mixedGroup" placeholder="patient_id یا school_id">
-            <button id="mixedLinear" class="secondary">Linear mixed-effects (random intercept)</button>
+            <label for="randomSlope">ستون random slope (اختیاری؛ باید predictor عددی باشد)</label><input id="randomSlope" placeholder="time">
+            <button id="mixedLinear" class="secondary">Linear mixed-effects (random intercept/slope)</button>
             <label for="weightColumn">ستون وزن تحلیلی برای Weighted OLS</label><input id="weightColumn" placeholder="weight">
             <button id="weightedOls" class="secondary">Weighted OLS</button>
             <label for="reportTitle">عنوان گزارش HTML</label><input id="reportTitle" value="Missingly statistical report">
@@ -140,6 +141,7 @@
     const ordinalOrder = document.getElementById('ordinalOrder');
     const multinomialReference = document.getElementById('multinomialReference');
     const mixedGroup = document.getElementById('mixedGroup');
+    const randomSlope = document.getElementById('randomSlope');
     const weightColumn = document.getElementById('weightColumn');
     const reportTitle = document.getElementById('reportTitle');
     function records() {
@@ -325,7 +327,7 @@
             call('/analysis/mixed-linear', {
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 group_column: mixedGroup.value.trim(), categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
-                category_references: references, interactions: pairs
+                category_references: references, interactions: pairs, random_slope_column: randomSlope.value.trim() || null
             });
         }
         catch (error) { output.classList.add('error'); output.textContent = error.message; }

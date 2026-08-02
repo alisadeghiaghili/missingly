@@ -691,6 +691,7 @@ def linear_mixed_effects(
     categorical_predictors: list[str] | None = None,
     category_references: dict[str, str] | None = None,
     interactions: list[tuple[str, str]] | None = None,
+    random_slope_column: str | None = None,
 ) -> dict[str, Any]:
     """Fit a Gaussian random-intercept model for clustered continuous outcomes."""
     if not 0 < alpha < 1:
@@ -699,12 +700,18 @@ def linear_mixed_effects(
         raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
     if group_column in {outcome, *predictors}:
         raise AnalyticsError("group_column must differ from outcome and predictors")
+    if random_slope_column and random_slope_column not in predictors:
+        raise AnalyticsError("random_slope_column must be one of the fixed-effect predictors")
+    if random_slope_column and random_slope_column in (categorical_predictors or []):
+        raise AnalyticsError("random_slope_column must be a numeric, not categorical, predictor")
     frame = _frame(records)
     if group_column not in frame.columns:
         raise AnalyticsError(f"Column '{group_column}' was not found")
     numeric = _numeric_columns(frame)
     if outcome not in numeric:
         raise AnalyticsError(f"Linear mixed-effects requires numeric column: '{outcome}'")
+    if random_slope_column and random_slope_column not in numeric:
+        raise AnalyticsError(f"Random slope requires numeric column: '{random_slope_column}'")
     design, encoding, normalized_interactions = _treatment_coded_design(
         frame, predictors, categorical_predictors, category_references, interactions
     )
@@ -715,29 +722,43 @@ def linear_mixed_effects(
     group_sizes = data["group"].value_counts()
     if len(data) <= design.shape[1] + 2 or len(group_sizes) < 2:
         raise AnalyticsError("Linear mixed-effects requires more complete rows and at least two groups")
-    if int(group_sizes.min()) < 2:
-        raise AnalyticsError("Each observed group must contain at least two complete rows")
+    minimum_group_size = 3 if random_slope_column else 2
+    if int(group_sizes.min()) < minimum_group_size:
+        raise AnalyticsError(f"Each observed group must contain at least {minimum_group_size} complete rows")
     exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
     for term in design.columns:
         exog[term] = data[term].astype(float)
     if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
         raise AnalyticsError("Linear mixed-effects predictors are perfectly collinear")
+    exog_re = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    if random_slope_column:
+        exog_re[random_slope_column] = data[random_slope_column].astype(float)
+        if exog_re[random_slope_column].nunique() < 2:
+            raise AnalyticsError("random_slope_column must vary across complete observations")
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            fitted = sm.MixedLM(data["outcome"].astype(float), exog, groups=data["group"]).fit(
+            fitted = sm.MixedLM(data["outcome"].astype(float), exog, groups=data["group"], exog_re=exog_re).fit(
                 reml=True, method="lbfgs", disp=False
             )
     except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
         raise AnalyticsError("Linear mixed-effects model could not fit this dataset") from exc
     random_variance = float(fitted.cov_re.iloc[0, 0])
     residual_variance = float(fitted.scale)
+    random_slope_variance = float(fitted.cov_re.iloc[1, 1]) if random_slope_column else None
+    random_effect_correlation = (
+        float(fitted.cov_re.iloc[0, 1] / math.sqrt(random_variance * random_slope_variance))
+        if random_slope_variance is not None and random_variance > 0 and random_slope_variance > 0
+        else None
+    )
     if (
         not fitted.converged
         or not math.isfinite(random_variance)
         or random_variance <= 0
         or not math.isfinite(residual_variance)
         or residual_variance <= 0
+        or (random_slope_variance is not None and (not math.isfinite(random_slope_variance) or random_slope_variance <= 0))
+        or (random_effect_correlation is not None and (not math.isfinite(random_effect_correlation) or abs(random_effect_correlation) > 1))
         or not np.isfinite(fitted.fe_params.to_numpy()).all()
         or not np.isfinite(fitted.bse_fe.to_numpy()).all()
     ):
@@ -761,13 +782,14 @@ def linear_mixed_effects(
         "outcome": outcome,
         "predictors": predictors,
         "group_column": group_column,
+        "random_slope_column": random_slope_column,
         "categorical_predictors": categorical_predictors or [],
         "category_references": category_references or {},
         "interactions": normalized_interactions,
         "alpha": alpha,
     }
     return {
-        "method": "Gaussian linear mixed-effects model (random intercept)",
+        "method": "Gaussian linear mixed-effects model (random intercept + slope)" if random_slope_column else "Gaussian linear mixed-effects model (random intercept)",
         "n": int(len(data)),
         "groups": int(len(group_sizes)),
         "minimum_group_size": int(group_sizes.min()),
@@ -776,8 +798,12 @@ def linear_mixed_effects(
         "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
         "coefficients": coefficients,
         "random_intercept_variance": _round(random_variance),
+        "random_slope_column": random_slope_column,
+        "random_slope_variance": _round(random_slope_variance),
+        "random_intercept_slope_correlation": _round(random_effect_correlation),
         "residual_variance": _round(residual_variance),
         "intraclass_correlation": _round(random_variance / (random_variance + residual_variance)),
+        "intraclass_correlation_at_zero": _round(random_variance / (random_variance + residual_variance)),
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
 
