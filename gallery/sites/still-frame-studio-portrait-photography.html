@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Still Frame Studio · Portrait Photography</title>
+  <meta name="description" content="وب‌سایت سیاه‌وسفید و ادیتوریال یک استودیوی عکاسی پرتره با گالری ماسونری، خدمات، تعرفه‌ها، نظرات مشتریان و رزرو جلسه." />
+  <meta name="thinkflow:category" content="عکاسی و هنر" />
+
+  <!-- Google Fonts: Libre Baskerville & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/gallery/assets/vendor/tailwind-still-frame.css">
+
+  <!-- Lucide Icons -->
+  <script src="/gallery/assets/vendor/lucide-1.28.0.min.js"></script>
+
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #000000;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #262626;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #404040;
+    }
+
+    /* Selection Color */
+    ::selection {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    /* Hide default cursor on desktop for custom cursor */
+    @media (min-width: 1024px) {
+      body {
+        cursor: none;
+      }
+      a, button, [role="button"], input, textarea {
+        cursor: none;
+      }
+    }
+
+    /* Keyframes for Hero Scroll Arrow */
+    @keyframes bounceSlow {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(8px); }
+    }
+    .animate-bounce-slow {
+      animation: bounceSlow 1.5s ease-in-out infinite;
+    }
+
+    /* Custom Cursor Blend Mode */
+    .custom-cursor {
+      mix-blend-mode: difference;
+      pointer-events: none;
+      transition: transform 0.08s ease-out, width 0.2s ease, height 0.2s ease;
+    }
+
+    /* Hover effect for masonry images */
+    .masonry-item {
+      transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.4s ease;
+      will-change: transform, filter;
+    }
+    .masonry-item:hover {
+      transform: scale(1.02);
+      filter: brightness(1.08);
+    }
+  </style>
+</head>
+<body class="bg-black text-white font-sans antialiased selection:bg-white selection:text-black relative overflow-x-hidden">
+
+  <!-- 1. FIXED GRAIN TEXTURE OVERLAY -->
+  <div 
+    class="fixed inset-0 z-50 pointer-events-none select-none"
+    style="
+      background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\'/%3E%3C/svg%3E');
+      mix-blend-mode: overlay;
+      opacity: 0.04;
+    "
+  ></div>
+
+  <!-- 2. CUSTOM CURSOR -->
+  <div id="cursor" class="custom-cursor fixed top-0 left-0 w-10 h-10 rounded-full bg-white z-[9999] hidden lg:block -translate-x-1/2 -translate-y-1/2"></div>
+
+  <!-- 3. NAVBAR -->
+  <nav id="navbar" class="fixed top-0 left-0 right-0 h-16 z-40 transition-all duration-300 bg-transparent flex items-center justify-between px-8 md:px-16 border-b border-transparent">
+    <!-- Wordmark -->
+    <a href="#" class="font-sans font-light tracking-[0.25em] text-[0.875rem] uppercase text-white hover:opacity-80 transition-opacity">
+      STILL FRAME
+    </a>
+
+    <!-- Desktop Navigation Links -->
+    <div class="hidden md:flex items-center gap-8 text-[0.75rem] font-normal tracking-[0.12em] uppercase">
+      <a href="#work" class="text-white/70 hover:text-white transition-colors duration-200">Work</a>
+      <a href="#about" class="text-white/70 hover:text-white transition-colors duration-200">About</a>
+      <a href="#pricing" class="text-white/70 hover:text-white transition-colors duration-200">Investment</a>
+      <a href="#book" class="text-white/70 hover:text-white transition-colors duration-200">Book</a>
+    </div>
+
+    <!-- Mobile Hamburger Button -->
+    <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none" aria-label="Toggle Navigation">
+      <i data-lucide="menu" class="w-6 h-6"></i>
+    </button>
+  </nav>
+
+  <!-- Mobile Full-screen Navigation Menu Overlay -->
+  <div id="mobile-menu" class="fixed inset-0 bg-black/95 backdrop-blur-xl z-50 flex flex-col justify-center items-center gap-8 text-center transition-all duration-300 opacity-0 pointer-events-none">
+    <button id="mobile-menu-close" class="absolute top-6 right-8 text-white/70 hover:text-white focus:outline-none" aria-label="Close Menu">
+      <i data-lucide="x" class="w-8 h-8"></i>
+    </button>
+    <a href="#work" class="mobile-nav-link font-serif italic text-3xl text-white hover:text-white/70 transition-colors">Work</a>
+    <a href="#about" class="mobile-nav-link font-serif italic text-3xl text-white hover:text-white/70 transition-colors">About</a>
+    <a href="#pricing" class="mobile-nav-link font-serif italic text-3xl text-white hover:text-white/70 transition-colors">Investment</a>
+    <a href="#book" class="mobile-nav-link font-serif italic text-3xl text-white hover:text-white/70 transition-colors">Book</a>
+  </div>
+
+  <!-- 4. HERO SECTION -->
+  <section class="relative w-full h-screen overflow-hidden bg-black flex items-end">
+    <!-- Hero Background Image -->
+    <img 
+      src="/gallery/assets/still-frame-studio/hero-portrait.jpg"
+      fetchpriority="high"
+      alt="Editorial portrait with dramatic window light" 
+      class="absolute inset-0 w-full h-full object-cover object-center filter grayscale contrast-125" 
+    />
+
+    <!-- Gradient Overlay Top -->
+    <div class="absolute inset-0 pointer-events-none" style="background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 30%);"></div>
+
+    <!-- Gradient Overlay Bottom -->
+    <div class="absolute inset-0 pointer-events-none" style="background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.3) 40%, transparent 70%);"></div>
+
+    <!-- Hero Content -->
+    <div class="relative z-10 px-8 md:px-16 pb-16 md:pb-20 max-w-[900px]">
+      <p class="font-sans font-light text-[0.875rem] tracking-[0.3em] uppercase text-white/70 mb-3">
+        STILL FRAME STUDIO
+      </p>
+      <h1 class="font-serif italic text-[clamp(3.5rem,9vw,9rem)] leading-[0.92] tracking-[-0.02em] text-white">
+        Photography<br />That Says<br />Something.
+      </h1>
+    </div>
+
+    <!-- Scroll Indicator -->
+    <a href="#work" class="absolute bottom-8 right-8 md:right-16 z-10 flex items-center gap-2 text-white/50 hover:text-white transition-colors duration-200">
+      <span class="font-sans font-light text-[0.75rem] tracking-[0.2em] uppercase hidden md:inline">Scroll to explore</span>
+      <div class="animate-bounce-slow">
+        <i data-lucide="chevron-down" class="w-5 h-5"></i>
+      </div>
+    </a>
+  </section>
+
+  <!-- 5. PORTFOLIO GRID (MASONRY) -->
+  <section id="work" class="py-24 px-8 md:px-16 bg-black">
+    <!-- Section Label -->
+    <div class="mb-12">
+      <p class="font-sans font-light text-[0.75rem] tracking-[0.3em] uppercase text-white/50">
+        SELECTED WORK
+      </p>
+    </div>
+
+    <!-- Masonry Container -->
+    <div class="columns-1 sm:columns-2 lg:columns-3 gap-3 space-y-3">
+      <!-- Slot 1 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/portrait-male-close.jpg" loading="lazy" alt="Editorial close-up male portrait" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 2 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/fashion-fullbody.jpg" loading="lazy" alt="Full-body editorial fashion shoot" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 3 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/portrait-window.jpg" loading="lazy" alt="Intimate portrait in window light" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 4 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/brand-male.jpg" loading="lazy" alt="Brand portrait, male subject" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 5 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/model-texture.jpg" loading="lazy" alt="Model against textured wall shadow play" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 6 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/serene-studio.jpg" loading="lazy" alt="Serene studio portrait soft light" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 7 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/editorial-detail.jpg" loading="lazy" alt="Editorial detail close-up high contrast" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 8 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/urban-portrait.jpg" loading="lazy" alt="Outdoor urban portrait" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 9 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/environmental-studio.jpg" loading="lazy" alt="Environmental portrait in studio" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 10 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/direct-gaze.jpg" loading="lazy" alt="Direct gaze studio headshot" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 11 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/fashion-motion.jpg" loading="lazy" alt="Fashion editorial movement blur" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+
+      <!-- Slot 12 -->
+      <div class="masonry-item break-inside-avoid overflow-hidden cursor-pointer bg-neutral-950 group relative">
+        <img src="/gallery/assets/still-frame-studio/hero-portrait.jpg" loading="lazy" alt="Geometric shadow blinds portrait" class="w-full h-auto object-cover filter grayscale contrast-125" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <span class="font-sans text-[0.75rem] tracking-[0.15em] uppercase text-white">View Project →</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. SPECIALTIES (WHAT WE DO) -->
+  <section class="py-24 px-8 md:px-16 border-t border-white/10 bg-black">
+    <div class="mb-16">
+      <p class="font-sans font-light text-[0.75rem] tracking-[0.3em] uppercase text-white/50">
+        WHAT WE DO
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+      <!-- Specialty 1 -->
+      <div class="flex flex-col items-start">
+        <i data-lucide="camera" class="w-5 h-5 text-white/40 mb-6"></i>
+        <h3 class="font-serif text-[1.5rem] tracking-[-0.01em] text-white mb-3">Portrait</h3>
+        <p class="font-sans font-light text-[0.9rem] leading-[1.7] text-white/60 max-w-[280px]">
+          Intimate, cinematic sessions that reveal the person behind the image. For individuals, families, and creatives who want depth over decoration.
+        </p>
+      </div>
+
+      <!-- Specialty 2 -->
+      <div class="flex flex-col items-start">
+        <i data-lucide="aperture" class="w-5 h-5 text-white/40 mb-6"></i>
+        <h3 class="font-serif text-[1.5rem] tracking-[-0.01em] text-white mb-3">Editorial</h3>
+        <p class="font-sans font-light text-[0.9rem] leading-[1.7] text-white/60 max-w-[280px]">
+          Strong concepts. Stronger execution. Fashion and publication work built on a foundation of light, form, and intention.
+        </p>
+      </div>
+
+      <!-- Specialty 3 -->
+      <div class="flex flex-col items-start">
+        <i data-lucide="briefcase" class="w-5 h-5 text-white/40 mb-6"></i>
+        <h3 class="font-serif text-[1.5rem] tracking-[-0.01em] text-white mb-3">Brand</h3>
+        <p class="font-sans font-light text-[0.9rem] leading-[1.7] text-white/60 max-w-[280px]">
+          Visual identity photography for founders, studios, and businesses that understand the power of a compelling image.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. ABOUT SECTION -->
+  <section id="about" class="py-24 px-8 md:px-16 bg-black">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
+      <!-- Left: Photographer Image -->
+      <div class="aspect-square w-full overflow-hidden bg-neutral-900">
+        <img 
+          src="/gallery/assets/still-frame-studio/hero-portrait.jpg"
+          loading="lazy"
+          alt="Anna Whitfield — Still Frame Studio Photographer" 
+          class="w-full h-full object-cover object-center filter grayscale contrast-125"
+        />
+      </div>
+
+      <!-- Right: Text Content -->
+      <div>
+        <p class="font-sans font-light text-[0.75rem] tracking-[0.3em] uppercase text-white/40 mb-6">
+          ABOUT
+        </p>
+        <h2 class="font-serif text-[2rem] text-white mb-6">
+          Anna Whitfield
+        </h2>
+        <div class="space-y-6 font-sans font-light text-[1rem] leading-[1.85] text-white/75">
+          <p>
+            I've been photographing people for over a decade. Not the polished, over-directed version of people — the actual ones. The ones who laugh wrong and hold their breath before the camera clicks. Those are the photographs that last.
+          </p>
+          <p>
+            Still Frame Studio started as a one-person operation in a rented loft in East London. It's still that, at its core — a single photographer, a deliberate eye, and a belief that a great portrait is an act of collaboration.
+          </p>
+          <p>
+            I work primarily in natural light. I don't over-direct. I don't over-edit. What you see is what was there.
+          </p>
+        </div>
+
+        <!-- Pull Quote -->
+        <blockquote class="font-serif italic text-[1.25rem] text-muted-foreground border-l-2 border-white/20 pl-4 my-8 leading-relaxed">
+          "The version of you that already exists — that's who we're here to photograph."
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. PRICING SECTION (INVESTMENT) -->
+  <section id="pricing" class="py-24 px-8 md:px-16 border-t border-white/10 bg-black">
+    <h2 class="font-serif italic text-[2.5rem] md:text-[3rem] text-white mb-16 tracking-[-0.01em]">
+      Investment
+    </h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-px bg-white/10 border border-white/10">
+      <!-- Tier 1: Essential -->
+      <div class="bg-black p-8 md:p-10 flex flex-col justify-between">
+        <div>
+          <p class="font-sans font-normal text-[0.75rem] tracking-[0.25em] uppercase text-white/50 mb-2">
+            ESSENTIAL
+          </p>
+          <div class="font-serif text-[3rem] text-white mb-1 leading-none">
+            £395
+          </div>
+          <p class="font-sans font-light text-[0.875rem] text-white/40 mb-8">
+            1 Hour Session
+          </p>
+          <ul class="font-sans font-light text-[0.875rem] text-white/60 leading-[2] list-disc pl-4 space-y-1">
+            <li>30-minute consultation call</li>
+            <li>1-hour studio or location session</li>
+            <li>25 high-resolution digital files</li>
+            <li>Private online gallery (30-day access)</li>
+            <li>Personal-use license</li>
+          </ul>
+        </div>
+        <div class="mt-8">
+          <a href="#book" class="inline-block font-sans font-normal text-[0.75rem] tracking-[0.15em] uppercase text-white hover:underline transition-all">
+            Book This →
+          </a>
+        </div>
+      </div>
+
+      <!-- Tier 2: Signature (Highlighted) -->
+      <div class="bg-black p-8 md:p-10 flex flex-col justify-between border-2 border-white/30 relative">
+        <div class="absolute -top-3 left-8 bg-white text-black px-3 py-0.5 text-[0.65rem] font-sans tracking-[0.2em] uppercase">
+          Popular
+        </div>
+        <div>
+          <p class="font-sans font-normal text-[0.75rem] tracking-[0.25em] uppercase text-white/50 mb-2">
+            SIGNATURE
+          </p>
+          <div class="font-serif text-[3rem] text-white mb-1 leading-none">
+            £750
+          </div>
+          <p class="font-sans font-light text-[0.875rem] text-white/40 mb-8">
+            Half Day Session
+          </p>
+          <ul class="font-sans font-light text-[0.875rem] text-white/60 leading-[2] list-disc pl-4 space-y-1">
+            <li>Pre-shoot concept meeting</li>
+            <li>Up to 3 hours on location or in studio</li>
+            <li>60 high-resolution digital files</li>
+            <li>Private online gallery (90-day access)</li>
+            <li>Full commercial license</li>
+            <li>Basic retouching included</li>
+          </ul>
+        </div>
+        <div class="mt-8">
+          <a href="#book" class="inline-block font-sans font-normal text-[0.75rem] tracking-[0.15em] uppercase text-white hover:underline transition-all">
+            Book This →
+          </a>
+        </div>
+      </div>
+
+      <!-- Tier 3: Full Day -->
+      <div class="bg-black p-8 md:p-10 flex flex-col justify-between">
+        <div>
+          <p class="font-sans font-normal text-[0.75rem] tracking-[0.25em] uppercase text-white/50 mb-2">
+            FULL DAY
+          </p>
+          <div class="font-serif text-[3rem] text-white mb-1 leading-none">
+            £1,400
+          </div>
+          <p class="font-sans font-light text-[0.875rem] text-white/40 mb-8">
+            Full Day
+          </p>
+          <ul class="font-sans font-light text-[0.875rem] text-white/60 leading-[2] list-disc pl-4 space-y-1">
+            <li>Full creative direction session</li>
+            <li>Up to 8 hours (multiple locations or looks)</li>
+            <li>120+ high-resolution digital files</li>
+            <li>Private online gallery (1-year access)</li>
+            <li>Full commercial license, unlimited use</li>
+            <li>Advanced retouching on 20 selects</li>
+            <li>Print-ready files included</li>
+          </ul>
+        </div>
+        <div class="mt-8">
+          <a href="#book" class="inline-block font-sans font-normal text-[0.75rem] tracking-[0.15em] uppercase text-white hover:underline transition-all">
+            Book This →
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. TESTIMONIALS (KIND WORDS) -->
+  <section class="py-24 px-8 md:px-16 bg-black">
+    <h2 class="font-serif italic text-[2.5rem] text-white mb-16 tracking-[-0.01em]">
+      Kind Words
+    </h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+      <!-- Testimonial 1 -->
+      <div class="flex flex-col justify-between">
+        <div>
+          <div class="font-serif text-[4rem] text-white/15 leading-none mb-2">“</div>
+          <p class="font-serif italic text-[1.1rem] leading-[1.8] text-white/80 mb-6">
+            "Anna has a way of seeing you that you didn't know was possible. The portraits she made of me are the first ones I've ever genuinely loved. They feel honest."
+          </p>
+        </div>
+        <p class="font-sans font-light text-[0.75rem] tracking-[0.15em] uppercase text-white/40">
+          — Sarah M., Brand Founder
+        </p>
+      </div>
+
+      <!-- Testimonial 2 -->
+      <div class="flex flex-col justify-between">
+        <div>
+          <div class="font-serif text-[4rem] text-white/15 leading-none mb-2">“</div>
+          <p class="font-serif italic text-[1.1rem] leading-[1.8] text-white/80 mb-6">
+            "We booked Still Frame for our editorial campaign and the results exceeded the brief entirely. Anna understood our vision and then made it better. That doesn't happen often."
+          </p>
+        </div>
+        <p class="font-sans font-light text-[0.75rem] tracking-[0.15em] uppercase text-white/40">
+          — James R., Creative Director
+        </p>
+      </div>
+
+      <!-- Testimonial 3 -->
+      <div class="flex flex-col justify-between">
+        <div>
+          <div class="font-serif text-[4rem] text-white/15 leading-none mb-2">“</div>
+          <p class="font-serif italic text-[1.1rem] leading-[1.8] text-white/80 mb-6">
+            "I'm not naturally comfortable in front of a camera. Anna changed that completely. The session was calm, collaborative, and the images are genuinely stunning."
+          </p>
+        </div>
+        <p class="font-sans font-light text-[0.75rem] tracking-[0.15em] uppercase text-white/40">
+          — Priya D., Author & Speaker
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. BOOKING CTA (FULL INVERSION) -->
+  <section id="book" class="py-32 px-8 md:px-16 bg-white text-black text-center flex flex-col items-center justify-center">
+    <div class="max-w-3xl mx-auto">
+      <p class="font-sans font-light text-[0.75rem] tracking-[0.3em] uppercase text-black/50 mb-6">
+        READY WHEN YOU ARE
+      </p>
+      <h2 class="font-serif italic text-[clamp(2.5rem,5vw,5rem)] leading-none text-black mb-6">
+        Let's Create Something.
+      </h2>
+      <p class="font-sans font-light text-[1rem] leading-relaxed text-black/70 mb-10 max-w-xl mx-auto">
+        Sessions available in London and on location across the UK. Enquiries typically responded to within 48 hours.
+      </p>
+      <a href="mailto:hello@stillframestudio.com" class="inline-block bg-black text-white px-10 py-4 font-sans font-normal text-[0.875rem] tracking-[0.15em] uppercase hover:bg-black/90 transition-colors duration-200">
+        Book a Session
+      </a>
+      <div class="mt-6">
+        <a href="mailto:hello@stillframestudio.com" class="font-sans font-light text-[0.875rem] text-black/60 hover:text-black transition-colors underline">
+          Or email us directly →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. FOOTER -->
+  <footer class="py-12 px-8 md:px-16 border-t border-white/10 bg-black">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+      <!-- Left -->
+      <div class="font-sans font-light text-[0.75rem] tracking-[0.25em] uppercase text-white">
+        STILL FRAME STUDIO
+      </div>
+
+      <!-- Center -->
+      <div class="font-sans font-light text-[0.75rem] text-white/30">
+        © 2025 Still Frame Studio. All rights reserved.
+      </div>
+
+      <!-- Right -->
+      <div class="flex items-center gap-6">
+        <a href="#" aria-label="Instagram" class="text-white/50 hover:text-white transition-colors duration-200">
+          <i data-lucide="instagram" class="w-[18px] h-[18px]"></i>
+        </a>
+        <a href="#" aria-label="LinkedIn" class="text-white/50 hover:text-white transition-colors duration-200">
+          <i data-lucide="linkedin" class="w-[18px] h-[18px]"></i>
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- JavaScript -->
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Custom Cursor Movement
+    const cursor = document.getElementById('cursor');
+    window.addEventListener('mousemove', (e) => {
+      cursor.style.transform = `translate(${e.clientX - 20}px, ${e.clientY - 20}px)`;
+    });
+
+    // Expand cursor on hoverable elements
+    const hoverables = document.querySelectorAll('a, button, .masonry-item');
+    hoverables.forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        cursor.style.width = '60px';
+        cursor.style.height = '60px';
+      });
+      el.addEventListener('mouseleave', () => {
+        cursor.style.width = '40px';
+        cursor.style.height = '40px';
+      });
+    });
+
+    // Navbar Scroll Behavior (Transparent -> Backdrop Blur after 80px)
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 80) {
+        navbar.classList.add('bg-black/95', 'backdrop-blur-md', 'border-white/10');
+        navbar.classList.remove('bg-transparent', 'border-transparent');
+      } else {
+        navbar.classList.remove('bg-black/95', 'backdrop-blur-md', 'border-white/10');
+        navbar.classList.add('bg-transparent', 'border-transparent');
+      }
+    });
+
+    // Mobile Menu Toggle
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const mobileMenuClose = document.getElementById('mobile-menu-close');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const mobileNavLinks = document.querySelectorAll('.mobile-nav-link');
+
+    const openMenu = () => {
+      mobileMenu.classList.remove('opacity-0', 'pointer-events-none');
+      mobileMenu.classList.add('opacity-100', 'pointer-events-auto');
+    };
+
+    const closeMenu = () => {
+      mobileMenu.classList.add('opacity-0', 'pointer-events-none');
+      mobileMenu.classList.remove('opacity-100', 'pointer-events-auto');
+    };
+
+    mobileMenuBtn.addEventListener('click', openMenu);
+    mobileMenuClose.addEventListener('click', closeMenu);
+    mobileNavLinks.forEach(link => link.addEventListener('click', closeMenu));
+  </script>
+</body>
+</html>

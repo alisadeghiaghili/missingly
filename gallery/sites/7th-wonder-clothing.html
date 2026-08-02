@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>7th Wonder · Clothing</title>
+    <meta name="description" content="یک پورتفولیوی تعاملی و سه‌بعدی برای برند پوشاک 7th Wonder با پروژه‌های فیلترپذیر، تایم‌لاین، مهارت‌ها و فرم تماس." />
+    <meta name="thinkflow:category" content="مد و پوشاک" />
+
+    <!-- Google Fonts: clean modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
+
+    <!-- Font Awesome 6 (free icons) -->
+    <link rel="stylesheet" href="/gallery/assets/vendor/fontawesome/css/all.min.css" />
+
+    <style>
+        /* ============================================================
+           1. CSS VARIABLES & RESET
+           ============================================================ */
+        :root {
+            --cream: #f9f5f0;
+            --beige: #e8ddcf;
+            --gray-light: #d1cdc7;
+            --gray: #8f8c88;
+            --gray-dark: #3d3b39;
+            --black: #1a1918;
+            --white: #ffffff;
+            --accent: #c63b3b;        /* bold contrasting red */
+            --accent-soft: #d97a7a;
+            --shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+            --radius: 16px;
+            --transition: 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--cream);
+            color: var(--black);
+            line-height: 1.6;
+            overflow-x: hidden;
+            cursor: default;
+        }
+
+        /* ----- custom cursor (optional) ----- */
+        .cursor-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            transition: transform 0.15s ease, opacity 0.2s;
+            mix-blend-mode: difference;
+            transform: translate(-50%, -50%);
+        }
+        .cursor-ring {
+            width: 32px;
+            height: 32px;
+            border: 1.5px solid var(--accent-soft);
+            border-radius: 50%;
+            position: fixed;
+            pointer-events: none;
+            z-index: 9998;
+            transition: transform 0.25s ease, opacity 0.3s;
+            transform: translate(-50%, -50%);
+            opacity: 0.5;
+        }
+
+        /* ============================================================
+           2. LOADING SCREEN
+           ============================================================ */
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: var(--black);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 1.2rem;
+            z-index: 99999;
+            transition: opacity 0.6s ease, visibility 0.6s;
+        }
+        #loader.hide {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        .loader-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(255, 255, 255, 0.06);
+            border-top-color: var(--cream);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader-text {
+            color: var(--cream);
+            font-weight: 300;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+
+        /* ============================================================
+           3. LAYOUT & NAVIGATION
+           ============================================================ */
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* fixed navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 0.8rem 2rem;
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.2s;
+        }
+        .navbar.scrolled {
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.04);
+        }
+        .logo {
+            font-weight: 700;
+            font-size: 1.4rem;
+            letter-spacing: -0.02em;
+            color: var(--black);
+            text-decoration: none;
+        }
+        .logo span {
+            color: var(--accent);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2.2rem;
+            list-style: none;
+        }
+        .nav-links a {
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--gray-dark);
+            transition: color 0.2s;
+            position: relative;
+        }
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: -4px;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: width 0.25s;
+        }
+        .nav-links a:hover {
+            color: var(--black);
+        }
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* hamburger (mobile) */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+        }
+        .hamburger span {
+            display: block;
+            width: 24px;
+            height: 2px;
+            background: var(--black);
+            transition: 0.3s;
+            border-radius: 2px;
+        }
+        .hamburger.active span:nth-child(1) {
+            transform: translateY(7px) rotate(45deg);
+        }
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+        .hamburger.active span:nth-child(3) {
+            transform: translateY(-7px) rotate(-45deg);
+        }
+
+        /* mobile menu overlay */
+        .mobile-menu {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(20px);
+            z-index: 999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.35s ease;
+        }
+        .mobile-menu.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .mobile-menu a {
+            font-size: 1.8rem;
+            font-weight: 500;
+            text-decoration: none;
+            color: var(--black);
+            transition: color 0.2s;
+        }
+        .mobile-menu a:hover {
+            color: var(--accent);
+        }
+
+        /* ============================================================
+           4. SECTIONS (shared)
+           ============================================================ */
+        section {
+            padding: 6rem 0;
+        }
+        .section-title {
+            font-size: clamp(2.2rem, 5vw, 3.6rem);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.8rem;
+        }
+        .section-sub {
+            color: var(--gray);
+            font-weight: 300;
+            max-width: 600px;
+            margin-bottom: 3rem;
+        }
+        .section-divider {
+            width: 60px;
+            height: 3px;
+            background: var(--accent);
+            margin: 0.4rem 0 2rem;
+            border-radius: 4px;
+        }
+
+        /* ============================================================
+           5. HERO (3D with particles via Three.js)
+           ============================================================ */
+        #hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            background: var(--cream);
+            padding-top: 80px;
+        }
+        #hero-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* allow text interaction */
+            z-index: 0;
+        }
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 700px;
+            padding: 2rem 0;
+        }
+        .hero-content h1 {
+            font-size: clamp(3rem, 8vw, 5.4rem);
+            font-weight: 700;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+        }
+        .hero-content h1 .highlight {
+            color: var(--accent);
+        }
+        .hero-content p {
+            font-size: 1.15rem;
+            color: var(--gray-dark);
+            margin: 1.2rem 0 2rem;
+            max-width: 480px;
+            font-weight: 300;
+        }
+        .btn-primary {
+            display: inline-block;
+            background: var(--black);
+            color: var(--white);
+            padding: 0.8rem 2.4rem;
+            border-radius: 60px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: background 0.2s, transform 0.15s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary:hover {
+            background: #2d2a28;
+            transform: scale(1.02);
+        }
+        .btn-outline {
+            display: inline-block;
+            background: transparent;
+            color: var(--black);
+            padding: 0.8rem 2.4rem;
+            border-radius: 60px;
+            font-weight: 500;
+            text-decoration: none;
+            border: 1px solid var(--gray-light);
+            transition: background 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+        .btn-outline:hover {
+            background: rgba(0, 0, 0, 0.02);
+            border-color: var(--gray);
+        }
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        /* ============================================================
+           6. PROJECTS (with filter & modals)
+           ============================================================ */
+        .filter-bar {
+            display: flex;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
+        }
+        .filter-btn {
+            background: transparent;
+            border: 1px solid var(--gray-light);
+            padding: 0.4rem 1.2rem;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--gray-dark);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .filter-btn.active,
+        .filter-btn:hover {
+            background: var(--black);
+            color: var(--white);
+            border-color: var(--black);
+        }
+
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+        .project-card {
+            background: var(--white);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease, box-shadow 0.3s;
+            cursor: pointer;
+        }
+        .project-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.06);
+        }
+        .project-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+        .project-info {
+            padding: 1.2rem 1.4rem;
+        }
+        .project-info h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .project-info .category {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--gray);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(6px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-content {
+            background: var(--white);
+            max-width: 600px;
+            width: 90%;
+            border-radius: var(--radius);
+            padding: 2rem;
+            position: relative;
+            transform: scale(0.96);
+            transition: transform 0.3s;
+        }
+        .modal-overlay.open .modal-content {
+            transform: scale(1);
+        }
+        .modal-close {
+            position: absolute;
+            top: 1rem;
+            right: 1.2rem;
+            font-size: 1.6rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--gray);
+        }
+        .modal-content img {
+            width: 100%;
+            border-radius: 8px;
+            margin: 0.8rem 0;
+        }
+
+        /* ============================================================
+           7. SKILLS (progress bars, cards, tooltips)
+           ============================================================ */
+        .skills-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.5rem;
+        }
+        @media (max-width: 700px) {
+            .skills-grid { grid-template-columns: 1fr; }
+        }
+        .skill-item {
+            margin-bottom: 1.8rem;
+        }
+        .skill-item label {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: var(--gray-light);
+            border-radius: 6px;
+            margin-top: 0.3rem;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 6px;
+            width: 0%;
+            transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .skill-card {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: 0.25s;
+            cursor: default;
+        }
+        .skill-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.06);
+        }
+        .skill-card .icon {
+            font-size: 2.4rem;
+            margin-bottom: 0.4rem;
+        }
+        .skill-card h4 {
+            font-weight: 600;
+        }
+        .skill-card .tooltip {
+            display: inline-block;
+            background: var(--black);
+            color: var(--white);
+            font-size: 0.7rem;
+            padding: 0.1rem 0.8rem;
+            border-radius: 40px;
+            margin-top: 0.4rem;
+        }
+
+        /* ============================================================
+           8. ABOUT (timeline)
+           ============================================================ */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+            border-left: 2px solid var(--beige);
+            margin: 2rem 0;
+        }
+        .timeline-item {
+            margin-bottom: 2.2rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -2.3rem;
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            border-radius: 50%;
+            border: 2px solid var(--white);
+        }
+        .timeline-item h4 {
+            font-weight: 600;
+        }
+        .timeline-item .date {
+            font-size: 0.8rem;
+            color: var(--gray);
+        }
+
+        /* ============================================================
+           9. CONTACT (form + map)
+           ============================================================ */
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+        @media (max-width: 800px) {
+            .contact-grid { grid-template-columns: 1fr; }
+        }
+        .contact-form input,
+        .contact-form textarea {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 1px solid var(--gray-light);
+            border-radius: 8px;
+            font-family: var(--font);
+            background: var(--white);
+            transition: border 0.2s;
+            margin-bottom: 1rem;
+        }
+        .contact-form input:focus,
+        .contact-form textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .contact-form button {
+            background: var(--black);
+            color: var(--white);
+            border: none;
+            padding: 0.8rem 2.4rem;
+            border-radius: 60px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .contact-form button:hover {
+            background: #2d2a28;
+        }
+        .social-links {
+            display: flex;
+            gap: 1.2rem;
+            margin: 1.5rem 0;
+        }
+        .social-links a {
+            color: var(--gray-dark);
+            font-size: 1.6rem;
+            transition: color 0.2s;
+        }
+        .social-links a:hover {
+            color: var(--accent);
+        }
+        .map-wrapper {
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            height: 250px;
+            background: var(--gray-light);
+        }
+        .map-wrapper iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+
+        /* ============================================================
+           10. SCROLL ANIMATIONS (reveal)
+           ============================================================ */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ============================================================
+           11. RESPONSIVE
+           ============================================================ */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            .hamburger {
+                display: flex;
+            }
+            .mobile-menu {
+                display: flex;
+            }
+            .hero-content h1 {
+                font-size: 2.8rem;
+            }
+            .container {
+                padding: 0 1.2rem;
+            }
+            section {
+                padding: 4rem 0;
+            }
+        }
+        @media (max-width: 480px) {
+            .hero-content h1 {
+                font-size: 2.2rem;
+            }
+            .projects-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ============================================================
+           12. FOOTER
+           ============================================================ */
+        footer {
+            background: var(--black);
+            color: var(--gray-light);
+            padding: 2.5rem 0;
+            text-align: center;
+            font-weight: 300;
+            font-size: 0.9rem;
+        }
+        footer span {
+            color: var(--accent-soft);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ============================================================
+         LOADING SCREEN
+         ============================================================ -->
+    <div id="loader">
+        <div class="loader-spinner"></div>
+        <div class="loader-text">7th Wonder</div>
+    </div>
+
+    <!-- ============================================================
+         CUSTOM CURSOR
+         ============================================================ -->
+    <div class="cursor-dot" id="cursorDot"></div>
+    <div class="cursor-ring" id="cursorRing"></div>
+
+    <!-- ============================================================
+         NAVIGATION
+         ============================================================ -->
+    <nav class="navbar" id="navbar">
+        <a href="#" class="logo">7th<span>W</span>onder</a>
+        <ul class="nav-links">
+            <li><a href="#hero">Home</a></li>
+            <li><a href="#projects">Projects</a></li>
+            <li><a href="#skills">Skills</a></li>
+            <li><a href="#about">About</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+        <button class="hamburger" id="hamburger" aria-label="Menu">
+            <span></span><span></span><span></span>
+        </button>
+    </nav>
+
+    <!-- mobile menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="#hero">Home</a>
+        <a href="#projects">Projects</a>
+        <a href="#skills">Skills</a>
+        <a href="#about">About</a>
+        <a href="#contact">Contact</a>
+    </div>
+
+    <!-- ============================================================
+         HERO (with Three.js canvas)
+         ============================================================ -->
+    <section id="hero">
+        <div id="hero-canvas"></div>
+        <div class="container hero-content">
+            <h1>Clothing <br /><span class="highlight">7th Wonder</span></h1>
+            <p>Modern streetwear crafted with precision. Bold aesthetics, timeless comfort.</p>
+            <div class="hero-actions">
+                <a href="#projects" class="btn-primary">Explore collection</a>
+                <a href="#contact" class="btn-outline">Contact</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         PROJECTS
+         ============================================================ -->
+    <section id="projects">
+        <div class="container">
+            <h2 class="section-title reveal">Projects</h2>
+            <div class="section-divider reveal"></div>
+            <p class="section-sub reveal">A curated selection of our latest drops and collaborations.</p>
+
+            <div class="filter-bar reveal">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="streetwear">Streetwear</button>
+                <button class="filter-btn" data-filter="collab">Collab</button>
+                <button class="filter-btn" data-filter="limited">Limited</button>
+            </div>
+
+            <div class="projects-grid" id="projectsGrid">
+                <!-- cards injected via JS -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="projectModal">
+        <div class="modal-content">
+            <button class="modal-close" id="modalClose">&times;</button>
+            <h3 id="modalTitle">Project</h3>
+            <img id="modalImage" src="" alt="project" />
+            <p id="modalDesc">Description</p>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         SKILLS
+         ============================================================ -->
+    <section id="skills" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title reveal">Skills</h2>
+            <div class="section-divider reveal"></div>
+            <p class="section-sub reveal">What we bring to the table.</p>
+
+            <div class="skills-grid">
+                <div class="reveal">
+                    <div class="skill-item">
+                        <label>Design <span>90%</span></label>
+                        <div class="progress-bar"><div class="progress-fill" data-width="90"></div></div>
+                    </div>
+                    <div class="skill-item">
+                        <label>Pattern Making <span>80%</span></label>
+                        <div class="progress-bar"><div class="progress-fill" data-width="80"></div></div>
+                    </div>
+                    <div class="skill-item">
+                        <label>Brand Strategy <span>75%</span></label>
+                        <div class="progress-bar"><div class="progress-fill" data-width="75"></div></div>
+                    </div>
+                </div>
+
+                <div class="reveal">
+                    <div class="skill-card">
+                        <div class="icon">🧵</div>
+                        <h4>Tailoring</h4>
+                        <p>Precision cutting and sewing with a focus on durability.</p>
+                        <span class="tooltip">Expert</span>
+                    </div>
+                    <div class="skill-card" style="margin-top:1rem;">
+                        <div class="icon">🎨</div>
+                        <h4>Digital Design</h4>
+                        <p>CAD, 3D prototyping, and virtual sampling.</p>
+                        <span class="tooltip">Advanced</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         ABOUT
+         ============================================================ -->
+    <section id="about" style="background: var(--cream);">
+        <div class="container">
+            <h2 class="section-title reveal">About</h2>
+            <div class="section-divider reveal"></div>
+
+            <div class="reveal">
+                <p style="max-width:700px; font-weight:300; font-size:1.1rem;">
+                    <strong>7th Wonder</strong> is a contemporary clothing brand born from the intersection of
+                    street culture and high-end craftsmanship. We believe in garments that tell stories —
+                    each piece is designed with intent, produced with care, and built to last.
+                </p>
+            </div>
+
+            <div class="timeline reveal">
+                <div class="timeline-item">
+                    <h4>Founded</h4>
+                    <div class="date">2020 · London</div>
+                    <p>Started as a small collective of designers and makers.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>First Collection</h4>
+                    <div class="date">2021 · "Genesis"</div>
+                    <p>Launched our debut line of limited-run streetwear.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Global Recognition</h4>
+                    <div class="date">2023 · Paris Fashion Week</div>
+                    <p>Presented our AW23 collection to international press.</p>
+                </div>
+            </div>
+
+            <div class="reveal">
+                <h4 style="margin-top:1.5rem;">Education & Craft</h4>
+                <p style="font-weight:300;">Our team brings together degrees from Central Saint Martins, RCA, and years of hands-on experience in luxury tailoring and sustainable manufacturing.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         CONTACT
+         ============================================================ -->
+    <section id="contact" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title reveal">Contact</h2>
+            <div class="section-divider reveal"></div>
+
+            <div class="contact-grid">
+                <div class="reveal">
+                    <form class="contact-form" id="contactForm">
+                        <input type="text" placeholder="Name" required />
+                        <input type="email" placeholder="Email" required />
+                        <textarea rows="4" placeholder="Message" required></textarea>
+                        <button type="submit">Send</button>
+                    </form>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-youtube"></i></a>
+                        <a href="#"><i class="fab fa-tiktok"></i></a>
+                    </div>
+                </div>
+
+                <div class="reveal">
+                    <div class="map-wrapper">
+                        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2483.174247087607!2d-0.1276472842291661!3d51.50721767962586!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x487604c7a6bf3b31%3A0x4e3a0f1c0f2e0e0!2sLondon%2C%20UK!5e0!3m2!1sen!2sus!4v1691234567890" loading="lazy"></iframe>
+                    </div>
+                    <p style="margin-top:0.8rem; font-weight:300; color:var(--gray-dark);">
+                        <i class="fas fa-map-pin" style="color:var(--accent);"></i> 7th Wonder Studio, London
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         FOOTER
+         ============================================================ -->
+    <footer>
+        <div class="container">
+            &copy; 2026 <span>7th Wonder</span> — crafted with purpose.
+        </div>
+    </footer>
+
+    <!-- ============================================================
+         SCRIPTS
+         ============================================================ -->
+
+    <!-- Three.js (3D hero) -->
+    <script src="/gallery/assets/vendor/three-r128.min.js"></script>
+
+    <!-- GSAP for advanced animations (optional) -->
+    <script src="/gallery/assets/vendor/gsap-3.12.2.min.js"></script>
+
+    <script>
+        // ============================================================
+        // 1. LOADING SCREEN
+        // ============================================================
+        window.addEventListener('load', () => {
+            document.getElementById('loader').classList.add('hide');
+        });
+
+        // ============================================================
+        // 2. CUSTOM CURSOR
+        // ============================================================
+        const dot = document.getElementById('cursorDot');
+        const ring = document.getElementById('cursorRing');
+
+        document.addEventListener('mousemove', (e) => {
+            dot.style.left = e.clientX + 'px';
+            dot.style.top = e.clientY + 'px';
+            ring.style.left = e.clientX + 'px';
+            ring.style.top = e.clientY + 'px';
+        });
+
+        document.addEventListener('mouseleave', () => {
+            dot.style.opacity = 0;
+            ring.style.opacity = 0;
+        });
+        document.addEventListener('mouseenter', () => {
+            dot.style.opacity = 1;
+            ring.style.opacity = 0.5;
+        });
+
+        // ============================================================
+        // 3. NAVBAR & HAMBURGER
+        // ============================================================
+        const navbar = document.getElementById('navbar');
+        const hamburger = document.getElementById('hamburger');
+        const mobileMenu = document.getElementById('mobileMenu');
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 40) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active');
+            mobileMenu.classList.toggle('open');
+        });
+
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                hamburger.classList.remove('active');
+                mobileMenu.classList.remove('open');
+            });
+        });
+
+        // ============================================================
+        // 4. THREE.JS HERO (particles + 3D shapes)
+        // ============================================================
+        (function initThree() {
+            const container = document.getElementById('hero-canvas');
+            if (!container) return;
+
+            const width = container.parentElement.clientWidth;
+            const height = container.parentElement.clientHeight;
+
+            const scene = new THREE.Scene();
+            scene.background = null; // transparent
+
+            const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+            camera.position.set(0, 0, 6);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // 3D floating shapes (abstract)
+            const group = new THREE.Group();
+            const colors = [0xc63b3b, 0xe8ddcf, 0x8f8c88, 0x1a1918];
+
+            for (let i = 0; i < 30; i++) {
+                const geo = new THREE.IcosahedronGeometry(0.15 + Math.random() * 0.25, 0);
+                const mat = new THREE.MeshStandardMaterial({
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    roughness: 0.4,
+                    metalness: 0.1,
+                    transparent: true,
+                    opacity: 0.6 + Math.random() * 0.3,
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(
+                    (Math.random() - 0.5) * 6,
+                    (Math.random() - 0.5) * 6,
+                    (Math.random() - 0.5) * 4
+                );
+                mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+                group.add(mesh);
+            }
+            scene.add(group);
+
+            // particle system (floating dots)
+            const particleCount = 500;
+            const positions = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount * 3; i++) {
+                positions[i] = (Math.random() - 0.5) * 12;
+            }
+            const particleGeo = new THREE.BufferGeometry();
+            particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const particleMat = new THREE.PointsMaterial({
+                color: 0x8f8c88,
+                size: 0.03,
+                transparent: true,
+                opacity: 0.4,
+                blending: THREE.AdditiveBlending,
+            });
+            const particles = new THREE.Points(particleGeo, particleMat);
+            scene.add(particles);
+
+            // lights
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambient);
+            const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+            dir.position.set(1, 2, 3);
+            scene.add(dir);
+
+            // mouse interaction (rotate group)
+            let mouseX = 0,
+                mouseY = 0;
+            document.addEventListener('mousemove', (e) => {
+                const x = (e.clientX / window.innerWidth) * 2 - 1;
+                const y = -(e.clientY / window.innerHeight) * 2 + 1;
+                mouseX = x * 0.3;
+                mouseY = y * 0.2;
+            });
+
+            function animate() {
+                requestAnimationFrame(animate);
+
+                // rotate group with mouse
+                group.rotation.x += (mouseY * 0.02 - group.rotation.x) * 0.02;
+                group.rotation.y += (mouseX * 0.02 - group.rotation.y) * 0.02;
+
+                // float particles
+                particles.rotation.y += 0.0002;
+
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            // resize
+            window.addEventListener('resize', () => {
+                const w = container.parentElement.clientWidth;
+                const h = container.parentElement.clientHeight;
+                renderer.setSize(w, h);
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+            });
+        })();
+
+        // ============================================================
+        // 5. PROJECTS DATA & FILTER
+        // ============================================================
+        const projects = [{
+            id: 1,
+            title: 'Urban Genesis',
+            category: 'streetwear',
+            img: '/gallery/assets/7th-wonder/genesis.jpg',
+            desc: 'A bold debut collection inspired by city landscapes and raw textures.'
+        }, {
+            id: 2,
+            title: 'Collab: Noir',
+            category: 'collab',
+            img: '/gallery/assets/7th-wonder/noir.jpg',
+            desc: 'Limited capsule with underground artist collective NOIR.'
+        }, {
+            id: 3,
+            title: 'Drops: Vol.1',
+            category: 'limited',
+            img: '/gallery/assets/7th-wonder/drops.jpg',
+            desc: 'Exclusive drop with hand-finished details and numbered editions.'
+        }, {
+            id: 4,
+            title: 'Street Luxe',
+            category: 'streetwear',
+            img: '/gallery/assets/7th-wonder/luxe.jpg',
+            desc: 'Elevated streetwear merging luxury fabrics with relaxed silhouettes.'
+        }, {
+            id: 5,
+            title: 'Collab: Canvas',
+            category: 'collab',
+            img: '/gallery/assets/7th-wonder/canvas.jpg',
+            desc: 'Art-meets-fashion collaboration with contemporary painter Elena K.'
+        }, {
+            id: 6,
+            title: 'Archive 01',
+            category: 'limited',
+            img: '/gallery/assets/7th-wonder/archive.jpg',
+            desc: 'Re-release of iconic pieces from the 2021 archive, remastered.'
+        }, ];
+
+        const grid = document.getElementById('projectsGrid');
+        const modal = document.getElementById('projectModal');
+        const modalClose = document.getElementById('modalClose');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalImage = document.getElementById('modalImage');
+        const modalDesc = document.getElementById('modalDesc');
+
+        function renderProjects(filter = 'all') {
+            const filtered = filter === 'all' ? projects : projects.filter(p => p.category === filter);
+            grid.innerHTML = filtered.map(p => `
+                <div class="project-card" data-id="${p.id}">
+                    <img src="${p.img}" alt="${p.title}" loading="lazy" />
+                    <div class="project-info">
+                        <span class="category">${p.category}</span>
+                        <h3>${p.title}</h3>
+                    </div>
+                </div>
+            `).join('');
+
+            // modal triggers
+            grid.querySelectorAll('.project-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const id = parseInt(card.dataset.id);
+                    const proj = projects.find(p => p.id === id);
+                    if (proj) {
+                        modalTitle.textContent = proj.title;
+                        modalImage.src = proj.img;
+                        modalDesc.textContent = proj.desc;
+                        modal.classList.add('open');
+                    }
+                });
+            });
+        }
+
+        renderProjects();
+
+        // filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderProjects(btn.dataset.filter);
+            });
+        });
+
+        modalClose.addEventListener('click', () => modal.classList.remove('open'));
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('open');
+        });
+
+        // ============================================================
+        // 6. SKILLS PROGRESS BARS (scroll-triggered)
+        // ============================================================
+        const fills = document.querySelectorAll('.progress-fill');
+        let animated = false;
+
+        function animateBars() {
+            if (animated) return;
+            const section = document.getElementById('skills');
+            const rect = section.getBoundingClientRect();
+            if (rect.top < window.innerHeight * 0.75) {
+                fills.forEach(fill => {
+                    const width = parseFloat(fill.dataset.width);
+                    fill.style.width = width + '%';
+                });
+                animated = true;
+            }
+        }
+
+        window.addEventListener('scroll', animateBars);
+        // also check on load
+        setTimeout(animateBars, 400);
+
+        // ============================================================
+        // 7. SCROLL REVEAL (Intersection Observer)
+        // ============================================================
+        const reveals = document.querySelectorAll('.reveal');
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.15, rootMargin: '0px 0px -20px 0px' });
+
+        reveals.forEach(el => observer.observe(el));
+
+        // ============================================================
+        // 8. CONTACT FORM VALIDATION
+        // ============================================================
+        document.getElementById('contactForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const inputs = e.target.querySelectorAll('input, textarea');
+            let valid = true;
+            inputs.forEach(inp => {
+                if (!inp.value.trim()) valid = false;
+            });
+            if (valid) {
+                alert('Thank you! We\'ll get back to you soon.');
+                e.target.reset();
+            } else {
+                alert('Please fill in all fields.');
+            }
+        });
+
+        // ============================================================
+        // 9. SMOOTH PAGE TRANSITIONS (GSAP optional)
+        // ============================================================
+        // We already use scroll-behavior: smooth in CSS.
+        // GSAP could be used for more advanced transitions, but we keep it lightweight.
+        console.log('7th Wonder · ready');
+    </script>
+</body>
+</html>

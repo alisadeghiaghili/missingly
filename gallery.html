@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZMB75975WY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ZMB75975WY');
+    </script>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-NFR2DLMB');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گالری وب‌سایت‌های ساخته‌شده با ThinkFlow</title>
+    <meta name="description" content="نمونه وب‌سایت‌های حرفه‌ای ساخته‌شده با پرامپت و هوش مصنوعی در ThinkFlow را ببینید.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="theme-color" content="#070a12">
+    <link rel="canonical" href="https://thinkflow.ir/gallery">
+    <link rel="icon" type="image/svg+xml" href="/thinkflow-logo-mark.svg?v=20260731-1">
+    <meta property="og:locale" content="fa_IR">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="ThinkFlow">
+    <meta property="og:title" content="گالری وب‌سایت‌های ThinkFlow">
+    <meta property="og:description" content="نمونه‌هایی واقعی از وب‌سایت‌های ساخته‌شده با ThinkFlow.">
+    <meta property="og:url" content="https://thinkflow.ir/gallery">
+    <meta property="og:image" content="https://thinkflow.ir/thinkflow-logo.svg?v=20260731-1">
+    <style>
+        @font-face { font-family: 'IRANSans'; src: url('/irsans.ttf?v=20260727-vazirmatn') format('truetype'); font-weight: 400; font-display: swap; }
+        @font-face { font-family: 'IRANSans'; src: url('/irsansb.ttf?v=20260727-vazirmatn') format('truetype'); font-weight: 700 900; font-display: swap; }
+        :root {
+            --bg-primary: #070a12;
+            --bg-elevated: #101624;
+            --accent: #5eead4;
+            --text-primary: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: rgba(148, 163, 184, 0.2);
+            --radius: 8px;
+        }
+        * { box-sizing: border-box; }
+        html { color-scheme: dark; }
+        body { margin: 0; min-height: 100vh; background: var(--bg-primary); color: var(--text-primary); font-family: 'IRANSans', Tahoma, sans-serif; }
+        button, input, a { font: inherit; }
+        .topbar { position: sticky; top: 0; z-index: 50; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 max(18px, calc((100vw - 1240px) / 2)); background: rgba(7, 10, 18, 0.94); border-bottom: 1px solid var(--border); backdrop-filter: blur(16px); }
+        .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text-primary); text-decoration: none; }
+        .brand img { width: 150px; height: 42px; object-fit: contain; padding: 4px 8px; background: #fff; border-radius: 7px; box-sizing: border-box; }
+        .brand strong { font-size: 15px; }
+        .top-actions { display: flex; align-items: center; gap: 8px; }
+        .button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); background: transparent; text-decoration: none; cursor: pointer; }
+        .button:hover { border-color: var(--accent); background: rgba(94, 234, 212, 0.07); }
+        .button.primary { border-color: var(--accent); background: var(--accent); color: #05201d; font-weight: 800; }
+        .button.primary:hover { background: #99f6e4; }
+        main { width: min(1240px, calc(100% - 36px)); margin: 0 auto; padding: 56px 0 72px; }
+        .heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 420px); gap: 32px; align-items: end; padding-bottom: 28px; border-bottom: 1px solid var(--border); }
+        .eyebrow { margin: 0 0 10px; color: var(--accent); font-size: 13px; font-weight: 800; }
+        h1 { margin: 0; max-width: 760px; font-size: clamp(28px, 5vw, 54px); line-height: 1.35; letter-spacing: 0; }
+        .heading-copy { margin: 0; color: var(--text-muted); line-height: 2; font-size: 14px; }
+        .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 26px 0 18px; }
+        .count { color: var(--text-muted); font-size: 13px; }
+        .search { width: min(320px, 100%); height: 42px; padding: 0 14px; color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; outline: none; }
+        .search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.1); }
+        .gallery-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+        .gallery-card { min-width: 0; overflow: hidden; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); transition: transform 180ms ease, border-color 180ms ease; }
+        .gallery-card:hover { transform: translateY(-3px); border-color: rgba(94, 234, 212, 0.5); }
+        .preview-button { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; padding: 0; border: 0; border-bottom: 1px solid var(--border); background: #fff; cursor: pointer; }
+        .preview-button::after { content: 'مشاهده کامل'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-weight: 800; background: rgba(4, 8, 15, 0.72); opacity: 0; transition: opacity 180ms ease; }
+        .preview-button:hover::after, .preview-button:focus-visible::after { opacity: 1; }
+        .preview-button iframe { position: absolute; top: 0; left: 0; width: 1280px; height: 800px; border: 0; transform: scale(var(--preview-scale, 0.25)); transform-origin: top left; pointer-events: none; background: #fff; }
+        .card-body { padding: 16px; }
+        .category { color: var(--accent); font-size: 11px; font-weight: 800; }
+        .card-title { margin: 7px 0 8px; color: var(--text-primary); font-size: 16px; line-height: 1.7; }
+        .description { min-height: 48px; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.9; }
+        .prompt-details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .prompt-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .prompt-toggle, .prompt-copy { min-height: 32px; padding: 0 10px; color: var(--accent); background: transparent; border: 1px solid transparent; border-radius: 6px; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; transition: color 160ms ease, background 160ms ease, border-color 160ms ease; }
+        .prompt-toggle:hover, .prompt-copy:hover { color: #99f6e4; background: rgba(94, 234, 212, 0.07); border-color: rgba(94, 234, 212, 0.28); }
+        .prompt-toggle:focus-visible, .prompt-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .prompt-copy { flex: 0 0 auto; color: var(--text-primary); border-color: var(--border); }
+        .prompt-copy.is-copied { color: #05201d; background: var(--accent); border-color: var(--accent); }
+        .prompt { max-height: 190px; overflow: auto; margin: 10px 0 0; padding: 10px; color: #cbd5e1; background: rgba(2, 6, 23, 0.42); border-radius: 6px; font-size: 11px; line-height: 1.9; text-align: start; white-space: pre-wrap; unicode-bidi: plaintext; }
+        .prompt[hidden] { display: none; }
+        .prompt strong { color: var(--accent); }
+        .empty-state { display: none; min-height: 320px; place-items: center; text-align: center; padding: 40px 20px; border: 1px dashed var(--border); border-radius: var(--radius); }
+        .empty-state.show { display: grid; }
+        .empty-state h2 { margin: 0 0 8px; font-size: 20px; }
+        .empty-state p { margin: 0; color: var(--text-muted); line-height: 1.9; }
+        dialog { width: min(1440px, calc(100vw - 28px)); height: min(900px, calc(100dvh - 28px)); padding: 0; overflow: hidden; color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
+        dialog::backdrop { background: rgba(2, 6, 15, 0.84); backdrop-filter: blur(8px); }
+        .dialog-shell { height: 100%; display: grid; grid-template-rows: 52px minmax(0, 1fr); }
+        .dialog-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+        .dialog-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+        .close-button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; color: var(--text-primary); background: transparent; border: 1px solid var(--border); border-radius: 7px; cursor: pointer; font-size: 22px; line-height: 1; }
+        .dialog-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+        footer { padding: 24px 18px; color: var(--text-muted); text-align: center; border-top: 1px solid var(--border); font-size: 12px; }
+        @media (max-width: 920px) { .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 640px) {
+            .topbar { height: 58px; padding: 0 12px; }
+            .top-actions .button:first-child { display: none; }
+            .top-actions .button:nth-child(2) { display: none; }
+            main { width: min(100% - 24px, 1240px); padding-top: 34px; }
+            .heading { grid-template-columns: 1fr; gap: 14px; }
+            h1 { font-size: 30px; }
+            .toolbar { align-items: stretch; flex-direction: column-reverse; }
+            .search { width: 100%; }
+            .gallery-grid { grid-template-columns: 1fr; }
+            dialog { width: 100vw; height: 100dvh; max-width: none; max-height: none; border: 0; border-radius: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+    </style>
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NFR2DLMB" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="صفحه اصلی ThinkFlow"><img src="/thinkflow-logo.svg?v=20260731-1" alt="لوگوی ThinkFlow"></a>
+        <nav class="top-actions" aria-label="دسترسی‌های اصلی">
+            <a class="button" href="/pricing">مشاهده پلن‌ها</a>
+            <a class="button" href="/blog">بلاگ</a>
+            <a class="button" href="/contact">تماس با ما</a>
+            <a class="button primary" href="/app" data-auth-required>شروع ساخت</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="heading" aria-labelledby="galleryTitle">
+            <div><p class="eyebrow">ساخته‌شده با ThinkFlow</p><h1 id="galleryTitle">ایده‌هایی که به وب‌سایت تبدیل شده‌اند</h1></div>
+            <p class="heading-copy">مجموعه‌ای از خروجی‌های منتخب که با یک پرامپت شروع شده‌اند. هر نمونه را باز کنید و نتیجه کامل و رندرشده را ببینید.</p>
+        </section>
+        <div class="toolbar">
+            <span id="galleryCount" class="count" aria-live="polite">در حال دریافت نمونه‌ها...</span>
+            <input id="gallerySearch" class="search" type="search" placeholder="جست‌وجو در نمونه‌ها" aria-label="جست‌وجو در گالری">
+        </div>
+        <section id="galleryGrid" class="gallery-grid" aria-live="polite"></section>
+        <section id="emptyState" class="empty-state">
+            <div><h2>نمونه‌ای برای نمایش پیدا نشد</h2><p>به‌زودی وب‌سایت‌های منتخب در این بخش قرار می‌گیرند.</p></div>
+        </section>
+    </main>
+
+    <dialog id="previewDialog" aria-labelledby="dialogTitle">
+        <div class="dialog-shell">
+            <header class="dialog-bar"><strong id="dialogTitle" class="dialog-title"></strong><button id="closeDialog" class="close-button" type="button" aria-label="بستن پیش‌نمایش" title="بستن">×</button></header>
+            <iframe id="dialogFrame" class="dialog-frame" title="پیش‌نمایش کامل وب‌سایت" sandbox="allow-scripts allow-forms allow-popups" allow="autoplay; fullscreen"></iframe>
+        </div>
+    </dialog>
+    <footer>کاری از تیم هوش عمیق</footer>
+
+    <script>
+        const grid = document.getElementById('galleryGrid');
+        const searchInput = document.getElementById('gallerySearch');
+        const countLabel = document.getElementById('galleryCount');
+        const emptyState = document.getElementById('emptyState');
+        const previewDialog = document.getElementById('previewDialog');
+        const dialogFrame = document.getElementById('dialogFrame');
+        const dialogTitle = document.getElementById('dialogTitle');
+        const closeDialog = document.getElementById('closeDialog');
+        let galleryItems = [];
+
+        async function copyText(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const copied = document.execCommand('copy');
+            textarea.remove();
+            if (!copied) throw new Error('Clipboard copy failed');
+        }
+
+        function openPreview(item) {
+            dialogTitle.textContent = item.title;
+            dialogFrame.src = item.preview_url;
+            previewDialog.showModal();
+        }
+
+        function createCard(item) {
+            const article = document.createElement('article');
+            article.className = 'gallery-card';
+            const preview = document.createElement('button');
+            preview.className = 'preview-button';
+            preview.type = 'button';
+            preview.setAttribute('aria-label', `مشاهده کامل ${item.title}`);
+            const frame = document.createElement('iframe');
+            frame.src = item.preview_url;
+            frame.title = `پیش‌نمایش ${item.title}`;
+            frame.loading = 'lazy';
+            frame.tabIndex = -1;
+            frame.setAttribute('sandbox', 'allow-scripts allow-forms');
+            frame.setAttribute('allow', 'autoplay; fullscreen');
+            preview.appendChild(frame);
+            preview.addEventListener('click', () => openPreview(item));
+
+            const body = document.createElement('div');
+            body.className = 'card-body';
+            const category = document.createElement('span');
+            category.className = 'category';
+            category.textContent = item.category;
+            const title = document.createElement('h2');
+            title.className = 'card-title';
+            title.textContent = item.title;
+            const description = document.createElement('p');
+            description.className = 'description';
+            description.textContent = item.description;
+            body.append(category, title, description);
+
+            if (item.prompt) {
+                const promptDetails = document.createElement('div');
+                promptDetails.className = 'prompt-details';
+                const promptActions = document.createElement('div');
+                promptActions.className = 'prompt-actions';
+                const promptToggle = document.createElement('button');
+                promptToggle.className = 'prompt-toggle';
+                promptToggle.type = 'button';
+                promptToggle.textContent = 'مشاهده پرامپت';
+                promptToggle.setAttribute('aria-expanded', 'false');
+                const copyButton = document.createElement('button');
+                copyButton.className = 'prompt-copy';
+                copyButton.type = 'button';
+                copyButton.textContent = 'کپی پرامپت';
+                copyButton.setAttribute('aria-label', `کپی کامل پرامپت ${item.title}`);
+                const prompt = document.createElement('p');
+                prompt.className = 'prompt';
+                prompt.dir = 'auto';
+                prompt.id = `prompt-${item.slug}`;
+                prompt.hidden = true;
+                promptToggle.setAttribute('aria-controls', prompt.id);
+                const label = document.createElement('strong');
+                label.textContent = 'پرامپت: ';
+                prompt.append(label, document.createTextNode(item.prompt));
+                promptToggle.addEventListener('click', () => {
+                    const shouldOpen = prompt.hidden;
+                    prompt.hidden = !shouldOpen;
+                    promptToggle.textContent = shouldOpen ? 'بستن پرامپت' : 'مشاهده پرامپت';
+                    promptToggle.setAttribute('aria-expanded', String(shouldOpen));
+                });
+                copyButton.addEventListener('click', async () => {
+                    try {
+                        await copyText(item.prompt);
+                        copyButton.textContent = 'کپی شد';
+                        copyButton.classList.add('is-copied');
+                    } catch (error) {
+                        copyButton.textContent = 'کپی نشد';
+                    }
+                    window.setTimeout(() => {
+                        copyButton.textContent = 'کپی پرامپت';
+                        copyButton.classList.remove('is-copied');
+                    }, 1800);
+                });
+                promptActions.append(promptToggle, copyButton);
+                promptDetails.append(promptActions, prompt);
+                body.appendChild(promptDetails);
+            }
+
+            article.append(preview, body);
+            return article;
+        }
+
+        function syncPreviewScales() {
+            document.querySelectorAll('.preview-button').forEach(preview => {
+                preview.style.setProperty('--preview-scale', Math.max(preview.clientWidth / 1280, 0.05));
+            });
+        }
+
+        function renderGallery() {
+            const query = searchInput.value.trim().toLocaleLowerCase('fa');
+            const visibleItems = galleryItems.filter(item =>
+                [item.title, item.description, item.category, item.prompt].join(' ').toLocaleLowerCase('fa').includes(query)
+            );
+            grid.replaceChildren(...visibleItems.map(createCard));
+            countLabel.textContent = `${visibleItems.length.toLocaleString('fa-IR')} نمونه`;
+            emptyState.classList.toggle('show', visibleItems.length === 0);
+            requestAnimationFrame(syncPreviewScales);
+        }
+
+        async function loadGallery() {
+            try {
+                const response = await fetch('/gallery/api/sites', { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error('Gallery request failed');
+                const data = await response.json();
+                galleryItems = Array.isArray(data.items) ? data.items : [];
+                renderGallery();
+            } catch (error) {
+                countLabel.textContent = 'دریافت نمونه‌ها انجام نشد';
+                emptyState.classList.add('show');
+            }
+        }
+
+        searchInput.addEventListener('input', renderGallery);
+        closeDialog.addEventListener('click', () => previewDialog.close());
+        previewDialog.addEventListener('click', event => {
+            if (event.target === previewDialog) previewDialog.close();
+        });
+        previewDialog.addEventListener('close', () => dialogFrame.removeAttribute('src'));
+        window.addEventListener('resize', syncPreviewScales);
+        document.querySelector('[data-auth-required]')?.addEventListener('click', event => {
+            if (sessionStorage.getItem('deepintelligence_token')) return;
+            event.preventDefault();
+            window.location.replace('/');
+        });
+        loadGallery();
+    </script>
+</body>
+</html>

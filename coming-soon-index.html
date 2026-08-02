@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-NFR2DLMB');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepIntelligence | به زودی</title>
+    <meta name="description" content="DeepIntelligence یک ابزار هوشمند برای ساخت سریع و حرفه‌ای وب‌سایت با کمک هوش مصنوعی است.">
+    <style>
+        @font-face {
+            font-family: "IRANSans";
+            src: url("/irsans.ttf?v=20260727-vazirmatn") format("truetype");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "IRANSans";
+            src: url("/irsansb.ttf?v=20260727-vazirmatn") format("truetype");
+            font-weight: 700 900;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            color-scheme: dark;
+            --bg: #070a12;
+            --panel: rgba(9, 13, 24, 0.78);
+            --line: rgba(148, 163, 184, 0.22);
+            --text: #f8fafc;
+            --muted: #a8b3c7;
+            --teal: #5eead4;
+            --rose: #fb7185;
+            --violet: #818cf8;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "IRANSans", Tahoma, Arial, sans-serif;
+            background:
+                radial-gradient(circle at 14% 14%, rgba(20, 184, 166, 0.2), transparent 28rem),
+                radial-gradient(circle at 82% 12%, rgba(244, 63, 94, 0.16), transparent 25rem),
+                radial-gradient(circle at 55% 92%, rgba(129, 140, 248, 0.13), transparent 28rem),
+                linear-gradient(135deg, #070a12 0%, #101827 52%, #1a1020 100%);
+            color: var(--text);
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+            background-size: 44px 44px;
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,0.82), transparent);
+            pointer-events: none;
+        }
+
+        .shell {
+            position: relative;
+            z-index: 1;
+            width: min(1120px, calc(100% - 32px));
+            min-height: 100vh;
+            margin: 0 auto;
+            display: grid;
+            place-items: center;
+            padding: 40px 0;
+        }
+
+        .hero {
+            width: 100%;
+            display: grid;
+            grid-template-columns: minmax(0, 1.12fr) 360px;
+            gap: 28px;
+            align-items: center;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 28px;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+
+        .mark {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, var(--teal), var(--violet));
+            color: #06111f;
+            box-shadow: 0 18px 38px rgba(20, 184, 166, 0.24);
+            font-weight: 900;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid rgba(45, 212, 191, 0.32);
+            background: rgba(15, 23, 42, 0.7);
+            color: #99f6e4;
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 0.86rem;
+            font-weight: 800;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0;
+            max-width: 760px;
+            font-size: clamp(2.45rem, 7vw, 5.5rem);
+            line-height: 1.08;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+
+        h1 span {
+            color: var(--teal);
+        }
+
+        .lead {
+            max-width: 680px;
+            margin: 24px 0 0;
+            color: var(--muted);
+            font-size: clamp(1rem, 2vw, 1.2rem);
+            line-height: 2;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+            padding: 0 18px;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 900;
+            background: rgba(15, 23, 42, 0.72);
+        }
+
+        .button.primary {
+            border-color: transparent;
+            background: linear-gradient(135deg, #14b8a6, #4f46e5);
+            box-shadow: 0 18px 40px rgba(20, 184, 166, 0.22);
+        }
+
+        .panel {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            backdrop-filter: blur(18px);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 28px 70px rgba(0, 0, 0, 0.38);
+        }
+
+        .panel h2 {
+            margin: 0 0 16px;
+            font-size: 1.15rem;
+        }
+
+        .steps {
+            display: grid;
+            gap: 12px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .steps li {
+            display: grid;
+            grid-template-columns: 28px 1fr;
+            gap: 10px;
+            align-items: start;
+            color: #dbe4f0;
+            line-height: 1.8;
+        }
+
+        .num {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            color: #06111f;
+            background: var(--teal);
+            font-weight: 900;
+            font-size: 0.86rem;
+        }
+
+        .status {
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            line-height: 1.9;
+        }
+
+        .status strong {
+            color: var(--rose);
+        }
+
+        @media (max-width: 860px) {
+            .hero {
+                grid-template-columns: 1fr;
+            }
+
+            .panel {
+                order: 2;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NFR2DLMB"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <main class="shell">
+        <section class="hero">
+            <div>
+                <div class="brand">
+                    <div class="mark">DI</div>
+                    <span>DeepIntelligence</span>
+                </div>
+                <div class="badge">به زودی در دسترس قرار می‌گیرد</div>
+                <h1>ابزار هوشمند ساخت <span>وب‌سایت حرفه‌ای</span></h1>
+                <p class="lead">
+                    ما در حال آماده‌سازی یک ابزار کارآمد برای ساخت سریع وب‌سایت هستیم؛ جایی که فقط ایده‌ات را توضیح می‌دهی و خروجی HTML واکنش‌گرا، تمیز و قابل توسعه دریافت می‌کنی.
+                </p>
+                <div class="actions">
+                    <a class="button primary" href="mailto:info@thinkflow.ir">در ارتباط باشیم</a>
+                    <a class="button" href="https://thinkflow.ir">thinkflow.ir</a>
+                </div>
+            </div>
+
+            <aside class="panel" aria-label="ویژگی‌های در حال آماده‌سازی">
+                <h2>چه چیزی آماده می‌شود؟</h2>
+                <ul class="steps">
+                    <li><span class="num">۱</span><span>ساخت لندینگ، داشبورد و صفحات محصول با کمک هوش مصنوعی</span></li>
+                    <li><span class="num">۲</span><span>پیش‌نمایش زنده و اصلاح مرحله‌به‌مرحله رابط کاربری</span></li>
+                    <li><span class="num">۳</span><span>خروجی HTML/CSS/JavaScript تمیز، واکنش‌گرا و آماده استفاده</span></li>
+                </ul>
+                <p class="status">
+                    وضعیت فعلی: <strong>زیرساخت فنی در حال راه‌اندازی است.</strong><br>
+                    به زودی نسخه اولیه سایت منتشر می‌شود.
+                </p>
+            </aside>
+        </section>
+    </main>
+</body>
+</html>

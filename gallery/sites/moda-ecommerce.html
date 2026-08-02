@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moda · eCommerce</title>
+  <meta name="description" content="یک فروشگاه اینترنتی مدرن با هیرو، شبکه محصولات، سبد خرید و نمایش تعاملی جزئیات محصول." />
+  <meta name="thinkflow:category" content="فروشگاه آنلاین" />
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
+  <!-- Font Awesome 6 (free icons) -->
+  <link rel="stylesheet" href="/gallery/assets/vendor/fontawesome/css/all.min.css" />
+  <style>
+    /* ----- reset & variables ----- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #f8f7f4;
+      --white: #ffffff;
+      --text: #1e1e2a;
+      --text-muted: #5a5a6a;
+      --border: #e6e4e0;
+      --accent: #2d6b5e;
+      --accent-light: #e8f0ed;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.03);
+      --radius: 18px;
+      --radius-sm: 10px;
+      --font: 'Inter', -apple-system, sans-serif;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* ----- navigation ----- */
+    .navbar {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.02);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.8rem 0;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-weight: 700;
+      font-size: 1.5rem;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .logo span {
+      color: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2.2rem;
+      list-style: none;
+      align-items: center;
+    }
+    .nav-links a {
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover {
+      color: var(--text);
+    }
+
+    .cart-icon {
+      position: relative;
+      font-size: 1.3rem;
+      color: var(--text);
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .cart-icon:hover {
+      color: var(--accent);
+    }
+    .cart-badge {
+      position: absolute;
+      top: -8px;
+      right: -10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 600;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ----- hero (clean, balanced) ----- */
+    .hero {
+      padding: 3rem 0 3.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .hero-content h1 {
+      font-size: clamp(2.4rem, 5vw, 3.8rem);
+      font-weight: 600;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.6rem;
+    }
+    .hero-content h1 .highlight {
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .hero-content p {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 420px;
+      margin-bottom: 1.8rem;
+      font-weight: 300;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      padding: 0.7rem 2.4rem;
+      border-radius: 60px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-primary:hover {
+      background: #1f5449;
+      transform: scale(1.02);
+    }
+
+    .hero-image {
+      background: var(--accent-light);
+      border-radius: var(--radius);
+      aspect-ratio: 4/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      font-weight: 300;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(0, 0, 0, 0.02);
+    }
+    .hero-image i {
+      font-size: 3.6rem;
+      opacity: 0.5;
+      margin-right: 0.6rem;
+    }
+
+    /* ----- section header ----- */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 3rem 0 1.5rem;
+    }
+    .section-header h2 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .section-header a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .section-header a:hover {
+      color: var(--accent);
+    }
+
+    /* ----- product grid (clean, balanced) ----- */
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 2rem;
+    }
+
+    .product-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: 1px solid var(--border);
+    }
+    .product-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
+    }
+
+    .product-image {
+      aspect-ratio: 1/1;
+      background: #f3f1ee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-weight: 300;
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .product-image i {
+      font-size: 2.4rem;
+      opacity: 0.3;
+      margin-right: 0.3rem;
+    }
+
+    .product-info {
+      padding: 1rem 1.2rem 1.2rem;
+    }
+    .product-info h3 {
+      font-weight: 500;
+      font-size: 1rem;
+      margin-bottom: 0.1rem;
+    }
+    .product-info .price {
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 1.1rem;
+    }
+    .product-info .price small {
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-decoration: line-through;
+      margin-left: 0.4rem;
+    }
+
+    .btn-add {
+      margin-top: 0.6rem;
+      background: var(--accent-light);
+      color: var(--accent);
+      border: none;
+      padding: 0.3rem 1.2rem;
+      border-radius: 40px;
+      font-weight: 500;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-add:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ----- product detail page (modal-style preview) ----- */
+    .product-detail {
+      margin: 4rem 0 3rem;
+      background: var(--white);
+      border-radius: var(--radius);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2.5rem;
+      padding: 2.5rem;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .detail-image {
+      background: #f0eeea;
+      border-radius: var(--radius-sm);
+      aspect-ratio: 4/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-weight: 300;
+    }
+    .detail-image i {
+      font-size: 3rem;
+      opacity: 0.2;
+    }
+
+    .detail-info h2 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+    .detail-info .price-lg {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin: 0.4rem 0 0.8rem;
+    }
+    .detail-info .price-lg small {
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 1rem;
+      text-decoration: line-through;
+      margin-left: 0.6rem;
+    }
+    .detail-info p {
+      color: var(--text-muted);
+      max-width: 400px;
+      margin-bottom: 1.2rem;
+    }
+
+    .detail-actions {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .btn-secondary {
+      background: var(--border);
+      color: var(--text);
+      padding: 0.7rem 2rem;
+      border-radius: 60px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover {
+      background: #d6d3ce;
+    }
+
+    /* ----- responsive ----- */
+    @media (max-width: 820px) {
+      .hero {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+      }
+      .product-detail {
+        grid-template-columns: 1fr;
+        padding: 1.8rem;
+      }
+      .nav-links {
+        display: none;
+      }
+      .container {
+        padding: 0 1.2rem;
+      }
+    }
+
+    @media (max-width: 500px) {
+      .product-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      .product-info h3 {
+        font-size: 0.9rem;
+      }
+      .product-detail {
+        padding: 1.2rem;
+      }
+      .detail-info h2 {
+        font-size: 1.4rem;
+      }
+    }
+
+    /* footer */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem 0;
+      margin-top: 3rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      background: var(--white);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="navbar">
+  <div class="container nav-inner">
+    <a href="#" class="logo">Moda<span>.</span></a>
+
+    <ul class="nav-links">
+      <li><a href="#">New</a></li>
+      <li><a href="#">Women</a></li>
+      <li><a href="#">Men</a></li>
+      <li><a href="#">Accessories</a></li>
+      <li><a href="#">Sale</a></li>
+    </ul>
+
+    <div class="cart-icon" aria-label="Shopping cart">
+      <i class="fas fa-shopping-bag"></i>
+      <span class="cart-badge">3</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section class="container hero">
+  <div class="hero-content">
+    <h1>Essentials, <br /><span class="highlight">elevated.</span></h1>
+    <p>Clean design, premium materials, and timeless silhouettes — curated for the modern wardrobe.</p>
+    <a href="#" class="btn-primary">Shop collection</a>
+  </div>
+  <div class="hero-image">
+    <i class="fas fa-tshirt"></i> hero visual
+  </div>
+</section>
+
+<!-- ===== PRODUCT GRID ===== -->
+<div class="container">
+  <div class="section-header">
+    <h2>Bestsellers</h2>
+    <a href="#">View all →</a>
+  </div>
+
+  <div class="product-grid">
+    <!-- card 1 -->
+    <div class="product-card">
+      <div class="product-image"><i class="fas fa-tshirt"></i> tee</div>
+      <div class="product-info">
+        <h3>Cotton crew</h3>
+        <div class="price">$48 <small>$68</small></div>
+        <button class="btn-add">Add to cart</button>
+      </div>
+    </div>
+    <!-- card 2 -->
+    <div class="product-card">
+      <div class="product-image"><i class="fas fa-shoe-prints"></i> sneaker</div>
+      <div class="product-info">
+        <h3>Court low</h3>
+        <div class="price">$89</div>
+        <button class="btn-add">Add to cart</button>
+      </div>
+    </div>
+    <!-- card 3 -->
+    <div class="product-card">
+      <div class="product-image"><i class="fas fa-bag-shopping"></i> tote</div>
+      <div class="product-info">
+        <h3>Leather tote</h3>
+        <div class="price">$145</div>
+        <button class="btn-add">Add to cart</button>
+      </div>
+    </div>
+    <!-- card 4 -->
+    <div class="product-card">
+      <div class="product-image"><i class="fas fa-glasses"></i> frames</div>
+      <div class="product-info">
+        <h3>Square glasses</h3>
+        <div class="price">$72 <small>$95</small></div>
+        <button class="btn-add">Add to cart</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PRODUCT DETAIL (preview) ===== -->
+<div class="container">
+  <div class="product-detail">
+    <div class="detail-image">
+      <i class="fas fa-tshirt"></i> product detail
+    </div>
+    <div class="detail-info">
+      <h2>Wool blend blazer</h2>
+      <div class="price-lg">$215 <small>$290</small></div>
+      <p>Tailored fit in a soft wool-cashmere blend. Unlined for lightweight comfort. Perfect for work or weekend layering.</p>
+      <div class="detail-actions">
+        <button class="btn-primary">Add to bag</button>
+        <button class="btn-secondary"><i class="far fa-heart"></i> Save</button>
+      </div>
+      <p style="margin-top:1rem; font-size:0.85rem; color:var(--text-muted);">
+        <i class="fas fa-truck"></i> Free shipping · 30-day returns
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="container">
+    &copy; 2026 Moda. — built with <i class="fas fa-heart" style="color:var(--accent);"></i>
+  </div>
+</footer>
+
+</body>
+</html>

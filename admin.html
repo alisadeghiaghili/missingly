@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZMB75975WY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ZMB75975WY');
+    </script>
+
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-NFR2DLMB');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - DeepIntelligence</title>
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @font-face {
+            font-family: 'IRANSans';
+            src: url('/irsans.ttf?v=20260727-vazirmatn') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'IRANSans';
+            src: url('/irsansb.ttf?v=20260727-vazirmatn') format('truetype');
+            font-weight: 700 900;
+            font-style: normal;
+            font-display: swap;
+        }
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 12% 8%, rgba(45, 212, 191, 0.18), transparent 30%),
+                radial-gradient(circle at 82% 0%, rgba(99, 102, 241, 0.2), transparent 28%),
+                #070a12;
+            color: #e2e8f0;
+            font-family: 'IRANSans', Tahoma, system-ui, sans-serif;
+        }
+
+        .panel {
+            background: rgba(15, 23, 42, 0.82);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 8px;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+        }
+
+        .metric {
+            background: rgba(15, 23, 42, 0.66);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 8px;
+        }
+
+        .input, select {
+            width: 100%;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            border-radius: 8px;
+            background: rgba(2, 6, 23, 0.78);
+            color: #f8fafc;
+            padding: 0.7rem 0.85rem;
+            outline: none;
+        }
+
+        .input:focus, select:focus {
+            border-color: #2dd4bf;
+            box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.14);
+        }
+
+        select option {
+            background: #0f172a;
+            color: #f8fafc;
+        }
+
+        .btn {
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 8px;
+            padding: 0.65rem 0.95rem;
+            color: #cbd5e1;
+            background: rgba(15, 23, 42, 0.66);
+            transition: all 0.18s ease;
+        }
+
+        .btn:hover {
+            color: #ffffff;
+            border-color: rgba(45, 212, 191, 0.48);
+            background: rgba(20, 184, 166, 0.13);
+        }
+
+        .btn-primary {
+            color: #04111f;
+            background: linear-gradient(135deg, #2dd4bf, #818cf8);
+            border-color: transparent;
+            font-weight: 800;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+            padding: 0.85rem 0.75rem;
+            text-align: left;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        th {
+            color: #99f6e4;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
+        td {
+            color: #cbd5e1;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NFR2DLMB"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <main class="max-w-7xl mx-auto px-5 py-6">
+        <header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <img src="/thinkflow-logo.svg?v=20260731-1" alt="لوگوی ThinkFlow" class="h-11 w-40 object-contain rounded-md bg-white px-2 py-1">
+                <div>
+                    <h1 class="text-2xl font-black text-white">Admin Panel</h1>
+                    <p id="statusLine" class="text-sm text-slate-400">Manage users, plans, and usage.</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button id="appBtn" class="btn">App</button>
+                <button id="dashboardBtn" class="btn">Dashboard</button>
+                <button id="refreshBtn" class="btn">Refresh</button>
+                <button id="logoutBtn" class="btn">Logout</button>
+            </div>
+        </header>
+
+        <section id="loginPanel" class="panel max-w-md mx-auto p-6 hidden">
+            <h2 class="text-xl font-bold text-white mb-1">Admin Login</h2>
+            <p class="text-sm text-slate-400 mb-5">Sign in with your admin account.</p>
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-slate-300 mb-2" for="emailInput">Email</label>
+                    <input id="emailInput" class="input" type="email" autocomplete="email" required>
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-300 mb-2" for="passwordInput">Password</label>
+                    <input id="passwordInput" class="input" type="password" autocomplete="current-password" required>
+                </div>
+                <button class="btn btn-primary w-full" type="submit">Sign In</button>
+            </form>
+        </section>
+
+        <section id="adminContent" class="hidden">
+            <section class="panel p-5 mb-5">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div class="max-w-2xl">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <h2 class="text-lg font-bold text-white">AI Service Provider</h2>
+                            <span id="providerBadge" class="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-bold text-slate-300">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-sm leading-6 text-slate-400">Choose which server-side provider handles all new generation requests. API keys remain in the server environment and are never sent to this page.</p>
+                    </div>
+                    <div class="grid w-full gap-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto] lg:max-w-2xl">
+                        <div>
+                            <label class="mb-2 block text-xs font-bold uppercase text-slate-400" for="providerSelect">Provider</label>
+                            <select id="providerSelect" aria-label="AI service provider"></select>
+                        </div>
+                        <button id="testProviderBtn" class="btn self-end" type="button">Test Connection</button>
+                        <button id="saveProviderBtn" class="btn btn-primary self-end" type="button">Use Provider</button>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-3 border-t border-slate-800 pt-4 sm:grid-cols-2">
+                    <div>
+                        <p class="text-xs uppercase text-slate-500">API endpoint</p>
+                        <p id="providerEndpoint" class="mt-1 break-all text-sm text-slate-300">-</p>
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase text-slate-500">Connection test model</p>
+                        <p id="providerTestModel" class="mt-1 text-sm text-slate-300">-</p>
+                    </div>
+                </div>
+                <p id="providerMessage" class="mt-3 min-h-6 text-sm text-slate-400" role="status" aria-live="polite"></p>
+            </section>
+
+            <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+                <article class="metric p-5">
+                    <p class="text-sm text-slate-400">Total Users</p>
+                    <h2 id="totalUsers" class="mt-2 text-3xl font-black text-white">-</h2>
+                </article>
+                <article class="metric p-5">
+                    <p class="text-sm text-slate-400">Free</p>
+                    <h2 id="freeUsers" class="mt-2 text-3xl font-black text-white">-</h2>
+                </article>
+                <article class="metric p-5">
+                    <p class="text-sm text-slate-400">Paid</p>
+                    <h2 id="paidUsers" class="mt-2 text-3xl font-black text-white">-</h2>
+                </article>
+                <article class="metric p-5">
+                    <p class="text-sm text-slate-400">Admins</p>
+                    <h2 id="adminUsers" class="mt-2 text-3xl font-black text-white">-</h2>
+                </article>
+            </section>
+
+            <section class="panel p-5 overflow-x-auto">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                    <h2 class="text-lg font-bold text-white">Users</h2>
+                    <input id="searchInput" class="input md:max-w-sm" placeholder="Search by name or email">
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>User</th>
+                            <th>Plan</th>
+                            <th>Used Requests</th>
+                            <th>Remaining Requests</th>
+                            <th>Tokens</th>
+                            <th>Payments</th>
+                            <th>Admin</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTable"></tbody>
+                </table>
+            </section>
+
+            <section id="detailPanel" class="panel p-5 mt-5 hidden">
+                <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between mb-4">
+                    <div>
+                        <h2 id="detailTitle" class="text-lg font-bold text-white">User Details</h2>
+                        <p id="detailSubtitle" class="text-sm text-slate-400"></p>
+                    </div>
+                    <button id="closeDetailsBtn" class="btn">Close</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+                    <article class="metric p-4">
+                        <p class="text-sm text-slate-400">Plan Requests</p>
+                        <h3 id="detailRequests" class="mt-1 text-2xl font-black text-white">-</h3>
+                    </article>
+                    <article class="metric p-4">
+                        <p class="text-sm text-slate-400">Usage Events</p>
+                        <h3 id="detailUsageEvents" class="mt-1 text-2xl font-black text-white">-</h3>
+                    </article>
+                    <article class="metric p-4">
+                        <p class="text-sm text-slate-400">Payments</p>
+                        <h3 id="detailPayments" class="mt-1 text-2xl font-black text-white">-</h3>
+                    </article>
+                    <article class="metric p-4">
+                        <p class="text-sm text-slate-400">Tokens</p>
+                        <h3 id="detailTokens" class="mt-1 text-2xl font-black text-white">-</h3>
+                    </article>
+                </div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <div class="overflow-x-auto">
+                        <h3 class="text-base font-bold text-white mb-3">Recent Requests</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Model</th>
+                                    <th>Type</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailUsageRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <h3 class="text-base font-bold text-white mb-3">Payments</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Plan</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Ref</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailPaymentRows"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        let users = [];
+        let plans = ['free', 'basic', 'standard', 'deluxe'];
+        let aiProviders = [];
+        let activeAIProvider = 'gapgpt';
+        const fmt = new Intl.NumberFormat('en-US');
+
+        function token() {
+            return sessionStorage.getItem('deepintelligence_token');
+        }
+
+        function setStatus(message) {
+            document.getElementById('statusLine').textContent = message;
+        }
+
+        function showLogin() {
+            document.getElementById('loginPanel').classList.remove('hidden');
+            document.getElementById('adminContent').classList.add('hidden');
+        }
+
+        function showAdmin() {
+            document.getElementById('loginPanel').classList.add('hidden');
+            document.getElementById('adminContent').classList.remove('hidden');
+        }
+
+        async function adminFetch(url, options = {}) {
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token()}`,
+                    ...(options.headers || {})
+                }
+            });
+            if (response.status === 401 || response.status === 403) {
+                showLogin();
+                throw new Error(response.status === 403 ? 'Admin access required.' : 'Please sign in.');
+            }
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Request failed.');
+            }
+            return response.json();
+        }
+
+        function planOptions(selected) {
+            return plans.map(plan => `<option value="${plan}" ${plan === selected ? 'selected' : ''}>${plan.toUpperCase()}</option>`).join('');
+        }
+
+        function selectedProvider() {
+            return document.getElementById('providerSelect').value;
+        }
+
+        function renderAIProvider() {
+            const select = document.getElementById('providerSelect');
+            select.innerHTML = '';
+            aiProviders.forEach(provider => {
+                const option = document.createElement('option');
+                option.value = provider.id;
+                option.textContent = `${provider.label}${provider.configured ? '' : ' (API key missing)'}`;
+                option.disabled = !provider.configured;
+                option.selected = provider.id === activeAIProvider;
+                select.appendChild(option);
+            });
+            updateProviderDetails();
+        }
+
+        function updateProviderDetails() {
+            const provider = aiProviders.find(item => item.id === selectedProvider()) || aiProviders[0];
+            if (!provider) return;
+            const isActive = provider.id === activeAIProvider;
+            const badge = document.getElementById('providerBadge');
+            badge.textContent = `${isActive ? 'Active' : 'Available'}: ${provider.label}`;
+            badge.className = isActive
+                ? 'rounded-full border border-teal-400/30 bg-teal-400/10 px-3 py-1 text-xs font-bold text-teal-200'
+                : 'rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-bold text-slate-300';
+            document.getElementById('providerEndpoint').textContent = provider.base_url;
+            document.getElementById('providerTestModel').textContent = provider.test_model;
+            document.getElementById('testProviderBtn').disabled = !provider.configured;
+            document.getElementById('saveProviderBtn').disabled = !provider.configured || isActive;
+        }
+
+        async function loadAIProvider() {
+            const data = await adminFetch('/admin/ai-provider');
+            aiProviders = data.providers;
+            activeAIProvider = data.active_provider;
+            renderAIProvider();
+        }
+
+        async function saveAIProvider() {
+            const provider = selectedProvider();
+            const button = document.getElementById('saveProviderBtn');
+            button.disabled = true;
+            document.getElementById('providerMessage').textContent = 'Saving provider selection...';
+            try {
+                const data = await adminFetch('/admin/ai-provider', {
+                    method: 'PATCH',
+                    body: JSON.stringify({ provider })
+                });
+                activeAIProvider = data.active_provider;
+                aiProviders = data.providers;
+                renderAIProvider();
+                document.getElementById('providerMessage').textContent = data.message;
+                setStatus(data.message);
+            } finally {
+                updateProviderDetails();
+            }
+        }
+
+        async function testAIProvider() {
+            const provider = selectedProvider();
+            const button = document.getElementById('testProviderBtn');
+            button.disabled = true;
+            document.getElementById('providerMessage').textContent = 'Testing provider connection...';
+            try {
+                const data = await adminFetch('/admin/ai-provider/test', {
+                    method: 'POST',
+                    body: JSON.stringify({ provider })
+                });
+                const reply = data.response ? ` Response: ${data.response}` : '';
+                document.getElementById('providerMessage').textContent = `${data.label} connected successfully with ${data.model}.${reply}`;
+            } finally {
+                updateProviderDetails();
+            }
+        }
+
+        function renderUsers() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const filtered = users.filter(user =>
+                !query ||
+                user.name.toLowerCase().includes(query) ||
+                user.email.toLowerCase().includes(query)
+            );
+            const table = document.getElementById('usersTable');
+            table.innerHTML = '';
+            if (!filtered.length) {
+                table.innerHTML = '<tr><td colspan="9" class="text-slate-400">No users found.</td></tr>';
+                return;
+            }
+            filtered.forEach(user => {
+                const remaining = user.requests_remaining === null ? 'Unlimited' : fmt.format(user.requests_remaining);
+                const row = document.createElement('tr');
+                row.dataset.userId = user.id;
+                row.className = 'cursor-pointer hover:bg-slate-800/35';
+                row.innerHTML = `
+                    <td>${user.id}</td>
+                    <td>
+                        <div class="font-semibold text-white">${user.name}</div>
+                        <div class="text-xs text-slate-400">${user.email}</div>
+                    </td>
+                    <td>
+                        <select data-field="plan" data-user-id="${user.id}" class="min-w-32">${planOptions(user.plan)}</select>
+                    </td>
+                    <td>
+                        <input data-field="request_count" data-user-id="${user.id}" class="input w-24" type="number" min="0" value="${user.request_count}">
+                        <div class="text-xs text-slate-500 mt-1">total used</div>
+                    </td>
+                    <td>
+                        <input data-field="request_balance" data-user-id="${user.id}" class="input w-24" type="number" min="0" value="${user.request_balance}">
+                        <div class="text-xs text-slate-500 mt-1">available now</div>
+                    </td>
+                    <td>
+                        <input data-field="token_usage" data-user-id="${user.id}" class="input w-32" type="number" min="0" value="${user.token_usage}">
+                        <div class="text-xs text-slate-500 mt-1">tracked ${fmt.format(user.total_tokens)}</div>
+                    </td>
+                    <td>
+                        <div class="font-semibold text-white">${fmt.format(user.successful_payment_count || 0)} paid</div>
+                        <div class="text-xs text-slate-500 mt-1">${fmt.format(user.payment_attempt_count || 0)} attempts</div>
+                    </td>
+                    <td>
+                        <input data-field="is_admin" data-user-id="${user.id}" type="checkbox" ${user.is_admin ? 'checked' : ''}>
+                    </td>
+                    <td>
+                        <div class="flex gap-2">
+                            <button data-detail="${user.id}" class="btn">Details</button>
+                            <button data-save="${user.id}" class="btn btn-primary">Save</button>
+                        </div>
+                    </td>
+                `;
+                table.appendChild(row);
+            });
+        }
+
+        function shortDate(value) {
+            if (!value) return '-';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+            return date.toLocaleString();
+        }
+
+        async function showUserDetails(userId) {
+            const detail = await adminFetch(`/admin/users/${userId}/details`);
+            document.getElementById('detailPanel').classList.remove('hidden');
+            document.getElementById('detailTitle').textContent = detail.user.name;
+            document.getElementById('detailSubtitle').textContent = `${detail.user.email} - ${detail.user.plan.toUpperCase()}`;
+            const remaining = detail.user.requests_remaining === null ? 'Unlimited' : fmt.format(detail.user.requests_remaining);
+            document.getElementById('detailRequests').textContent = `${fmt.format(detail.request_count)} used / ${remaining} left`;
+            document.getElementById('detailUsageEvents').textContent = fmt.format(detail.usage_event_count);
+            document.getElementById('detailPayments').textContent = `${fmt.format(detail.successful_payment_count)} paid / ${fmt.format(detail.payment_attempt_count)} attempts`;
+            document.getElementById('detailTokens').textContent = fmt.format(detail.user.total_tokens);
+
+            const usageRows = document.getElementById('detailUsageRows');
+            usageRows.innerHTML = '';
+            if (!detail.usage.length) {
+                usageRows.innerHTML = '<tr><td colspan="5" class="text-slate-400">No requests recorded.</td></tr>';
+            } else {
+                detail.usage.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.model}</td>
+                        <td>${item.request_type}</td>
+                        <td>${fmt.format(item.total_tokens)}</td>
+                        <td>${item.status}</td>
+                        <td>${shortDate(item.created_at)}</td>
+                    `;
+                    usageRows.appendChild(row);
+                });
+            }
+
+            const paymentRows = document.getElementById('detailPaymentRows');
+            paymentRows.innerHTML = '';
+            if (!detail.payments.length) {
+                paymentRows.innerHTML = '<tr><td colspan="5" class="text-slate-400">No payments recorded.</td></tr>';
+            } else {
+                detail.payments.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.plan}</td>
+                        <td>${fmt.format(item.amount)}</td>
+                        <td>${item.status}</td>
+                        <td>${item.ref_id || item.authority || '-'}</td>
+                        <td>${shortDate(item.verified_at || item.created_at)}</td>
+                    `;
+                    paymentRows.appendChild(row);
+                });
+            }
+            document.getElementById('detailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        async function loadUsers() {
+            if (!token()) {
+                showLogin();
+                return;
+            }
+            const data = await adminFetch('/admin/users');
+            users = data.users;
+            plans = data.plans;
+            document.getElementById('totalUsers').textContent = fmt.format(data.total_users);
+            document.getElementById('freeUsers').textContent = fmt.format(data.plan_counts.free || 0);
+            document.getElementById('paidUsers').textContent = fmt.format((data.plan_counts.basic || 0) + (data.plan_counts.standard || 0) + (data.plan_counts.deluxe || 0));
+            document.getElementById('adminUsers').textContent = fmt.format(users.filter(user => user.is_admin).length);
+            setStatus('Admin data loaded from database.');
+            showAdmin();
+            renderUsers();
+            await loadAIProvider();
+        }
+
+        async function saveUser(userId) {
+            const plan = document.querySelector(`[data-user-id="${userId}"][data-field="plan"]`).value;
+            const requestCount = Number(document.querySelector(`[data-user-id="${userId}"][data-field="request_count"]`).value || 0);
+            const requestBalance = Number(document.querySelector(`[data-user-id="${userId}"][data-field="request_balance"]`).value || 0);
+            const tokenUsage = Number(document.querySelector(`[data-user-id="${userId}"][data-field="token_usage"]`).value || 0);
+            const isAdmin = document.querySelector(`[data-user-id="${userId}"][data-field="is_admin"]`).checked;
+            await adminFetch(`/admin/users/${userId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    plan,
+                    request_count: requestCount,
+                    request_balance: requestBalance,
+                    token_usage: tokenUsage,
+                    is_admin: isAdmin
+                })
+            });
+            setStatus('User updated.');
+            await loadUsers();
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async event => {
+            event.preventDefault();
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            if (!response.ok) {
+                setStatus('Invalid admin credentials.');
+                return;
+            }
+            const data = await response.json();
+            if (!data.user.is_admin) {
+                setStatus('This account is not an admin.');
+                return;
+            }
+            sessionStorage.setItem('deepintelligence_token', data.token);
+            sessionStorage.setItem('deepintelligence_user', JSON.stringify(data.user));
+            await loadUsers();
+        });
+
+        document.getElementById('usersTable').addEventListener('click', event => {
+            const button = event.target.closest('[data-save]');
+            if (button) saveUser(button.dataset.save).catch(error => setStatus(error.message));
+            const detailButton = event.target.closest('[data-detail]');
+            if (detailButton) showUserDetails(detailButton.dataset.detail).catch(error => setStatus(error.message));
+            const row = event.target.closest('tr[data-user-id]');
+            const isControl = event.target.closest('button, input, select');
+            if (row && !isControl) showUserDetails(row.dataset.userId).catch(error => setStatus(error.message));
+        });
+        document.getElementById('closeDetailsBtn').addEventListener('click', () => {
+            document.getElementById('detailPanel').classList.add('hidden');
+        });
+        document.getElementById('searchInput').addEventListener('input', renderUsers);
+        document.getElementById('providerSelect').addEventListener('change', updateProviderDetails);
+        document.getElementById('saveProviderBtn').addEventListener('click', () => saveAIProvider().catch(error => {
+            document.getElementById('providerMessage').textContent = error.message;
+            setStatus(error.message);
+        }));
+        document.getElementById('testProviderBtn').addEventListener('click', () => testAIProvider().catch(error => {
+            document.getElementById('providerMessage').textContent = error.message;
+            setStatus(error.message);
+        }));
+        document.getElementById('refreshBtn').addEventListener('click', () => loadUsers().catch(error => setStatus(error.message)));
+        document.getElementById('appBtn').addEventListener('click', () => window.location.href = '/app');
+        document.getElementById('dashboardBtn').addEventListener('click', () => window.location.href = '/dashboard');
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            sessionStorage.removeItem('deepintelligence_token');
+            sessionStorage.removeItem('deepintelligence_user');
+            showLogin();
+        });
+
+        loadUsers().catch(error => {
+            setStatus(error.message);
+            showLogin();
+        });
+    </script>
+</body>
+</html>

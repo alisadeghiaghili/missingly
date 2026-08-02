@@ -1,0 +1,123 @@
+# Hair Salon Website Prompt
+# thinkflow.ir
+
+Build a dark, editorial women's hair salon website called "Studio thinkflow" ## Design System
+
+### Colors
+```css
+:root {
+  --background: 20 8% 7%;             /* near-black warm #130e0c */
+  --foreground: 38 18% 90%;           /* warm pearl */
+  --primary: 20 8% 7%;
+  --primary-foreground: 38 18% 90%;
+  --accent: 18 42% 55%;               /* terracotta #c17a54 */
+  --surface: 20 6% 11%;
+  --surface-raised: 20 5% 15%;
+  --muted-foreground: 38 8% 55%;
+  --border: 20 5% 18%;
+}
+```
+
+### Typography
+- Import: `https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500&display=swap`
+- Headlines: Bebas Neue — full condensed, maximum scale
+- Body: Inter 300–500
+- Labels: Inter 500 uppercase 10px letter-spacing 0.16em
+
+## Sections
+
+### 1. Navbar
+- Sticky near-black background, `backdrop-filter: blur(12px)`
+- Left: Inter 500 uppercase letter-spacing 0.2em wordmark "STUDIO THINKFLOW" in terracotta
+- Right: Services · Portfolio · About · Book + "Book now →" terracotta button
+
+### 2. Hero
+- Full-viewport height, near-black background
+- Full-bleed editorial portrait photography `position: absolute inset-0`, `object-fit: cover; object-position: center`
+- Composition-independent overlay: `linear-gradient(to right, rgba(19,14,12,0.96) 0%, rgba(19,14,12,0.75) 48%, rgba(19,14,12,0.20) 100%)`
+- Large background text: "NORA" in Bebas Neue `font-size: clamp(240px, 35vw, 500px)` at `opacity: 0.03`, `position: absolute`, centered vertically, `z-index: 1`
+- Content `z-index: 10` left-aligned `max-width: 560px padding-left: 6vw`:
+  - Inter 500 uppercase 10px terracotta label: "Hair Studio · Notting Hill, London"
+  - Bebas Neue `clamp(72px, 10vw, 140px)` pearl line-height 0.88: "YOUR HAIR.\nYOUR STORY.\nOUR CRAFT."
+  - Terracotta accent on "OUR CRAFT."
+  - Inter 300 muted pearl sub: "Expert cuts, colour, and styling for women who know exactly what they want — and those still discovering it"
+  - CTAs: "Book an appointment →" (terracotta filled, dark text) + "See our work" (ghost)
+  - Trust chips: "10+ Years · Notting Hill · Walk-ins Welcome Mondays"
+
+{/* Image brief: editorial portrait of woman with dramatic hair styling, dark moody studio background, fashion photography aesthetic, sharp lighting, high contrast black and white or warm tones */}
+
+- Hero: aggressive stagger fade-up (y: 40→0, 0.6s, 0.08s delay per element)
+
+### 3. Services
+- "What We Do" — Bebas Neue `clamp(52px, 7vw, 90px)` pearl
+- 6-service 3×2 grid, dark surface cards:
+  - Cut & Style (from £65 — consultation included)
+  - Colour & Balayage (from £95 — bespoke blending)
+  - Highlights (from £85 — foils and freehand)
+  - Blow-Dry (from £40 — in-salon finish)
+  - Keratin Treatment (from £150 — 12-week smoothing)
+  - Extensions (from £200 — tape, bonds, or clip)
+- Each card: Inter 500 service name, Inter 300 muted description, terracotta price tag, lucide icon
+- Hover: terracotta border + `box-shadow: 0 0 18px hsl(18 42% 55% / 0.12)`
+
+### 4. Portfolio
+- "Our Work" — Bebas Neue large pearl
+- 5-image horizontal strip, `height: 340px`, `min-width: 260px` per image, `overflow-x: auto` on mobile
+- Scale on hover 1.02, no border-radius, 2px gap
+- Stagger fade-in on scroll
+
+{/* Image brief: close-up of perfect balayage colour, warm blonde tones, editorial beauty photography */}
+{/* Image brief: sleek blow-dry finish on brunette, studio lighting, fashion-editorial quality */}
+{/* Image brief: curly hair transformation, vibrant and natural, warm light */}
+{/* Image brief: short precision cut, dramatic editorial, strong lighting */}
+{/* Image brief: hair colour close-up — rich red tones, high-gloss finish */}
+
+### 5. Why Studio THINKFLOW
+- Split: left text, right image
+- Bebas Neue large pearl: "WE DON'T DO CONVEYOR BELT HAIR"
+- Inter 300 muted: 2 paragraphs — every appointment starts with a consultation, no rushed bookings, no double-stacking clients. Colour consultations always by the same stylist.
+- 4 terracotta check points (lucide Check): "Dedicated stylist every visit · No hidden pricing · Colour consultations always free · Cancellation up to 24hrs"
+
+{/* Image brief: stylist and client in consultation, intimate salon setting, warm light, genuine connection */}
+
+### 6. Team
+- "Your Stylists" — Bebas Neue large pearl
+- 3 stylist cards: portrait (square, no border-radius), Bebas Neue name, terracotta specialty chip, Inter 300 bio
+- Hover: terracotta border + glow
+
+{/* Image brief: female hair stylist, editorial headshot, dark studio background, professional and confident */}
+{/* Image brief: female stylist with scissors, blurred salon background, warm and approachable */}
+{/* Image brief: stylist at work, focus on hands and technique, artistic photography */}
+
+### 7. Testimonials
+- Surface-raised section
+- 3 cards: 5-star row in terracotta, Inter 300 italic pearl quote, client name + service in Inter 10px muted
+- Stagger fade-up on scroll
+
+### 8. Booking CTA
+- Full-width, `background: hsl(18 42% 55%)` terracotta
+- Bebas Neue `clamp(52px, 7vw, 90px)` dark: "READY FOR YOUR BEST HAIR?"
+- Inter 300 dark: "Book online in 60 seconds — choose your service, stylist, and time"
+- "Book now →" dark button
+- "New clients welcome · Consultations always free · Walk-ins Mondays" Inter 10px dark 70%
+
+### 9. Footer
+- Near-black background, Inter 500 uppercase "STUDIO THINKFLOW" in terracotta
+- Instagram · TikTok · Google
+- "© 2026 Studio Thinkflow · 14 Pembridge Road, Notting Hill, London W11 · Mon–Sat 9am–7pm"
+
+## Animations
+- Hero text: aggressive stagger fade-up on mount (y: 40→0)
+- Background "NORA" text: fade in slowly 1.5s delay
+- Service grid: stagger fade-up on scroll
+- Gallery strip: stagger fade-in
+
+## Responsive
+- Mobile: stacked hero (photo visible behind overlay, text full width), single-column services, hamburger nav
+
+## Full Copy
+- Wordmark: "STUDIO THINKFLOW"
+- Hero: "YOUR HAIR. YOUR STORY. OUR CRAFT." / "Expert cuts, colour, and styling for women who know exactly what they want"
+- Services: Cut from £65 · Colour from £95 · Highlights from £85 · Blow-Dry from £40 · Keratin from £150 · Extensions from £200
+- Testimonial: "I've been coming to Studio THinkflow for 3 years. The colour work is genuinely exceptional — I get compliments every time I leave." — Rachel S., Notting Hill
+- CTA: "READY FOR YOUR BEST HAIR?" / "Book online in 60 seconds"

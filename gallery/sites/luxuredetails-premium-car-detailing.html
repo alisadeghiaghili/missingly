@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LuxureDetails · Premium Car Detailing</title>
+  <meta name="description" content="لندینگ تک‌صفحه تیره و لوکس برای خدمات دیتیلینگ خودرو با تصاویر سینمایی، پکیج‌های خدمات، شو‌ریل، فرم رزرو و منوی موبایل.">
+  <meta name="thinkflow:category" content="خدمات لوکس">
+  
+  <link rel="stylesheet" href="/gallery/assets/vendor/tailwind-luxuredetails.css">
+  
+  <!-- Lucide Icons -->
+  <script src="/gallery/assets/vendor/lucide-1.28.0.min.js"></script>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --background: 0 0% 0%;
+      --background-soft: 0 0% 5%;
+      --foreground: 0 0% 100%;
+      --foreground-muted: 0 0% 60%;
+      --foreground-faint: 0 0% 35%;
+      --border: 0 0% 15%;
+      --card: #121212;
+    }
+
+    body {
+      background-color: black;
+      color: white;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .font-serif-custom {
+      font-family: 'Instrument Serif', Georgia, serif;
+    }
+
+    .font-sans-custom {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* Texture Overlay */
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      pointer-events: none;
+      opacity: 0.35;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      background-size: 180px 180px;
+    }
+  </style>
+</head>
+<body class="selection:bg-white selection:text-black font-sans antialiased min-h-screen relative overflow-x-hidden">
+
+  <!-- Grain Texture -->
+  <div class="grain"></div>
+
+  <!-- SECTION 1: NAVBAR -->
+  <nav class="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10 py-5 transition-all">
+    <div class="max-w-[1120px] mx-auto w-full px-6 flex items-center justify-between">
+      <a href="#" class="font-sans-custom font-medium text-sm tracking-wider uppercase text-white hover:opacity-80 transition-opacity">
+        LuxureDetails
+      </a>
+
+      <!-- Desktop Links -->
+      <div class="hidden md:flex items-center space-x-10">
+        <a href="#services" class="font-sans-custom font-medium text-[13px] uppercase tracking-[0.08em] text-white/70 hover:text-white transition-colors">Services</a>
+        <a href="#pricing" class="font-sans-custom font-medium text-[13px] uppercase tracking-[0.08em] text-white/70 hover:text-white transition-colors">Pricing</a>
+        <a href="#about" class="font-sans-custom font-medium text-[13px] uppercase tracking-[0.08em] text-white/70 hover:text-white transition-colors">About</a>
+        <a href="#contact" class="font-sans-custom font-medium text-[13px] uppercase tracking-[0.08em] text-white/70 hover:text-white transition-colors">Contact</a>
+      </div>
+
+      <!-- Desktop Button -->
+      <div class="hidden md:block">
+        <button onclick="openModal()" class="border border-white/30 rounded-sm px-5 py-2 font-sans-custom text-sm text-white hover:bg-white hover:text-black transition-all duration-300 uppercase tracking-wider text-[12px]">
+          Get a quote
+        </button>
+      </div>
+
+      <!-- Mobile Menu Button -->
+      <button id="mobileMenuBtn" class="md:hidden text-white p-1 hover:text-white/80 transition-colors focus:outline-none" aria-label="Toggle menu">
+        <i data-lucide="menu" class="w-6 h-6"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile Navigation Drawer -->
+  <div id="mobileMenu" class="fixed inset-0 z-30 bg-black hidden flex-col justify-between px-6 pt-28 pb-12 md:hidden">
+    <div class="flex flex-col space-y-8">
+      <a href="#services" onclick="toggleMobileMenu()" class="font-serif-custom text-4xl text-white hover:text-white/70 transition-colors">Services</a>
+      <a href="#pricing" onclick="toggleMobileMenu()" class="font-serif-custom text-4xl text-white hover:text-white/70 transition-colors">Pricing</a>
+      <a href="#about" onclick="toggleMobileMenu()" class="font-serif-custom text-4xl text-white hover:text-white/70 transition-colors">About</a>
+      <a href="#contact" onclick="toggleMobileMenu()" class="font-serif-custom text-4xl text-white hover:text-white/70 transition-colors">Contact</a>
+    </div>
+
+    <div class="flex flex-col space-y-6 pt-8 border-t border-white/10">
+      <button onclick="toggleMobileMenu(); openModal();" class="w-full border border-white rounded-sm py-4 text-center font-sans-custom text-sm uppercase tracking-widest text-black bg-white hover:bg-white/90 transition-colors font-medium">
+        Get a Quote
+      </button>
+      <div class="text-xs text-white/40 tracking-wider uppercase font-sans-custom flex justify-between">
+        <span>Geneva · London · Monaco</span>
+        <span>© 2026</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: HERO -->
+  <section class="min-h-screen relative overflow-hidden flex flex-col bg-black pt-32 pb-16 justify-between">
+    <div class="max-w-[1120px] mx-auto w-full px-6 flex flex-col items-center justify-center text-center mt-12 z-20">
+      <div class="mb-6 inline-flex items-center space-x-2 border border-white/15 bg-white/5 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-sans-custom uppercase tracking-[0.15em] text-white/70">
+        <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+        <span>Bespoke Automotive Preservation</span>
+      </div>
+
+      <h1 class="font-serif-custom text-5xl md:text-7xl lg:text-8xl text-white leading-[0.95] tracking-[-2px] max-w-[820px] mx-auto">
+        Luxury car detailing
+      </h1>
+
+      <p class="font-sans-custom font-light text-base md:text-lg text-white/60 max-w-[480px] mx-auto mt-6 leading-relaxed">
+        Experience the prestige of a professionally detailed car, radiating elegance and refinement at every turn.
+      </p>
+
+      <div class="mt-8">
+        <button onclick="openModal()" class="inline-flex items-center space-x-2 font-sans-custom font-medium text-sm text-white hover:opacity-70 transition-opacity uppercase tracking-wider group">
+          <span>Let's connect</span>
+          <i data-lucide="arrow-up-right" class="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Hero Image Container -->
+    <div class="max-w-[1120px] mx-auto w-full px-6 mt-12 relative">
+      <div class="relative rounded-sm overflow-hidden border border-white/10 aspect-[21/9] md:aspect-[2.4/1] bg-neutral-900 shadow-2xl">
+        <img src="/gallery/assets/luxuredetails/hero.jpg" alt="Luxury hypercar reflecting flawless deep gloss black finish" class="w-full h-full object-cover object-center grayscale contrast-125 brightness-90 transform scale-105 hover:scale-100 transition-transform duration-1000" fetchpriority="high" />
+        <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30 pointer-events-none"></div>
+        <div class="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-black/40 pointer-events-none"></div>
+      </div>
+      <div class="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black to-transparent z-10 pointer-events-none"></div>
+    </div>
+
+    <!-- Quick Stats Bar -->
+    <div class="max-w-[1120px] mx-auto w-full px-6 grid grid-cols-2 md:grid-cols-4 gap-6 pt-12 border-t border-white/10 mt-6 text-center md:text-left">
+      <div>
+        <p class="font-serif-custom text-3xl md:text-4xl text-white">100%</p>
+        <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mt-1">Hand Crafted</p>
+      </div>
+      <div>
+        <p class="font-serif-custom text-3xl md:text-4xl text-white">99.8%</p>
+        <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mt-1">Paint Correction</p>
+      </div>
+      <div>
+        <p class="font-serif-custom text-3xl md:text-4xl text-white">10+ Yrs</p>
+        <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mt-1">Ceramic Longevity</p>
+      </div>
+      <div>
+        <p class="font-serif-custom text-3xl md:text-4xl text-white">1,500+</p>
+        <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mt-1">Supercars Treated</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3: SERVICES -->
+  <section id="services" class="bg-black pt-32 pb-24 border-t border-white/10">
+    <div class="max-w-[1120px] mx-auto w-full px-6">
+      <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 border-t border-white/10 pt-6 mb-8">
+        Luxury car detailing
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+        <h2 class="font-serif-custom text-4xl md:text-5xl text-white leading-tight">
+          Love in Every Detail
+        </h2>
+        <p class="font-sans-custom font-light text-white/60 text-base leading-relaxed max-w-[380px]">
+          Immerse yourself in luxury with our bespoke detailing packages tailored to your car's unique needs.
+        </p>
+      </div>
+
+      <!-- Service Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
+        
+        <!-- Card 1 -->
+        <div class="bg-[var(--card)] rounded-sm overflow-hidden group cursor-pointer border border-white/10 hover:border-white/30 transition-all flex flex-col justify-between">
+          <div>
+            <div class="aspect-[3/2] overflow-hidden relative">
+              <img src="/gallery/assets/luxuredetails/entry-detail.jpg" alt="Entry level detail" class="w-full h-full object-cover object-center grayscale contrast-125 transition-transform duration-500 group-hover:scale-[1.03]" loading="lazy" />
+              <div class="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-sm border border-white/10">
+                <span class="font-sans-custom text-[10px] uppercase tracking-widest text-white/80">Essential Care</span>
+              </div>
+            </div>
+            <div class="p-6">
+              <div class="flex justify-between items-baseline mb-2">
+                <h3 class="font-sans font-semibold text-base text-white">Entry level detail</h3>
+                <span class="font-sans text-xs text-white/50">From $450</span>
+              </div>
+              <p class="font-sans font-light text-xs text-white/50 leading-relaxed">
+                Treat your luxury car to a thorough hand wash and wax application.
+              </p>
+              <ul class="mt-4 space-y-2">
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Multi-stage pH neutral hand wash</li>
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Single stage synthetic wax application</li>
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Wheel barrel deep cleaning</li>
+              </ul>
+            </div>
+          </div>
+          <div class="px-6 pb-6 pt-2">
+            <button onclick="openModal('Entry level detail')" class="w-full py-3 border border-white/20 hover:border-white hover:bg-white hover:text-black transition-all text-xs font-sans uppercase tracking-wider text-white flex items-center justify-center gap-2">
+              <span>Learn more &rarr;</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="bg-[var(--card)] rounded-sm overflow-hidden group cursor-pointer border border-white/10 hover:border-white/30 transition-all flex flex-col justify-between">
+          <div>
+            <div class="aspect-[3/2] overflow-hidden relative">
+              <img src="/gallery/assets/luxuredetails/maintenance-detail.jpg" alt="Maintenance detail" class="w-full h-full object-cover object-center grayscale contrast-125 transition-transform duration-500 group-hover:scale-[1.03]" loading="lazy" />
+              <div class="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-sm border border-white/10">
+                <span class="font-sans-custom text-[10px] uppercase tracking-widest text-white/80">Most Requested</span>
+              </div>
+            </div>
+            <div class="p-6">
+              <div class="flex justify-between items-baseline mb-2">
+                <h3 class="font-sans font-semibold text-base text-white">Maintenance detail</h3>
+                <span class="font-sans text-xs text-white/50">From $850</span>
+              </div>
+              <p class="font-sans font-light text-xs text-white/50 leading-relaxed">
+                Ensure your car's longevity with a periodic exterior protection treatment.
+              </p>
+              <ul class="mt-4 space-y-2">
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Iron decontamination & clay bar</li>
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Engine bay aesthetic dressing</li>
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Swissvax Carnauba hand polish</li>
+              </ul>
+            </div>
+          </div>
+          <div class="px-6 pb-6 pt-2">
+            <button onclick="openModal('Maintenance detail')" class="w-full py-3 border border-white/20 hover:border-white hover:bg-white hover:text-black transition-all text-xs font-sans uppercase tracking-wider text-white flex items-center justify-center gap-2">
+              <span>Learn more &rarr;</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="bg-[var(--card)] rounded-sm overflow-hidden group cursor-pointer border border-white/10 hover:border-white/30 transition-all flex flex-col justify-between">
+          <div>
+            <div class="aspect-[3/2] overflow-hidden relative">
+              <img src="/gallery/assets/luxuredetails/full-detail.jpg" alt="Full detail" class="w-full h-full object-cover object-center grayscale contrast-125 transition-transform duration-500 group-hover:scale-[1.03]" loading="lazy" />
+              <div class="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-sm border border-white/10">
+                <span class="font-sans-custom text-[10px] uppercase tracking-widest text-white/80">Concours Grade</span>
+              </div>
+            </div>
+            <div class="p-6">
+              <div class="flex justify-between items-baseline mb-2">
+                <h3 class="font-sans font-semibold text-base text-white">Full detail</h3>
+                <span class="font-sans text-xs text-white/50">From $1,800</span>
+              </div>
+              <p class="font-sans font-light text-xs text-white/50 leading-relaxed">
+                Pamper your vehicle with a complete treatment, leaving no detail overlooked.
+              </p>
+              <ul class="mt-4 space-y-2">
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Multi-stage paint correction</li>
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> 5-Year Ceramic Coating</li>
+                <li class="flex items-center text-xs font-sans text-white/70"><i data-lucide="chevron-right" class="w-3 h-3 mr-1 text-white/40"></i> Wheel-off brake caliper detail</li>
+              </ul>
+            </div>
+          </div>
+          <div class="px-6 pb-6 pt-2">
+            <button onclick="openModal('Full detail')" class="w-full py-3 border border-white/20 hover:border-white hover:bg-white hover:text-black transition-all text-xs font-sans uppercase tracking-wider text-white flex items-center justify-center gap-2">
+              <span>Learn more &rarr;</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 4: SHOWREEL -->
+  <section id="pricing" class="bg-black py-20 border-t border-white/10">
+    <div class="max-w-[1120px] mx-auto w-full px-6">
+      <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between">
+        <div>
+          <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mb-2">Cinematic Portfolio</p>
+          <h2 class="font-serif-custom text-3xl md:text-5xl text-white">Experience precision in motion</h2>
+        </div>
+        <p class="font-sans-custom text-xs uppercase tracking-widest text-white/50 mt-4 md:mt-0">4K HDR Master Cut · 02:45</p>
+      </div>
+
+      <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" target="_blank" rel="noopener noreferrer" class="relative block w-full aspect-[16/9] md:aspect-[21/9] rounded-sm overflow-hidden group cursor-pointer border border-white/10">
+        <img src="/gallery/assets/luxuredetails/showreel.jpg" alt="Cinematic showreel poster" class="w-full h-full object-cover object-center grayscale contrast-125 brightness-75 group-hover:scale-105 transition-transform duration-700 ease-out" loading="lazy" />
+        <div class="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors duration-500"></div>
+        <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/80 to-transparent pointer-events-none"></div>
+        <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
+
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <div class="w-20 h-20 md:w-24 md:h-24 rounded-full border border-white/40 bg-black/60 backdrop-blur-md flex items-center justify-center group-hover:border-white group-hover:bg-black/80 transition-all shadow-2xl">
+            <i data-lucide="play" class="w-8 h-8 text-white fill-white ml-1"></i>
+          </div>
+          <span class="font-sans-custom font-medium text-xs uppercase tracking-[0.2em] text-white mt-4 opacity-80 group-hover:opacity-100 transition-opacity">
+            Play showreel
+          </span>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- SECTION 5: WHY US / FEATURES -->
+  <section id="about" class="bg-black py-32 border-t border-white/10">
+    <div class="max-w-[1120px] mx-auto w-full px-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
+        <!-- Left Column -->
+        <div class="sticky top-28">
+          <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mb-4">The Standard of Excellence</p>
+          <h2 class="font-serif-custom text-4xl md:text-5xl lg:text-6xl text-white max-w-[420px] leading-[1.05]">
+            We will take good care of your car
+          </h2>
+          <p class="font-sans-custom font-light text-white/60 text-base leading-relaxed mt-6 max-w-[420px]">
+            Our dedicated studio is equipped with specialized color-matched lighting, climate control, and filtered air to guarantee flawless paint correction and coating curing.
+          </p>
+        </div>
+
+        <!-- Right Column -->
+        <div class="flex flex-col gap-10">
+          <div class="p-8 rounded-sm bg-[var(--card)] border border-white/10 hover:border-white/30 transition-all group">
+            <div class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center bg-black/40 group-hover:border-white group-hover:bg-white group-hover:text-black transition-all text-white mb-6">
+              <i data-lucide="crosshair" class="w-5 h-5"></i>
+            </div>
+            <h3 class="font-serif-custom text-2xl text-white mb-3">Precise work</h3>
+            <p class="font-sans-custom font-light text-sm text-white/60 leading-relaxed">
+              We uphold the highest standards of professionalism when servicing your vehicles.
+            </p>
+          </div>
+
+          <div class="p-8 rounded-sm bg-[var(--card)] border border-white/10 hover:border-white/30 transition-all group">
+            <div class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center bg-black/40 group-hover:border-white group-hover:bg-white group-hover:text-black transition-all text-white mb-6">
+              <i data-lucide="star" class="w-5 h-5"></i>
+            </div>
+            <h3 class="font-serif-custom text-2xl text-white mb-3">Premium Products and Services</h3>
+            <p class="font-sans-custom font-light text-sm text-white/60 leading-relaxed">
+              Ensure your car's longevity with a periodic exterior protection treatment.
+            </p>
+          </div>
+
+          <div class="p-8 rounded-sm bg-[var(--card)] border border-white/10 hover:border-white/30 transition-all group">
+            <div class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center bg-black/40 group-hover:border-white group-hover:bg-white group-hover:text-black transition-all text-white mb-6">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+            </div>
+            <h3 class="font-serif-custom text-2xl text-white mb-3">High-Level Security and Privacy</h3>
+            <p class="font-sans-custom font-light text-sm text-white/60 leading-relaxed">
+              We understand the importance of privacy and security for our clients.
+            </p>
+          </div>
+
+          <div class="pt-4">
+            <button onclick="openModal()" class="inline-flex items-center space-x-2 font-sans-custom font-medium text-sm text-white hover:opacity-60 transition-opacity uppercase tracking-wider group">
+              <span>Get a quote now</span>
+              <i data-lucide="arrow-up-right" class="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 6: CTA / BOOKING -->
+  <section class="relative overflow-hidden min-h-[500px] flex items-end pb-20 border-t border-white/10 bg-black">
+    <div class="absolute inset-0 z-0">
+      <img src="/gallery/assets/luxuredetails/booking.jpg" alt="Porsche rear luxury detail dark silhouette" class="w-full h-full object-cover object-center opacity-40 grayscale contrast-125" loading="lazy" />
+      <div class="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-black/30"></div>
+    </div>
+
+    <div class="max-w-[1120px] mx-auto w-full px-6 relative z-20">
+      <div class="max-w-[520px]">
+        <h2 class="font-serif-custom text-4xl md:text-5xl text-white leading-tight">
+          Book your luxury car detailing today
+        </h2>
+        <p class="font-sans-custom font-light text-white/60 text-base mt-4 leading-relaxed">
+          Click the link below. Fill out the details and we'll get back to you in less than 24 hours.
+        </p>
+        <button onclick="openModal()" class="mt-8 border border-white/30 bg-white/5 backdrop-blur-md rounded-sm px-8 py-4 text-sm font-sans-custom text-white hover:bg-white hover:text-black transition-all duration-300 uppercase tracking-widest inline-flex items-center space-x-2">
+          <span>Get a quote now</span>
+          <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 7: FOOTER -->
+  <footer id="contact" class="bg-black border-t border-white/10 py-16">
+    <div class="max-w-[1120px] mx-auto w-full px-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-10">
+        <!-- Col 1 -->
+        <div>
+          <a href="#" class="font-sans-custom font-medium text-sm tracking-wider uppercase text-white">LuxureDetails</a>
+          <p class="font-sans-custom font-light text-xs text-white/40 max-w-[220px] mt-3 leading-relaxed">
+            Experience the prestige of a professionally detailed car, radiating elegance and refinement at every turn.
+          </p>
+        </div>
+
+        <!-- Col 2 -->
+        <div>
+          <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mb-4">Website</p>
+          <ul class="space-y-3 font-sans-custom text-xs text-white/70">
+            <li><a href="#services" class="hover:text-white transition-colors">Services</a></li>
+            <li><a href="#pricing" class="hover:text-white transition-colors">Pricing</a></li>
+            <li><a href="#about" class="hover:text-white transition-colors">About</a></li>
+          </ul>
+        </div>
+
+        <!-- Col 3 -->
+        <div>
+          <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mb-4">Contact</p>
+          <ul class="space-y-3 font-sans-custom text-xs text-white/70">
+            <li><button onclick="openModal()" class="hover:text-white transition-colors">Get a quote</button></li>
+            <li><button onclick="openModal()" class="hover:text-white transition-colors">Contact form</button></li>
+            <li><a href="mailto:concierge@luxuredetails.com" class="hover:text-white transition-colors">concierge@luxuredetails.com</a></li>
+          </ul>
+        </div>
+
+        <!-- Col 4 -->
+        <div>
+          <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mb-4">Social Media</p>
+          <ul class="space-y-3 font-sans-custom text-xs text-white/70">
+            <li><a href="#" class="hover:text-white transition-colors">Facebook</a></li>
+            <li><a href="#" class="hover:text-white transition-colors">Instagram</a></li>
+            <li><a href="#" class="hover:text-white transition-colors">Twitter</a></li>
+            <li><a href="#" class="hover:text-white transition-colors">Youtube</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="border-t border-white/10 mt-12 pt-6 flex justify-between flex-col md:flex-row gap-4">
+        <p class="font-sans-custom text-white/30 text-xs">LuxureDetails © 2026</p>
+        <div class="flex space-x-6 font-sans-custom text-white/30 text-xs">
+          <a href="#" class="hover:text-white/60 transition-colors">Cookie policy</a>
+          <span>·</span>
+          <a href="#" class="hover:text-white/60 transition-colors">Terms of service</a>
+          <span>·</span>
+          <a href="#" class="hover:text-white/60 transition-colors">Privacy policy</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL FORM -->
+  <div id="quoteModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+    <div onclick="closeModal()" class="absolute inset-0 bg-black/90 backdrop-blur-md"></div>
+    <div class="relative w-full max-w-xl bg-[var(--card)] border border-white/20 p-8 rounded-sm shadow-2xl z-10 my-auto">
+      <button onclick="closeModal()" class="absolute top-6 right-6 text-white/50 hover:text-white transition-colors">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div id="formContainer">
+        <p class="font-sans-custom text-[11px] uppercase tracking-[0.12em] text-white/40 mb-1">Bespoke Consultation</p>
+        <h3 class="font-serif-custom text-3xl text-white mb-6">Request a Quote</h3>
+
+        <form id="quoteForm" class="space-y-4 font-sans-custom" onsubmit="handleFormSubmit(event)">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-white/60 mb-2">Full Name</label>
+            <input type="text" required placeholder="e.g. Jean-Luc Picard" class="w-full bg-black border border-white/20 rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-white transition-colors placeholder:text-white/20">
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-white/60 mb-2">Email</label>
+              <input type="email" required placeholder="jean@domain.com" class="w-full bg-black border border-white/20 rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-white transition-colors placeholder:text-white/20">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-white/60 mb-2">Phone</label>
+              <input type="tel" required placeholder="+41 79 000 0000" class="w-full bg-black border border-white/20 rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-white transition-colors placeholder:text-white/20">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-white/60 mb-2">Service Package</label>
+            <select id="serviceSelect" class="w-full bg-black border border-white/20 rounded-sm px-4 py-3 text-sm text-white focus:outline-none focus:border-white transition-colors">
+              <option value="Entry level detail">Entry level detail ($450+)</option>
+              <option value="Maintenance detail">Maintenance detail ($850+)</option>
+              <option value="Full detail">Full detail Concours ($1,800+)</option>
+            </select>
+          </div>
+          <button type="submit" class="w-full bg-white text-black font-sans-custom uppercase tracking-widest text-xs font-semibold py-4 rounded-sm hover:bg-white/90 transition-colors mt-4">
+            Submit Reservation Request
+          </button>
+        </form>
+      </div>
+
+      <div id="successMessage" class="hidden py-12 text-center flex-col items-center justify-center">
+        <i data-lucide="check-circle-2" class="w-16 h-16 text-white mb-4 animate-bounce"></i>
+        <h3 class="font-serif-custom text-3xl text-white mb-2">Request Received</h3>
+        <p class="font-sans-custom font-light text-sm text-white/60 max-w-sm">
+          Thank you. Our detailing master will review your request and reply within 24 hours.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Mobile Menu Toggle
+    const mobileMenu = document.getElementById('mobileMenu');
+    function toggleMobileMenu() {
+      const isHidden = mobileMenu.classList.contains('hidden');
+      if (isHidden) {
+        mobileMenu.classList.remove('hidden');
+        mobileMenu.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+      } else {
+        mobileMenu.classList.add('hidden');
+        mobileMenu.classList.remove('flex');
+        document.body.style.overflow = 'auto';
+      }
+    }
+    document.getElementById('mobileMenuBtn').addEventListener('click', toggleMobileMenu);
+
+    // Quote Modal Functions
+    const quoteModal = document.getElementById('quoteModal');
+    const serviceSelect = document.getElementById('serviceSelect');
+
+    function openModal(serviceName) {
+      if (serviceName) {
+        serviceSelect.value = serviceName;
+      }
+      quoteModal.classList.remove('hidden');
+      quoteModal.classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+      quoteModal.classList.add('hidden');
+      quoteModal.classList.remove('flex');
+      document.body.style.overflow = 'auto';
+      document.getElementById('formContainer').classList.remove('hidden');
+      document.getElementById('successMessage').classList.add('hidden');
+      document.getElementById('successMessage').classList.remove('flex');
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      document.getElementById('formContainer').classList.add('hidden');
+      const successMsg = document.getElementById('successMessage');
+      successMsg.classList.remove('hidden');
+      successMsg.classList.add('flex');
+
+      setTimeout(() => {
+        closeModal();
+      }, 2500);
+    }
+  </script>
+</body>
+</html>

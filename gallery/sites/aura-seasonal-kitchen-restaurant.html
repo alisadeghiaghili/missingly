@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aura · Seasonal Kitchen & Table</title>
+  <meta name="description" content="لندینگ گرم و صمیمی یک رستوران فصلی با رنگ‌های خاکی، تصاویر بزرگ غذا، معرفی فلسفه آشپزخانه، منوی منتخب و فرم رزرو." />
+  <meta name="thinkflow:category" content="رستوران و غذا" />
+  
+  <link rel="stylesheet" href="/gallery/assets/vendor/tailwind-aura.css">
+  
+  <!-- Google Fonts: Playfair Display (Contemporary Serif) & Caveat (Handwritten Accent) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+</head>
+<body class="bg-cream text-charcoal font-sans antialiased selection:bg-terracotta selection:text-white">
+
+  <!-- Navigation -->
+  <nav class="sticky top-0 z-50 bg-cream/90 backdrop-blur-md border-b border-olive/10 transition-all">
+    <div class="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+      <a href="#" class="text-3xl font-serif font-semibold tracking-tight text-charcoal">
+        aura<span class="text-terracotta">.</span>
+      </a>
+      
+      <div class="hidden md:flex space-x-10 text-sm font-medium tracking-wide text-charcoal/80">
+        <a href="#menu" class="hover:text-terracotta transition-colors">Our Menu</a>
+        <a href="#story" class="hover:text-terracotta transition-colors">The Kitchen</a>
+        <a href="#experience" class="hover:text-terracotta transition-colors">Experience</a>
+      </div>
+
+      <a href="#reserve" class="px-5 py-2.5 rounded-full bg-terracotta text-cream text-sm font-medium hover:bg-terracotta-dark transition-all duration-300 shadow-sm hover:shadow-md">
+        Book a Table
+      </a>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="relative pt-12 pb-20 lg:pt-20 lg:pb-32 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      
+      <!-- Text Area -->
+      <div class="lg:col-span-5 space-y-6">
+        <span class="font-handwritten text-3xl text-terracotta block -mb-2">
+          Gather around our table
+        </span>
+        <h1 class="font-serif text-5xl sm:text-6xl text-charcoal leading-[1.15]">
+          Slow food, thoughtfully <em class="italic font-normal text-olive">crafted</em>.
+        </h1>
+        <p class="text-lg text-charcoal/70 leading-relaxed font-light">
+          An intimate dining room celebrating seasonal harvests, fire-roasted textures, and the simple joy of sharing a meal made with care.
+        </p>
+        <div class="pt-4 flex flex-col sm:flex-row gap-4">
+          <a href="#reserve" class="inline-flex justify-center items-center px-7 py-3.5 rounded-full bg-olive text-cream font-medium hover:bg-olive-dark transition-all duration-300">
+            Reserve Your Spot
+          </a>
+          <a href="#menu" class="inline-flex justify-center items-center px-7 py-3.5 rounded-full border border-charcoal/20 text-charcoal font-medium hover:border-terracotta hover:text-terracotta transition-all duration-300">
+            View Seasonal Menu
+          </a>
+        </div>
+      </div>
+
+      <!-- Hero Photography -->
+      <div class="lg:col-span-7 relative">
+        <div class="relative rounded-3xl overflow-hidden shadow-2xl aspect-[4/3] bg-cream-paper">
+          <img 
+            src="/gallery/assets/aura-seasonal-kitchen/hero-dish.jpg"
+            fetchpriority="high"
+            alt="Artisanal dish with fire-roasted ingredients" 
+            class="w-full h-full object-cover transform hover:scale-105 transition-transform duration-700"
+          />
+        </div>
+        <!-- Accent Floating Image Card -->
+        <div class="hidden sm:block absolute -bottom-10 -left-10 w-48 h-56 rounded-2xl overflow-hidden shadow-xl border-4 border-cream">
+          <img 
+            src="/gallery/assets/aura-seasonal-kitchen/wine.jpg"
+            alt="Natural pouring wine" 
+            class="w-full h-full object-cover"
+          />
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Story / Kitchen Philosophy -->
+  <section id="story" class="py-24 bg-cream-paper relative border-y border-olive/10">
+    <div class="max-w-5xl mx-auto px-6 text-center space-y-8">
+      <span class="font-handwritten text-4xl text-olive">
+        From farm to ember
+      </span>
+      <h2 class="font-serif text-3xl sm:text-4xl text-charcoal max-w-2xl mx-auto leading-snug">
+        We believe the best meals carry the rhythm of the season.
+      </h2>
+      <p class="text-charcoal/70 text-lg leading-relaxed max-w-3xl mx-auto font-light">
+        Every morning, we source produce from neighboring growers within thirty miles. Our hearth relies exclusively on white oak wood, giving every dish a faint, unmistakable warmth that lingers long after the last bite.
+      </p>
+    </div>
+  </section>
+
+  <!-- High Impact Food Showcase -->
+  <section id="menu" class="py-24">
+    <div class="max-w-7xl mx-auto px-6">
+      
+      <div class="flex flex-col md:flex-row md:items-end justify-between mb-16">
+        <div>
+          <span class="font-handwritten text-3xl text-terracotta block">
+            Crafted daily
+          </span>
+          <h2 class="font-serif text-4xl text-charcoal mt-1">Today's Highlights</h2>
+        </div>
+        <p class="text-charcoal/60 mt-4 md:mt-0 max-w-md font-light">
+          Menus shift with availability. Minimal interference, maximum depth.
+        </p>
+      </div>
+
+      <!-- Photo-First Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <!-- Dish 1 -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-[3/4] rounded-2xl overflow-hidden mb-5 bg-cream-paper">
+            <img 
+              src="/gallery/assets/aura-seasonal-kitchen/garden-plate.jpg"
+              loading="lazy"
+              alt="Fresh heirloom tomato salad with herbs" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <span class="absolute top-4 right-4 bg-cream/90 backdrop-blur-md text-charcoal font-serif px-3 py-1 rounded-full text-sm">
+              $18
+            </span>
+          </div>
+          <h3 class="font-serif text-2xl text-charcoal group-hover:text-terracotta transition-colors">
+            Heirloom & Burrata
+          </h3>
+          <p class="text-charcoal/60 text-sm mt-1 font-light">
+            Smoked sea salt, pickled shallots, wild basil oil.
+          </p>
+        </div>
+
+        <!-- Dish 2 -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-[3/4] rounded-2xl overflow-hidden mb-5 bg-cream-paper">
+            <img 
+              src="/gallery/assets/aura-seasonal-kitchen/roasted-lamb.jpg"
+              loading="lazy"
+              alt="Wood fired roasted protein with herbs" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <span class="absolute top-4 right-4 bg-cream/90 backdrop-blur-md text-charcoal font-serif px-3 py-1 rounded-full text-sm">
+              $36
+            </span>
+          </div>
+          <h3 class="font-serif text-2xl text-charcoal group-hover:text-terracotta transition-colors">
+            Hearth-Roasted Lamb
+          </h3>
+          <p class="text-charcoal/60 text-sm mt-1 font-light">
+            Oak-charred coat, caramelised carrot reduction, mint oil.
+          </p>
+        </div>
+
+        <!-- Dish 3 -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-[3/4] rounded-2xl overflow-hidden mb-5 bg-cream-paper">
+            <img 
+              src="/gallery/assets/aura-seasonal-kitchen/honey-tart.jpg"
+              loading="lazy"
+              alt="Artisanal dessert" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <span class="absolute top-4 right-4 bg-cream/90 backdrop-blur-md text-charcoal font-serif px-3 py-1 rounded-full text-sm">
+              $14
+            </span>
+          </div>
+          <h3 class="font-serif text-2xl text-charcoal group-hover:text-terracotta transition-colors">
+            Smoked Honey Tart
+          </h3>
+          <p class="text-charcoal/60 text-sm mt-1 font-light">
+            Earthy thyme cream, brown butter crust, sea salt.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Reservation Banner -->
+  <section id="reserve" class="py-20 bg-olive text-cream relative overflow-hidden">
+    <div class="max-w-4xl mx-auto px-6 text-center space-y-6 relative z-10">
+      <span class="font-handwritten text-4xl text-terracotta-light">
+        Save a place for yourself
+      </span>
+      <h2 class="font-serif text-4xl sm:text-5xl">Join Us for Dinner</h2>
+      <p class="text-cream/80 text-lg font-light max-w-xl mx-auto">
+        Due to our intimate seating, we recommend reserving a table ahead of time.
+      </p>
+      
+      <form id="reservation-form" class="pt-6 flex flex-col sm:flex-row justify-center gap-3 max-w-md mx-auto">
+        <input 
+          id="reservation-email"
+          type="email" 
+          required
+          placeholder="Enter your email to start..." 
+          class="px-5 py-3.5 rounded-full bg-cream text-charcoal placeholder:text-charcoal/40 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta w-full"
+        />
+        <button 
+          type="submit" 
+          class="px-7 py-3.5 rounded-full bg-terracotta text-cream text-sm font-medium hover:bg-terracotta-dark transition-all shrink-0">
+          Reserve
+        </button>
+      </form>
+      <p id="reservation-status" role="status" class="hidden text-sm text-cream mt-4">
+        Thank you. We will contact you to confirm your table.
+      </p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 bg-cream text-charcoal/70 text-sm border-t border-olive/10">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-6">
+      <div>
+        <span class="font-serif font-semibold text-xl text-charcoal">aura.</span>
+        <p class="text-xs text-charcoal/50 mt-1">428 Hearthstone Way, Mill Valley, CA</p>
+      </div>
+      <div class="font-handwritten text-2xl text-terracotta">
+        "Good food takes time."
+      </div>
+      <div class="text-xs text-charcoal/50">
+        © 2026 Aura Kitchen. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const reservationForm = document.getElementById('reservation-form');
+    const reservationEmail = document.getElementById('reservation-email');
+    const reservationStatus = document.getElementById('reservation-status');
+
+    reservationForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (!reservationForm.checkValidity()) return;
+      reservationStatus.classList.remove('hidden');
+      reservationEmail.value = '';
+    });
+  </script>
+
+</body>
+</html>

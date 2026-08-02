@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webfluin Studio · Project Estimation Calculator</title>
+    <meta name="description" content="ماشین‌حساب تعاملی تخمین هزینه طراحی و توسعه وب‌سایت با انتخاب سرویس، تعداد صفحات، افزونه‌ها و زمان تحویل." />
+    <meta name="thinkflow:category" content="ابزار تعاملی" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <style>
+        /* ---------- Reset & Variables ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --background: #0a0a0a;
+            --muted: rgba(255, 255, 255, 0.5);
+            --muted-foreground: rgba(255, 255, 255, 0.4);
+            --primary: #FF5656;
+            --border: rgba(255, 255, 255, 0.08);
+            --card-bg: rgba(255, 255, 255, 0.04);
+        }
+
+        body {
+            background: var(--background);
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* ---------- Container ---------- */
+        .calculator {
+            width: 100%;
+            max-width: 1200px;
+            background: var(--background);
+            border-radius: 16px;
+            padding: 40px 20px;
+        }
+
+        @media (min-width: 768px) {
+            .calculator {
+                padding: 64px 64px 80px;
+            }
+        }
+
+        /* ---------- Header ---------- */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .header .mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--muted-foreground);
+        }
+
+        .header h2 {
+            margin-top: 8px;
+            font-size: clamp(1.8rem, 4vw, 3rem);
+            font-weight: 400;
+            letter-spacing: -0.02em;
+        }
+
+        /* ---------- Grid ---------- */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        @media (min-width: 1024px) {
+            .grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* ---------- Left Panel ---------- */
+        .left-panel {
+            background: #0d0d0d;
+            padding: 32px 24px;
+        }
+
+        @media (min-width: 768px) {
+            .left-panel {
+                padding: 48px;
+            }
+        }
+
+        .left-panel .section-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+
+        .left-panel .divider {
+            border-top: 1px solid #1e1e1e;
+            margin: 24px 0;
+        }
+
+        /* Radio & Checkbox Groups */
+        .option-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .option-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+
+        .left-panel input[type="radio"],
+        .left-panel input[type="checkbox"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        input:focus-visible + .custom-radio,
+        input:focus-visible + .custom-checkbox {
+            outline: 2px solid #fff;
+            outline-offset: 3px;
+        }
+
+        .custom-radio {
+            display: flex;
+            height: 20px;
+            width: 20px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        input:checked+.custom-radio {
+            border-color: var(--primary);
+        }
+
+        .custom-radio .dot {
+            height: 8px;
+            width: 8px;
+            border-radius: 9999px;
+            background: var(--primary);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        input:checked+.custom-radio .dot {
+            opacity: 1;
+        }
+
+        .custom-checkbox {
+            display: flex;
+            height: 20px;
+            width: 20px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        input:checked+.custom-checkbox {
+            border-color: var(--primary);
+            background: var(--primary);
+        }
+
+        .custom-checkbox svg {
+            width: 12px;
+            height: 12px;
+            color: #fff;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        input:checked+.custom-checkbox svg {
+            opacity: 1;
+        }
+
+        .option-label .price-tag {
+            color: var(--primary);
+        }
+
+        /* Slider */
+        .slider-wrap {
+            margin: 16px 0;
+        }
+
+        .slider-wrap input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.12);
+            outline: none;
+            transition: background 0.2s;
+        }
+
+        .slider-wrap input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 9999px;
+            background: var(--primary);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .slider-wrap input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        .slider-wrap input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 9999px;
+            background: var(--primary);
+            cursor: pointer;
+            border: none;
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--muted-foreground);
+            margin-top: 4px;
+        }
+
+        /* ---------- Right Panel ---------- */
+        .right-panel {
+            background: #0d0d0d;
+            padding: 32px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 1024px) {
+            .right-panel {
+                border-top: none;
+                border-left: 1px solid var(--border);
+                padding: 48px;
+            }
+        }
+
+        .right-panel .est-title {
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+
+        .right-panel .est-sub {
+            margin-top: 4px;
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+        }
+
+        .price-cards {
+            margin-top: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .price-card {
+            border-radius: 16px;
+            padding: 24px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .price-card .label {
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+        }
+
+        .price-card .amount {
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .price-card .note {
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+            margin-top: 4px;
+        }
+
+        .price-card.highlight {
+            background: linear-gradient(135deg, #ec4899, #f97316);
+        }
+
+        .price-card.highlight .label {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .price-card.highlight .amount {
+            color: #fff;
+        }
+
+        .price-card.highlight .note {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .btn-copy {
+            margin-top: 24px;
+            width: 100%;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 12px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-copy:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        /* ---------- Toast ---------- */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            color: #fff;
+            opacity: 0;
+            transition: all 0.4s ease;
+            pointer-events: none;
+            z-index: 999;
+            backdrop-filter: blur(12px);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ---------- Responsive ---------- */
+        @media (max-width: 480px) {
+            .calculator {
+                padding: 20px 12px;
+            }
+            .left-panel {
+                padding: 20px 16px;
+            }
+            .right-panel {
+                padding: 20px 16px;
+            }
+            .price-card .amount {
+                font-size: 1.75rem;
+            }
+            .option-group {
+                gap: 10px;
+            }
+            .option-group label {
+                font-size: 0.8rem;
+            }
+        }
+
+        /* ---------- Scrollbar ---------- */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="calculator" id="calculator-section">
+
+        <!-- ====== HEADER ====== -->
+        <div class="header">
+            <p class="mono">Try project estimation calculator</p>
+            <h2>Get premium website within your budget</h2>
+        </div>
+
+        <!-- ====== GRID ====== -->
+        <div class="grid">
+
+            <!-- ====== LEFT PANEL ====== -->
+            <div class="left-panel">
+
+                <!-- Service Type -->
+                <div>
+                    <h3 class="section-title">What kind of service do you need?</h3>
+                    <div class="option-group">
+                        <label>
+                            <input type="radio" name="service" value="design" />
+                            <span class="custom-radio"><span class="dot"></span></span>
+                            Only Design
+                        </label>
+                        <label>
+                            <input type="radio" name="service" value="development" />
+                            <span class="custom-radio"><span class="dot"></span></span>
+                            Only Development
+                        </label>
+                        <label>
+                            <input type="radio" name="service" value="both" checked />
+                            <span class="custom-radio"><span class="dot"></span></span>
+                            Design + Development
+                        </label>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Pages -->
+                <div>
+                    <h3 class="section-title">
+                        Number of Pages: <span id="pageDisplay" style="color:var(--primary);">5</span>
+                    </h3>
+                    <div class="slider-wrap">
+                        <input type="range" id="pageSlider" min="1" max="30" value="5" step="1" />
+                        <div class="slider-labels">
+                            <span>1</span>
+                            <span>30</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Add-ons -->
+                <div>
+                    <h3 class="section-title">Add-ons</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+                        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:0.875rem;">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="contentCheck" />
+                                <span class="custom-checkbox">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                </span>
+                                I will need help with content
+                            </span>
+                            <span style="color:var(--primary);">+$50/pages</span>
+                        </label>
+                        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:0.875rem;">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="seoCheck" />
+                                <span class="custom-checkbox">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                </span>
+                                I want to optimize my website for SEO
+                            </span>
+                            <span style="color:var(--primary);">+$50/pages</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Timeline -->
+                <div>
+                    <h3 class="section-title">How fast do you need this?</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+                        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:0.875rem;">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                                <input type="radio" name="timeline" value="rush" />
+                                <span class="custom-radio"><span class="dot"></span></span>
+                                Within 7 Days
+                            </span>
+                            <span style="color:var(--primary);">+$100/pages</span>
+                        </label>
+                        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:0.875rem;">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                                <input type="radio" name="timeline" value="fast" />
+                                <span class="custom-radio"><span class="dot"></span></span>
+                                Within 14 Days
+                            </span>
+                            <span style="color:var(--primary);">+$25/pages</span>
+                        </label>
+                        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:0.875rem;">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                                <input type="radio" name="timeline" value="regular" checked />
+                                <span class="custom-radio"><span class="dot"></span></span>
+                                Regular Speed (Based on discussion)
+                            </span>
+                            <span style="color:var(--primary);">No extra cost</span>
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ====== RIGHT PANEL ====== -->
+            <div class="right-panel">
+
+                <h3 class="est-title">Estimated Cost</h3>
+                <p class="est-sub">Based on your selections, here's what you can expect</p>
+
+                <div class="price-cards">
+
+                    <!-- Agency -->
+                    <div class="price-card">
+                        <p class="label">Typical Agency charges minimum</p>
+                        <p class="amount" id="agencyPrice">$8,000</p>
+                        <p class="note">+ Too much extra time &amp; additional cost</p>
+                    </div>
+
+                    <!-- Freelancer -->
+                    <div class="price-card">
+                        <p class="label">Regular Freelancer charges minimum</p>
+                        <p class="amount" id="freelancerPrice">$3,000</p>
+                        <p class="note">+ Too much headache &amp; back-and-forth</p>
+                    </div>
+
+                    <!-- Webfluin -->
+                    <div class="price-card highlight">
+                        <p class="label">With Webfluin Studio</p>
+                        <p class="amount" id="webfluinPrice">$499</p>
+                        <p class="note">Save your money, time &amp; headache</p>
+                    </div>
+
+                </div>
+
+                <button class="btn-copy" id="copyBtn">Copy Quote</button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ====== TOAST ====== -->
+    <div class="toast" id="toast">✓ Quote copied to clipboard!</div>
+
+    <!-- ====== JAVASCRIPT ====== -->
+    <script>
+        (function() {
+            'use strict';
+
+            // ---------- DOM refs ----------
+            const serviceRadios = document.querySelectorAll('input[name="service"]');
+            const pageSlider = document.getElementById('pageSlider');
+            const pageDisplay = document.getElementById('pageDisplay');
+            const contentCheck = document.getElementById('contentCheck');
+            const seoCheck = document.getElementById('seoCheck');
+            const timelineRadios = document.querySelectorAll('input[name="timeline"]');
+
+            const agencyPrice = document.getElementById('agencyPrice');
+            const freelancerPrice = document.getElementById('freelancerPrice');
+            const webfluinPrice = document.getElementById('webfluinPrice');
+
+            const copyBtn = document.getElementById('copyBtn');
+            const toast = document.getElementById('toast');
+
+            // ---------- State ----------
+            let state = {
+                service: 'both',
+                pages: 5,
+                content: false,
+                seo: false,
+                timeline: 'regular'
+            };
+
+            // ---------- Pricing Logic ----------
+            function calculatePrice(state) {
+                const { service, pages, content, seo, timeline } = state;
+
+                const rates = {
+                    design: { base: 399, perPage: 100 },
+                    development: { base: 199, perPage: 100 },
+                    both: { base: 499, perPage: 200 }
+                };
+
+                const rate = rates[service];
+                const baseTotal = Math.max(rate.base, rate.base + (pages - 1) * rate.perPage);
+
+                const contentCost = content ? pages * 50 : 0;
+                const seoCost = seo ? pages * 50 : 0;
+
+                let timelineCost = 0;
+                if (timeline === 'rush') timelineCost = pages * 100;
+                else if (timeline === 'fast') timelineCost = pages * 25;
+
+                const total = baseTotal + contentCost + seoCost + timelineCost;
+
+                // Agency: $8000 + (pages-1)*1000 (both) or 400 (other)
+                const agencyPerPage = service === 'both' ? 1000 : 400;
+                const agency = 8000 + (pages - 1) * agencyPerPage;
+
+                // Freelancer: $3000 + (pages-1)*500 (both) or 200 (other)
+                const freelancerPerPage = service === 'both' ? 500 : 200;
+                const freelancer = 3000 + (pages - 1) * freelancerPerPage;
+
+                return { total, agency, freelancer };
+            }
+
+            // ---------- Update UI ----------
+            function updateUI() {
+                const result = calculatePrice(state);
+
+                agencyPrice.textContent = '$' + result.agency.toLocaleString();
+                freelancerPrice.textContent = '$' + result.freelancer.toLocaleString();
+                webfluinPrice.textContent = '$' + result.total.toLocaleString();
+
+                pageDisplay.textContent = state.pages;
+            }
+
+            // ---------- Event Listeners ----------
+            // Service
+            serviceRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        state.service = this.value;
+                        updateUI();
+                    }
+                });
+            });
+
+            // Pages
+            pageSlider.addEventListener('input', function() {
+                state.pages = parseInt(this.value);
+                updateUI();
+            });
+
+            // Content
+            contentCheck.addEventListener('change', function() {
+                state.content = this.checked;
+                updateUI();
+            });
+
+            // SEO
+            seoCheck.addEventListener('change', function() {
+                state.seo = this.checked;
+                updateUI();
+            });
+
+            // Timeline
+            timelineRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        state.timeline = this.value;
+                        updateUI();
+                    }
+                });
+            });
+
+            // ---------- Copy Quote ----------
+            copyBtn.addEventListener('click', function() {
+                const result = calculatePrice(state);
+                const text =
+                    `Webfluin Studio Quote:\nTotal: $${result.total.toLocaleString()}\nPages: ${state.pages}\nService: ${state.service}\nTimeline: ${state.timeline}`;
+
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        showToast('✓ Quote copied to clipboard!');
+                    }).catch(() => {
+                        fallbackCopy(text);
+                    });
+                } else {
+                    fallbackCopy(text);
+                }
+            });
+
+            function fallbackCopy(text) {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast('✓ Quote copied to clipboard!');
+                } catch (e) {
+                    showToast('Failed to copy. Please copy manually.');
+                }
+                document.body.removeChild(textarea);
+            }
+
+            // ---------- Toast ----------
+            let toastTimeout = null;
+
+            function showToast(message) {
+                toast.textContent = message;
+                toast.classList.add('show');
+                clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            }
+
+            // ---------- Init ----------
+            // Set default service.
+            document.querySelector('input[name="service"][value="both"]').checked = true;
+            // Set default timeline
+            document.querySelector('input[name="timeline"][value="regular"]').checked = true;
+
+            updateUI();
+
+            console.log('Webfluin Studio Calculator loaded.');
+
+        })();
+    </script>
+
+</body>
+</html>

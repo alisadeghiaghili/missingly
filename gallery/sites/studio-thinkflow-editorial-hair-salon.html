@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Studio Thinkflow · Editorial Hair Salon</title>
+  <meta name="description" content="لندینگ تیره و ادیتوریال برای سالن تخصصی مو با معرفی خدمات، نمونه‌کارها، تیم حرفه‌ای، نظرات مشتریان و بخش رزرو." />
+  <meta name="thinkflow:category" content="زیبایی و خدمات" />
+
+  <!-- Google Fonts Embed -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/gallery/assets/vendor/tailwind-studio-hair.css">
+
+  <!-- Lucide Icons -->
+  <script src="/gallery/assets/vendor/lucide-1.28.0.min.js"></script>
+
+  <style>
+    @layer utilities {
+      /* Custom scrollbar for horizontal gallery */
+      .scrollbar-thin::-webkit-scrollbar {
+        height: 4px;
+      }
+      .scrollbar-thin::-webkit-scrollbar-track {
+        background: #1c1614;
+      }
+      .scrollbar-thin::-webkit-scrollbar-thumb {
+        background: #c17a54;
+      }
+    }
+  </style>
+</head>
+<body class="bg-[#130e0c] text-[#e6e2df] font-inter antialiased selection:bg-[#c17a54] selection:text-[#130e0c] min-h-screen">
+
+  <!-- 1. NAVBAR -->
+  <nav class="sticky top-0 z-50 bg-[#130e0c]/90 backdrop-blur-md border-b border-[#2d2421]">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-inter font-medium tracking-[0.2em] text-[#c17a54] text-sm uppercase">
+        STUDIO THINKFLOW
+      </a>
+
+      <!-- Desktop Nav -->
+      <div class="hidden md:flex items-center space-x-8 text-xs font-inter font-medium tracking-[0.16em] uppercase text-[#8c827d]">
+        <a href="#services" class="hover:text-[#e6e2df] transition-colors">Services</a>
+        <a href="#portfolio" class="hover:text-[#e6e2df] transition-colors">Portfolio</a>
+        <a href="#about" class="hover:text-[#e6e2df] transition-colors">About</a>
+        <a href="#team" class="hover:text-[#e6e2df] transition-colors">Team</a>
+        <a 
+          href="#book" 
+          class="bg-[#c17a54] text-[#130e0c] px-5 py-2.5 font-medium hover:bg-[#d68a62] transition-colors flex items-center gap-1.5"
+        >
+          Book now <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+        </a>
+      </div>
+
+      <!-- Mobile Hamburger -->
+      <button 
+        id="menu-btn"
+        class="md:hidden text-[#e6e2df] p-2 focus:outline-none"
+        aria-label="Toggle menu"
+      >
+        <i data-lucide="menu" id="menu-icon-open" class="w-6 h-6"></i>
+        <i data-lucide="x" id="menu-icon-close" class="w-6 h-6 hidden"></i>
+      </button>
+    </div>
+
+    <!-- Mobile Dropdown -->
+    <div id="mobile-menu" class="hidden md:hidden bg-[#181311] border-b border-[#2d2421] px-6 py-6 flex-col space-y-4 text-xs font-inter font-medium uppercase tracking-[0.16em]">
+      <a href="#services" class="mobile-link py-2 hover:text-[#c17a54]">Services</a>
+      <a href="#portfolio" class="mobile-link py-2 hover:text-[#c17a54]">Portfolio</a>
+      <a href="#about" class="mobile-link py-2 hover:text-[#c17a54]">About</a>
+      <a href="#team" class="mobile-link py-2 hover:text-[#c17a54]">Team</a>
+      <a 
+        href="#book" 
+        class="mobile-link bg-[#c17a54] text-[#130e0c] px-5 py-3 text-center font-medium mt-2 flex items-center justify-center gap-2"
+      >
+        Book now <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </a>
+    </div>
+  </nav>
+
+  <!-- 2. HERO -->
+  <section class="relative min-h-[92vh] flex items-center overflow-hidden bg-[#130e0c]">
+    <!-- Full-bleed photo -->
+    <div class="absolute inset-0 z-0">
+      <img 
+        src="/gallery/assets/studio-thinkflow-hair/hero.jpg"
+        fetchpriority="high"
+        alt="Studio Thinkflow Editorial Hair Styling" 
+        class="w-full h-full object-cover object-center filter brightness-90 contrast-105"
+      />
+      <!-- Gradient overlay -->
+      <div 
+        class="absolute inset-0" 
+        style="background: linear-gradient(to right, rgba(19,14,12,0.96) 0%, rgba(19,14,12,0.78) 48%, rgba(19,14,12,0.25) 100%)"
+      ></div>
+    </div>
+
+    <!-- Background Watermark Text -->
+    <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center z-[1] select-none pointer-events-none font-bebas text-[clamp(140px,22vw,360px)] text-[#e6e2df] opacity-[0.03] leading-none tracking-tighter">
+      THINKFLOW
+    </div>
+
+    <!-- Hero Content -->
+    <div class="relative z-10 w-full max-w-7xl mx-auto px-6 py-20">
+      <div class="max-w-[560px]">
+        <div class="text-[#c17a54] font-inter font-medium text-[10px] uppercase tracking-[0.16em] mb-4">
+          Hair Studio · Notting Hill, London
+        </div>
+
+        <h1 class="font-bebas text-[clamp(72px,10vw,140px)] text-[#e6e2df] leading-[0.88] mb-6 tracking-wide">
+          YOUR HAIR.<br />
+          YOUR STORY.<br />
+          <span class="text-[#c17a54]">OUR CRAFT.</span>
+        </h1>
+
+        <p class="font-inter font-light text-[#8c827d] text-base md:text-lg mb-8 leading-relaxed max-w-lg">
+          Expert cuts, colour, and styling for women who know exactly what they want — and those still discovering it.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-4 mb-10">
+          <a 
+            href="#book" 
+            class="bg-[#c17a54] text-[#130e0c] px-7 py-3.5 font-inter font-medium text-xs tracking-[0.16em] uppercase hover:bg-[#d68a62] transition-colors flex items-center gap-2"
+          >
+            Book an appointment <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </a>
+          <a 
+            href="#portfolio" 
+            class="border border-[#382e2a] text-[#e6e2df] px-7 py-3.5 font-inter font-medium text-xs tracking-[0.16em] uppercase hover:bg-[#1c1614] transition-colors"
+          >
+            See our work
+          </a>
+        </div>
+
+        <div class="pt-6 border-t border-[#2d2421] text-xs font-inter font-light text-[#8c827d] flex flex-wrap gap-x-6 gap-y-2 uppercase tracking-wider">
+          <span>10+ Years</span>
+          <span class="text-[#382e2a]">·</span>
+          <span>Notting Hill</span>
+          <span class="text-[#382e2a]">·</span>
+          <span class="text-[#c17a54]">Walk-ins Welcome Mondays</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. SERVICES -->
+  <section id="services" class="py-28 max-w-7xl mx-auto px-6">
+    <div class="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-4 border-b border-[#2d2421] pb-8">
+      <div>
+        <span class="text-[#c17a54] font-inter font-medium text-[10px] uppercase tracking-[0.16em]">
+          Precision & Artistry
+        </span>
+        <h2 class="font-bebas text-[clamp(52px,7vw,90px)] text-[#e6e2df] leading-none mt-1">
+          WHAT WE DO
+        </h2>
+      </div>
+      <p class="font-inter font-light text-[#8c827d] max-w-md text-sm leading-relaxed">
+        Transparent pricing with zero hidden fees. Every color and cutting session includes a full personal consultation.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Cut & Style -->
+      <div class="bg-[#1c1614] border border-[#2d2421] p-8 group transition-all duration-300 hover:border-[#c17a54] hover:shadow-[0_0_24px_rgba(193,122,84,0.12)] flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <div class="w-10 h-10 bg-[#251e1b] flex items-center justify-center text-[#c17a54] border border-[#382e2a] group-hover:border-[#c17a54]">
+              <i data-lucide="scissors" class="w-5 h-5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs tracking-wider text-[#c17a54] bg-[#291e19] px-3 py-1 border border-[#422e26]">
+              from £65
+            </span>
+          </div>
+          <h3 class="font-inter font-medium text-lg text-[#e6e2df] mb-1">Cut & Style</h3>
+          <div class="text-[10px] uppercase tracking-[0.14em] text-[#8c827d] mb-4">consultation included</div>
+          <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+            Bespoke structural precision cuts designed around your hair texture, face symmetry, and daily routine.
+          </p>
+        </div>
+      </div>
+
+      <!-- Colour & Balayage -->
+      <div class="bg-[#1c1614] border border-[#2d2421] p-8 group transition-all duration-300 hover:border-[#c17a54] hover:shadow-[0_0_24px_rgba(193,122,84,0.12)] flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <div class="w-10 h-10 bg-[#251e1b] flex items-center justify-center text-[#c17a54] border border-[#382e2a] group-hover:border-[#c17a54]">
+              <i data-lucide="palette" class="w-5 h-5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs tracking-wider text-[#c17a54] bg-[#291e19] px-3 py-1 border border-[#422e26]">
+              from £95
+            </span>
+          </div>
+          <h3 class="font-inter font-medium text-lg text-[#e6e2df] mb-1">Colour & Balayage</h3>
+          <div class="text-[10px] uppercase tracking-[0.14em] text-[#8c827d] mb-4">bespoke blending</div>
+          <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+            Seamless, dimensional hand-painted highlights and custom toners for natural grow-out and radiance.
+          </p>
+        </div>
+      </div>
+
+      <!-- Highlights -->
+      <div class="bg-[#1c1614] border border-[#2d2421] p-8 group transition-all duration-300 hover:border-[#c17a54] hover:shadow-[0_0_24px_rgba(193,122,84,0.12)] flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <div class="w-10 h-10 bg-[#251e1b] flex items-center justify-center text-[#c17a54] border border-[#382e2a] group-hover:border-[#c17a54]">
+              <i data-lucide="sparkles" class="w-5 h-5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs tracking-wider text-[#c17a54] bg-[#291e19] px-3 py-1 border border-[#422e26]">
+              from £85
+            </span>
+          </div>
+          <h3 class="font-inter font-medium text-lg text-[#e6e2df] mb-1">Highlights</h3>
+          <div class="text-[10px] uppercase tracking-[0.14em] text-[#8c827d] mb-4">foils and freehand</div>
+          <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+            Micro-foiling and contour light placement tailored to bring movement and crisp clarity to your style.
+          </p>
+        </div>
+      </div>
+
+      <!-- Blow-Dry -->
+      <div class="bg-[#1c1614] border border-[#2d2421] p-8 group transition-all duration-300 hover:border-[#c17a54] hover:shadow-[0_0_24px_rgba(193,122,84,0.12)] flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <div class="w-10 h-10 bg-[#251e1b] flex items-center justify-center text-[#c17a54] border border-[#382e2a] group-hover:border-[#c17a54]">
+              <i data-lucide="wind" class="w-5 h-5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs tracking-wider text-[#c17a54] bg-[#291e19] px-3 py-1 border border-[#422e26]">
+              from £40
+            </span>
+          </div>
+          <h3 class="font-inter font-medium text-lg text-[#e6e2df] mb-1">Blow-Dry</h3>
+          <div class="text-[10px] uppercase tracking-[0.14em] text-[#8c827d] mb-4">in-salon finish</div>
+          <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+            High-gloss editorial blowouts, dramatic volume, or ultra-sleek glass finishes using signature oils.
+          </p>
+        </div>
+      </div>
+
+      <!-- Keratin Treatment -->
+      <div class="bg-[#1c1614] border border-[#2d2421] p-8 group transition-all duration-300 hover:border-[#c17a54] hover:shadow-[0_0_24px_rgba(193,122,84,0.12)] flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <div class="w-10 h-10 bg-[#251e1b] flex items-center justify-center text-[#c17a54] border border-[#382e2a] group-hover:border-[#c17a54]">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs tracking-wider text-[#c17a54] bg-[#291e19] px-3 py-1 border border-[#422e26]">
+              from £150
+            </span>
+          </div>
+          <h3 class="font-inter font-medium text-lg text-[#e6e2df] mb-1">Keratin Treatment</h3>
+          <div class="text-[10px] uppercase tracking-[0.14em] text-[#8c827d] mb-4">12-week smoothing</div>
+          <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+            Deep nourishing amino-acid smoothing that locks out humidity while preserving natural volume.
+          </p>
+        </div>
+      </div>
+
+      <!-- Extensions -->
+      <div class="bg-[#1c1614] border border-[#2d2421] p-8 group transition-all duration-300 hover:border-[#c17a54] hover:shadow-[0_0_24px_rgba(193,122,84,0.12)] flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <div class="w-10 h-10 bg-[#251e1b] flex items-center justify-center text-[#c17a54] border border-[#382e2a] group-hover:border-[#c17a54]">
+              <i data-lucide="layers" class="w-5 h-5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs tracking-wider text-[#c17a54] bg-[#291e19] px-3 py-1 border border-[#422e26]">
+              from £200
+            </span>
+          </div>
+          <h3 class="font-inter font-medium text-lg text-[#e6e2df] mb-1">Extensions</h3>
+          <div class="text-[10px] uppercase tracking-[0.14em] text-[#8c827d] mb-4">tape, bonds, or clip</div>
+          <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+            100% ethically sourced Remy hair extensions custom-blended for invisible length and density.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. PORTFOLIO GALLERY -->
+  <section id="portfolio" class="py-24 bg-[#181311] border-y border-[#2d2421]">
+    <div class="max-w-7xl mx-auto px-6 mb-12 flex items-baseline justify-between">
+      <h2 class="font-bebas text-[clamp(52px,7vw,90px)] text-[#e6e2df] leading-none">
+        OUR WORK
+      </h2>
+      <span class="font-inter font-medium text-[10px] uppercase tracking-[0.16em] text-[#c17a54] hidden sm:block">
+        Swipe / Scroll horizontally →
+      </span>
+    </div>
+
+    <!-- 5-image horizontal gallery strip -->
+    <div class="flex gap-2 overflow-x-auto px-6 pb-6 scrollbar-thin">
+      <div class="relative flex-none h-[340px] w-[260px] md:w-[320px] group overflow-hidden bg-[#201917]">
+        <img src="/gallery/assets/studio-thinkflow-hair/portfolio-balayage.jpg" loading="lazy" alt="Warm Balayage & Tonal Contrast" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[#130e0c] via-transparent to-transparent opacity-0 group-hover:opacity-90 transition-opacity duration-300 p-6 flex items-end">
+          <span class="font-inter font-light text-xs text-[#e6e2df] tracking-wider uppercase">Warm Balayage & Tonal Contrast</span>
+        </div>
+      </div>
+
+      <div class="relative flex-none h-[340px] w-[260px] md:w-[320px] group overflow-hidden bg-[#201917]">
+        <img src="/gallery/assets/studio-thinkflow-hair/portfolio-blowdry.jpg" loading="lazy" alt="Sleek Editorial Blow-Dry Finish" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[#130e0c] via-transparent to-transparent opacity-0 group-hover:opacity-90 transition-opacity duration-300 p-6 flex items-end">
+          <span class="font-inter font-light text-xs text-[#e6e2df] tracking-wider uppercase">Sleek Editorial Blow-Dry Finish</span>
+        </div>
+      </div>
+
+      <div class="relative flex-none h-[340px] w-[260px] md:w-[320px] group overflow-hidden bg-[#201917]">
+        <img src="/gallery/assets/studio-thinkflow-hair/portfolio-texture.jpg" loading="lazy" alt="Vibrant Natural Texture & Volume" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[#130e0c] via-transparent to-transparent opacity-0 group-hover:opacity-90 transition-opacity duration-300 p-6 flex items-end">
+          <span class="font-inter font-light text-xs text-[#e6e2df] tracking-wider uppercase">Vibrant Natural Texture & Volume</span>
+        </div>
+      </div>
+
+      <div class="relative flex-none h-[340px] w-[260px] md:w-[320px] group overflow-hidden bg-[#201917]">
+        <img src="/gallery/assets/studio-thinkflow-hair/portfolio-editorial.jpg" loading="lazy" alt="Dramatic Precision Editorial Styling" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[#130e0c] via-transparent to-transparent opacity-0 group-hover:opacity-90 transition-opacity duration-300 p-6 flex items-end">
+          <span class="font-inter font-light text-xs text-[#e6e2df] tracking-wider uppercase">Dramatic Precision Editorial Styling</span>
+        </div>
+      </div>
+
+      <div class="relative flex-none h-[340px] w-[260px] md:w-[320px] group overflow-hidden bg-[#201917]">
+        <img src="/gallery/assets/studio-thinkflow-hair/salon.jpg" loading="lazy" alt="Rich Tone Gloss & Sculpted Finish" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[#130e0c] via-transparent to-transparent opacity-0 group-hover:opacity-90 transition-opacity duration-300 p-6 flex items-end">
+          <span class="font-inter font-light text-xs text-[#e6e2df] tracking-wider uppercase">Rich Tone Gloss & Sculpted Finish</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. WHY STUDIO THINKFLOW -->
+  <section id="about" class="py-28 max-w-7xl mx-auto px-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <!-- Left Text -->
+      <div>
+        <span class="text-[#c17a54] font-inter font-medium text-[10px] uppercase tracking-[0.16em]">
+          The Thinkflow Philosophy
+        </span>
+        <h2 class="font-bebas text-[clamp(44px,6vw,76px)] text-[#e6e2df] leading-[0.92] mt-2 mb-8">
+          WE DON'T DO CONVEYOR BELT HAIR
+        </h2>
+        
+        <div class="space-y-6 font-inter font-light text-[#8c827d] text-base leading-relaxed mb-10">
+          <p>
+            Every appointment at Studio Thinkflow begins with a dedicated, uninterrupted consultation. We never double-stack clients or hand you off mid-session.
+          </p>
+          <p>
+            From your initial scalp analysis to your bespoke toner blend and final editorial blow-dry, your chosen stylist remains exclusively yours throughout your stay.
+          </p>
+        </div>
+
+        <!-- Checkpoints -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="flex items-start gap-3">
+            <div class="w-5 h-5 rounded-none bg-[#291e19] border border-[#c17a54] text-[#c17a54] flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs text-[#e6e2df] tracking-wide">Dedicated stylist every visit</span>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <div class="w-5 h-5 rounded-none bg-[#291e19] border border-[#c17a54] text-[#c17a54] flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs text-[#e6e2df] tracking-wide">No hidden pricing</span>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <div class="w-5 h-5 rounded-none bg-[#291e19] border border-[#c17a54] text-[#c17a54] flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs text-[#e6e2df] tracking-wide">Colour consultations always free</span>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <div class="w-5 h-5 rounded-none bg-[#291e19] border border-[#c17a54] text-[#c17a54] flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="font-inter font-medium text-xs text-[#e6e2df] tracking-wide">Cancellation up to 24hrs</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Image -->
+      <div class="relative">
+        <div class="aspect-[4/5] bg-[#1c1614] border border-[#2d2421] overflow-hidden">
+          <img 
+            src="/gallery/assets/studio-thinkflow-hair/salon.jpg"
+            loading="lazy"
+            alt="Stylist consultation at Studio Thinkflow" 
+            class="w-full h-full object-cover filter contrast-105"
+          />
+        </div>
+        <div class="absolute -bottom-6 -left-6 bg-[#181311] border border-[#382e2a] p-6 hidden sm:block max-w-xs">
+          <div class="font-bebas text-2xl text-[#c17a54] mb-1">NOTTING HILL STUDIO</div>
+          <p class="font-inter font-light text-xs text-[#8c827d]">
+            14 Pembridge Road — Designed for privacy, comfort, and creative focus.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. TEAM -->
+  <section id="team" class="py-28 bg-[#181311] border-t border-[#2d2421]">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="mb-16">
+        <span class="text-[#c17a54] font-inter font-medium text-[10px] uppercase tracking-[0.16em]">
+          Craftswomen
+        </span>
+        <h2 class="font-bebas text-[clamp(52px,7vw,90px)] text-[#e6e2df] leading-none mt-1">
+          YOUR STYLISTS
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Nora Vance -->
+        <div class="bg-[#1c1614] border border-[#2d2421] group hover:border-[#c17a54] transition-all duration-300 hover:shadow-[0_0_24px_rgba(193,122,84,0.1)]">
+          <div class="aspect-square overflow-hidden bg-[#251e1b]">
+            <img 
+              src="/gallery/assets/studio-thinkflow-hair/team-elena.jpg"
+              loading="lazy"
+              alt="Nora Vance" 
+              class="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-500"
+            />
+          </div>
+          <div class="p-8">
+            <h3 class="font-bebas text-3xl text-[#e6e2df] mb-2 tracking-wide">Nora Vance</h3>
+            <div class="inline-block bg-[#291e19] text-[#c17a54] border border-[#422e26] text-[10px] uppercase tracking-[0.14em] font-inter font-medium px-2.5 py-1 mb-4">
+              Creative Director & Master Colourist
+            </div>
+            <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+              14 years sculpting looks in London & Paris. Specialized in dimensional balayage and corrective color.
+            </p>
+          </div>
+        </div>
+
+        <!-- Elena Rostova -->
+        <div class="bg-[#1c1614] border border-[#2d2421] group hover:border-[#c17a54] transition-all duration-300 hover:shadow-[0_0_24px_rgba(193,122,84,0.1)]">
+          <div class="aspect-square overflow-hidden bg-[#251e1b]">
+            <img 
+              src="/gallery/assets/studio-thinkflow-hair/team-marcus.jpg"
+              loading="lazy"
+              alt="Elena Rostova" 
+              class="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-500"
+            />
+          </div>
+          <div class="p-8">
+            <h3 class="font-bebas text-3xl text-[#e6e2df] mb-2 tracking-wide">Elena Rostova</h3>
+            <div class="inline-block bg-[#291e19] text-[#c17a54] border border-[#422e26] text-[10px] uppercase tracking-[0.14em] font-inter font-medium px-2.5 py-1 mb-4">
+              Senior Stylist & Texture Specialist
+            </div>
+            <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+              Former session stylist for London Fashion Week. Expert in razor cutting, curl restoration, and structural bobs.
+            </p>
+          </div>
+        </div>
+
+        <!-- Maya Lin -->
+        <div class="bg-[#1c1614] border border-[#2d2421] group hover:border-[#c17a54] transition-all duration-300 hover:shadow-[0_0_24px_rgba(193,122,84,0.1)]">
+          <div class="aspect-square overflow-hidden bg-[#251e1b]">
+            <img 
+              src="/gallery/assets/studio-thinkflow-hair/team-sofia.jpg"
+              loading="lazy"
+              alt="Maya Lin" 
+              class="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-500"
+            />
+          </div>
+          <div class="p-8">
+            <h3 class="font-bebas text-3xl text-[#e6e2df] mb-2 tracking-wide">Maya Lin</h3>
+            <div class="inline-block bg-[#291e19] text-[#c17a54] border border-[#422e26] text-[10px] uppercase tracking-[0.14em] font-inter font-medium px-2.5 py-1 mb-4">
+              Colour Specialist & Keratin Expert
+            </div>
+            <p class="font-inter font-light text-sm text-[#8c827d] leading-relaxed">
+              Dedicated to scalp health and long-term hair integrity. Master of high-shine foil work and smoothing rituals.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. TESTIMONIALS -->
+  <section class="py-28 bg-[#1c1614] border-t border-[#2d2421]">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <span class="text-[#c17a54] font-inter font-medium text-[10px] uppercase tracking-[0.16em]">
+          Client Voices
+        </span>
+        <h2 class="font-bebas text-[clamp(48px,6vw,80px)] text-[#e6e2df] leading-none mt-1">
+          THE EXPERIENCE
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Review 1 -->
+        <div class="bg-[#130e0c] border border-[#2d2421] p-8 flex flex-col justify-between">
+          <div>
+            <div class="flex text-[#c17a54] gap-1 mb-6">
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+            </div>
+            <p class="font-inter font-light italic text-[#e6e2df] text-base leading-relaxed mb-8">
+              "I've been coming to Studio Thinkflow for 3 years. The colour work is genuinely exceptional — I get compliments every single time I leave."
+            </p>
+          </div>
+          <div class="border-t border-[#251e1b] pt-4 flex justify-between items-baseline">
+            <span class="font-inter font-medium text-xs text-[#e6e2df]">Rachel S.</span>
+            <span class="font-inter font-light text-[10px] text-[#8c827d] uppercase tracking-wider">Notting Hill · Balayage & Cut</span>
+          </div>
+        </div>
+
+        <!-- Review 2 -->
+        <div class="bg-[#130e0c] border border-[#2d2421] p-8 flex flex-col justify-between">
+          <div>
+            <div class="flex text-[#c17a54] gap-1 mb-6">
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+            </div>
+            <p class="font-inter font-light italic text-[#e6e2df] text-base leading-relaxed mb-8">
+              "No rushing, no double booking, just pure craft. Nora understood my vision immediately and gave me the best cut of my life."
+            </p>
+          </div>
+          <div class="border-t border-[#251e1b] pt-4 flex justify-between items-baseline">
+            <span class="font-inter font-medium text-xs text-[#e6e2df]">Camilla V.</span>
+            <span class="font-inter font-light text-[10px] text-[#8c827d] uppercase tracking-wider">Kensington · Precision Cut & Gloss</span>
+          </div>
+        </div>
+
+        <!-- Review 3 -->
+        <div class="bg-[#130e0c] border border-[#2d2421] p-8 flex flex-col justify-between">
+          <div>
+            <div class="flex text-[#c17a54] gap-1 mb-6">
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+              <i data-lucide="star" class="w-4 h-4 fill-[#c17a54]"></i>
+            </div>
+            <p class="font-inter font-light italic text-[#e6e2df] text-base leading-relaxed mb-8">
+              "Finding someone who knows how to work with natural curls without ruining the pattern was impossible until I found Elena here."
+            </p>
+          </div>
+          <div class="border-t border-[#251e1b] pt-4 flex justify-between items-baseline">
+            <span class="font-inter font-medium text-xs text-[#e6e2df]">Sophie M.</span>
+            <span class="font-inter font-light text-[10px] text-[#8c827d] uppercase tracking-wider">Chelsea · Curly Cut & Hydration</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. BOOKING CTA -->
+  <section id="book" class="py-24 bg-[#c17a54] text-[#130e0c]">
+    <div class="max-w-5xl mx-auto px-6 text-center">
+      <h2 class="font-bebas text-[clamp(52px,8vw,96px)] leading-none tracking-tight mb-4">
+        READY FOR YOUR BEST HAIR?
+      </h2>
+      
+      <p class="font-inter font-light text-base md:text-xl text-[#291e19] max-w-xl mx-auto mb-8">
+        Book online in 60 seconds — choose your service, stylist, and time slot.
+      </p>
+
+      <a 
+        href="#"
+        class="inline-flex items-center gap-3 bg-[#130e0c] text-[#e6e2df] px-10 py-5 font-inter font-medium text-xs uppercase tracking-[0.2em] hover:bg-[#251e1b] transition-colors shadow-2xl"
+      >
+        Book now <i data-lucide="arrow-right" class="w-4 h-4 text-[#c17a54]"></i>
+      </a>
+
+      <div class="mt-8 font-inter font-medium text-[10px] uppercase tracking-[0.16em] text-[#130e0c]/70">
+        New clients welcome · Consultations always free · Walk-ins Mondays
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. FOOTER -->
+  <footer class="bg-[#0e0a09] border-t border-[#251e1b] py-16 text-[#8c827d]">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
+      <!-- Brand -->
+      <div class="md:col-span-2">
+        <span class="font-inter font-medium text-sm tracking-[0.2em] text-[#c17a54] uppercase block mb-4">
+          STUDIO THINKFLOW
+        </span>
+        <p class="font-inter font-light text-xs text-[#8c827d] max-w-sm leading-relaxed mb-6">
+          An editorial women’s hair studio in Notting Hill, London. Specialized in bespoke balayage, precision cutting, and gloss treatments.
+        </p>
+        <div class="flex gap-4 text-[#e6e2df]">
+          <a href="#" class="p-2 bg-[#1c1614] border border-[#2d2421] hover:border-[#c17a54] transition-colors" aria-label="Instagram">
+            <i data-lucide="instagram" class="w-4 h-4"></i>
+          </a>
+          <a href="#" class="p-2 bg-[#1c1614] border border-[#2d2421] hover:border-[#c17a54] text-xs font-bold font-inter transition-colors flex items-center justify-center w-[34px] h-[34px]" aria-label="TikTok">
+            TT
+          </a>
+        </div>
+      </div>
+
+      <!-- Location -->
+      <div>
+        <h4 class="font-inter font-medium text-[10px] uppercase tracking-[0.16em] text-[#e6e2df] mb-4 flex items-center gap-2">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-[#c17a54]"></i> Location
+        </h4>
+        <address class="font-inter font-light text-xs not-italic leading-relaxed">
+          14 Pembridge Road<br />
+          Notting Hill, London W11<br />
+          United Kingdom
+        </address>
+      </div>
+
+      <!-- Hours -->
+      <div>
+        <h4 class="font-inter font-medium text-[10px] uppercase tracking-[0.16em] text-[#e6e2df] mb-4 flex items-center gap-2">
+          <i data-lucide="clock" class="w-3.5 h-3.5 text-[#c17a54]"></i> Opening Hours
+        </h4>
+        <div class="font-inter font-light text-xs leading-relaxed">
+          Mon–Sat: 9:00am – 7:00pm<br />
+          Sunday: Closed<br />
+          <span class="text-[#c17a54]">Mondays: Walk-ins welcome</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 pt-8 border-t border-[#1c1614] flex flex-col sm:flex-row items-center justify-between text-[10px] font-inter uppercase tracking-[0.14em] gap-4">
+      <div>© 2026 Studio Thinkflow. All rights reserved.</div>
+      <div class="flex gap-6">
+        <a href="#" class="hover:text-[#e6e2df]">Privacy Policy</a>
+        <a href="#" class="hover:text-[#e6e2df]">Terms of Service</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Mobile Navbar Toggle Script
+    const menuBtn = document.getElementById('menu-btn');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const iconOpen = document.getElementById('menu-icon-open');
+    const iconClose = document.getElementById('menu-icon-close');
+    const mobileLinks = document.querySelectorAll('.mobile-link');
+
+    function toggleMenu() {
+      const isOpen = mobileMenu.classList.contains('flex');
+      if (isOpen) {
+        mobileMenu.classList.remove('flex');
+        mobileMenu.classList.add('hidden');
+        iconOpen.classList.remove('hidden');
+        iconClose.classList.add('hidden');
+      } else {
+        mobileMenu.classList.remove('hidden');
+        mobileMenu.classList.add('flex');
+        iconOpen.classList.add('hidden');
+        iconClose.classList.remove('hidden');
+      }
+    }
+
+    menuBtn.addEventListener('click', toggleMenu);
+    mobileLinks.forEach(link => link.addEventListener('click', toggleMenu));
+  </script>
+</body>
+</html>

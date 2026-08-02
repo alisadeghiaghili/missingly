@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bloom AI | Spirit of Bloom</title>
+    <meta name="description" content="لندینگ سینمایی Bloom AI با ویدیوی گل‌محور، چیدمان دوپنله، رابط شیشه‌ای و کارت‌های معرفی قابلیت‌ها." />
+    <meta name="thinkflow:category" content="هوش مصنوعی خلاق" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet" />
+    <style>
+        /* ---------- Reset & Base ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ---------- App Container ---------- */
+        .app {
+            position: relative;
+            min-height: 100vh;
+            width: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        /* ---------- Video Background ---------- */
+        .video-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .video-bg video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+
+        /* ---------- Liquid Glass (Base) ---------- */
+        .liquid-glass {
+            position: relative;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.01);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border: none;
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+        }
+
+        .liquid-glass::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1.4px;
+            background: linear-gradient(180deg,
+                    rgba(255, 255, 255, 0.45) 0%,
+                    rgba(255, 255, 255, 0.15) 20%,
+                    transparent 40%,
+                    transparent 60%,
+                    rgba(255, 255, 255, 0.15) 80%,
+                    rgba(255, 255, 255, 0.45) 100%);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        /* ---------- Liquid Glass Strong ---------- */
+        .liquid-glass-strong {
+            position: relative;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.01);
+            backdrop-filter: blur(50px);
+            -webkit-backdrop-filter: blur(50px);
+            border: none;
+            box-shadow: 4px 4px 4px rgba(0, 0, 0, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+        }
+
+        .liquid-glass-strong::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1.4px;
+            background: linear-gradient(180deg,
+                    rgba(255, 255, 255, 0.5) 0%,
+                    rgba(255, 255, 255, 0.2) 20%,
+                    transparent 40%,
+                    transparent 60%,
+                    rgba(255, 255, 255, 0.2) 80%,
+                    rgba(255, 255, 255, 0.5) 100%);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        /* ---------- Main Layout ---------- */
+        .main {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        @media (min-width: 1024px) {
+            .main {
+                flex-direction: row;
+            }
+        }
+
+        /* ---------- Left Panel (52%) ---------- */
+        .left-panel {
+            position: relative;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 1024px) {
+            .left-panel {
+                width: 52%;
+            }
+        }
+
+        .left-glass {
+            position: absolute;
+            inset: 16px;
+            border-radius: 24px;
+        }
+
+        @media (min-width: 1024px) {
+            .left-glass {
+                inset: 24px;
+                border-radius: 24px;
+            }
+        }
+
+        .left-content {
+            position: relative;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 24px;
+        }
+
+        @media (min-width: 1024px) {
+            .left-content {
+                padding: 32px 40px;
+            }
+        }
+
+        /* Nav */
+        .nav-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-brand .logo-placeholder {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            flex-shrink: 0;
+        }
+
+        .nav-brand span {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #fff;
+        }
+
+        .nav-menu-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 9999px;
+            padding: 8px 16px;
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+        }
+        .nav-menu-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Hero Center */
+        .hero-center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .hero-center .big-logo {
+            width: 80px;
+            height: 80px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            margin-bottom: 24px;
+            flex-shrink: 0;
+        }
+
+        .hero-center h1 {
+            font-size: clamp(2.8rem, 8vw, 4.5rem);
+            font-weight: 500;
+            letter-spacing: -0.05em;
+            line-height: 1.1;
+            color: #fff;
+        }
+
+        .hero-center h1 .italic {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .btn-explore {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 32px;
+            border-radius: 9999px;
+            padding: 12px 24px;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(50px);
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            transition: transform 0.2s;
+        }
+        .btn-explore:hover {
+            transform: scale(1.05);
+        }
+        .btn-explore:active {
+            transform: scale(0.95);
+        }
+
+        .btn-explore .icon-wrap {
+            display: flex;
+            height: 28px;
+            width: 28px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .btn-explore .icon-wrap svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 24px;
+            justify-content: center;
+        }
+
+        .tags span {
+            border-radius: 9999px;
+            padding: 6px 16px;
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Bottom Quote */
+        .bottom-quote {
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        .bottom-quote .label {
+            font-size: 0.7rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .bottom-quote p {
+            margin-top: 4px;
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .bottom-quote .divider-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .bottom-quote .divider-row .line {
+            height: 1px;
+            width: 32px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ---------- Right Panel (48%, desktop only) ---------- */
+        .right-panel {
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px;
+        }
+
+        @media (min-width: 1024px) {
+            .right-panel {
+                display: flex;
+                width: 48%;
+            }
+        }
+
+        /* Right Top Bar */
+        .right-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .social-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-radius: 9999px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+        }
+
+        .social-bar a {
+            color: rgba(255, 255, 255, 0.7);
+            transition: color 0.2s;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+        .social-bar a:hover {
+            color: #fff;
+        }
+        .social-bar a svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .social-bar .arrow-btn {
+            display: flex;
+            height: 24px;
+            width: 24px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+            margin-left: 8px;
+        }
+        .social-bar .arrow-btn svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .btn-account {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 9999px;
+            padding: 8px 16px;
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-account svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Community Card */
+        .community-card {
+            width: 224px;
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 24px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+        }
+        .community-card h3 {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+        }
+        .community-card p {
+            margin-top: 4px;
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        /* Bottom Feature Section */
+        .feature-section {
+            margin-top: auto;
+            border-radius: 40px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .feature-item {
+            border-radius: 24px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+        }
+
+        .feature-item svg {
+            width: 20px;
+            height: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 8px;
+        }
+
+        .feature-item h4 {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .feature-item p {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Flower Card */
+        .flower-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-top: 12px;
+            border-radius: 24px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(4px);
+        }
+
+        .flower-card .flower-img {
+            width: 96px;
+            height: 64px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+        }
+
+        .flower-card .info {
+            flex: 1;
+        }
+
+        .flower-card .info h4 {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .flower-card .info p {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .flower-card .plus-btn {
+            display: flex;
+            height: 32px;
+            width: 32px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+            border: none;
+            cursor: pointer;
+            font-size: 1.25rem;
+            font-weight: 300;
+            transition: background 0.2s;
+        }
+        .flower-card .plus-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ---------- Responsive Adjustments ---------- */
+        @media (max-width: 480px) {
+            .left-content {
+                padding: 16px;
+            }
+            .hero-center h1 {
+                font-size: 2.2rem;
+            }
+            .hero-center .big-logo {
+                width: 60px;
+                height: 60px;
+                margin-bottom: 16px;
+            }
+            .btn-explore {
+                padding: 10px 20px;
+                font-size: 0.875rem;
+            }
+            .tags span {
+                font-size: 0.65rem;
+                padding: 4px 12px;
+            }
+            .left-glass {
+                inset: 8px;
+                border-radius: 16px;
+            }
+            .nav-brand span {
+                font-size: 1.2rem;
+            }
+        }
+
+        @media (min-width: 481px) and (max-width: 1023px) {
+            .hero-center h1 {
+                font-size: 3.5rem;
+            }
+        }
+
+        /* ---------- Animations ---------- */
+        .fade-in {
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+        }
+        .fade-in.delay-1 {
+            animation-delay: 0.1s;
+        }
+        .fade-in.delay-2 {
+            animation-delay: 0.2s;
+        }
+        .fade-in.delay-3 {
+            animation-delay: 0.3s;
+        }
+        .fade-in.delay-4 {
+            animation-delay: 0.4s;
+        }
+        .fade-in.delay-5 {
+            animation-delay: 0.5s;
+        }
+        .fade-in.delay-6 {
+            animation-delay: 0.6s;
+        }
+        .fade-in.delay-7 {
+            animation-delay: 0.7s;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ---------- Scrollbar Hide ---------- */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ====== VIDEO BACKGROUND ====== -->
+        <div class="video-bg">
+            <video
+                src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260315_073750_51473149-4350-4920-ae24-c8214286f323.mp4"
+                muted
+                autoplay
+                loop
+                playsinline
+                preload="auto"
+            ></video>
+            <div class="video-overlay"></div>
+        </div>
+
+        <!-- ====== MAIN CONTENT ====== -->
+        <div class="main">
+
+            <!-- ====== LEFT PANEL ====== -->
+            <div class="left-panel">
+                <!-- Glass Background -->
+                <div class="left-glass liquid-glass-strong"></div>
+
+                <!-- Content -->
+                <div class="left-content">
+                    <!-- Nav -->
+                    <div class="nav-bar fade-in">
+                        <div class="nav-brand">
+                            <div class="logo-placeholder"></div>
+                            <span>bloom</span>
+                        </div>
+                        <button class="nav-menu-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="3" y1="6" x2="21" y2="6" />
+                                <line x1="3" y1="12" x2="21" y2="12" />
+                                <line x1="3" y1="18" x2="21" y2="18" />
+                            </svg>
+                            Menu
+                        </button>
+                    </div>
+
+                    <!-- Hero Center -->
+                    <div class="hero-center">
+                        <div class="big-logo fade-in delay-1"></div>
+
+                        <h1 class="fade-in delay-2">
+                            Innovating the <br />
+                            <span class="italic">spirit of bloom AI</span>
+                        </h1>
+
+                        <button class="btn-explore fade-in delay-3">
+                            Explore Now
+                            <span class="icon-wrap">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                            </span>
+                        </button>
+
+                        <div class="tags fade-in delay-4">
+                            <span>Artistic Gallery</span>
+                            <span>AI Generation</span>
+                            <span>3D Structures</span>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Quote -->
+                    <div class="bottom-quote fade-in delay-5">
+                        <div class="label">VISIONARY DESIGN</div>
+                        <p>We imagined a realm with no ending.</p>
+                        <div class="divider-row">
+                            <span class="line"></span>
+                            MARCUS AURELIO
+                            <span class="line"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ====== RIGHT PANEL ====== -->
+            <div class="right-panel">
+
+                <!-- Top Bar -->
+                <div class="right-top fade-in delay-2">
+                    <div class="social-bar">
+                        <a href="#" aria-label="Twitter">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 4l11.733 16h4.267l-11.733 -16z" />
+                                <path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772" />
+                            </svg>
+                        </a>
+                        <a href="#" aria-label="LinkedIn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+                                <rect x="2" y="9" width="4" height="12" />
+                                <circle cx="4" cy="4" r="2" />
+                            </svg>
+                        </a>
+                        <a href="#" aria-label="Instagram">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                            </svg>
+                        </a>
+                        <span class="arrow-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                                <polyline points="12 5 19 12 12 19" />
+                            </svg>
+                        </span>
+                    </div>
+
+                    <button class="btn-account">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a8 8 0 0 0-8 8c0 6 8 12 8 12s8-6 8-12a8 8 0 0 0-8-8z" />
+                            <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        Account
+                    </button>
+                </div>
+
+                <!-- Community Card -->
+                <div class="community-card fade-in delay-3">
+                    <h3>Enter our ecosystem</h3>
+                    <p>Join a growing community of creators and innovators.</p>
+                </div>
+
+                <!-- Feature Section -->
+                <div class="feature-section fade-in delay-4">
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                                <path d="M2 17l10 5 10-5" />
+                                <path d="M2 12l10 5 10-5" />
+                            </svg>
+                            <h4>Processing</h4>
+                            <p>Real-time AI rendering</p>
+                        </div>
+                        <div class="feature-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                            </svg>
+                            <h4>Growth Archive</h4>
+                            <p>Track your creations</p>
+                        </div>
+                    </div>
+
+                    <!-- Flower Card -->
+                    <div class="flower-card">
+                        <div class="flower-img"></div>
+                        <div class="info">
+                            <h4>Advanced Plant Sculpting</h4>
+                            <p>AI-driven morphology</p>
+                        </div>
+                        <button class="plus-btn">+</button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        (() => {
+            const video = document.querySelector('.video-bg video');
+            if (!video) return;
+
+            const ensurePlayback = () => {
+                if (!document.hidden && video.paused) video.play().catch(() => {});
+            };
+
+            video.addEventListener('canplay', ensurePlayback);
+            window.addEventListener('pageshow', ensurePlayback);
+            document.addEventListener('visibilitychange', ensurePlayback);
+            ensurePlayback();
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+        (() => {
+            document.documentElement.classList.add('account-checking');
+            if (!sessionStorage.getItem('deepintelligence_token')) {
+                window.location.replace('/');
+            }
+        })();
+    </script>
+    <style>
+        html.account-checking { background: #070a12; }
+        html.account-checking body { visibility: hidden !important; }
+    </style>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZMB75975WY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ZMB75975WY');
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ویرایشگر و پیش‌نمایش زنده DeepIntelligence</title>
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @font-face {
+            font-family: 'IRANSans';
+            src: url('/irsans.ttf?v=20260727-vazirmatn') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'IRANSans';
+            src: url('/irsansb.ttf?v=20260727-vazirmatn') format('truetype');
+            font-weight: 700 900;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        /* Custom CSS for minimal navy blue design */
+        body {
+            font-family: 'IRANSans', Tahoma, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 12% 10%, rgba(20, 184, 166, 0.18), transparent 26rem),
+                radial-gradient(circle at 82% 6%, rgba(99, 102, 241, 0.16), transparent 24rem),
+                linear-gradient(135deg, #070a12 0%, #101827 48%, #1a1020 100%);
+            color: #f8fafc;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+            background-size: 42px 42px;
+            pointer-events: none;
+            opacity: 0.55;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(7, 10, 18, 0.82);
+            backdrop-filter: blur(18px);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #f8fafc;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            white-space: nowrap;
+        }
+        
+        .header .controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            min-width: 0;
+        }
+
+        .view-btn {
+            background-color: transparent;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            color: #cbd5e1;
+            padding: 0.375rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .view-btn:hover {
+            background-color: rgba(15, 23, 42, 0.92);
+            border-color: #2dd4bf;
+            color: #ffffff;
+        }
+
+        .view-btn.active {
+            background: linear-gradient(135deg, #14b8a6 0%, #4f46e5 100%);
+            border-color: transparent;
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .header .status {
+            font-size: 0.875rem;
+            color: #a7f3d0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #2dd4bf;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main content wrapper */
+        .main-content-wrapper {
+            position: relative;
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+            gap: 1px;
+            background: rgba(148, 163, 184, 0.16);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Left pane (code editor) */
+        .left-pane {
+            flex-grow: 0;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            background: rgba(7, 10, 18, 0.92);
+            min-width: 300px;
+            border-radius: 8px 0 0 0;
+            overflow: hidden;
+        }
+
+        .editor-header {
+            padding: 0.75rem 1rem;
+            background: rgba(15, 23, 42, 0.95);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #99f6e4;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        #codeEditor {
+            flex-grow: 1;
+            padding: 1.5rem;
+            border: none;
+            outline: none;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-size: 0.875rem;
+            font-weight: 400;
+            resize: none;
+            background: #070a12;
+            color: #e2e8f0;
+            line-height: 1.6;
+            tab-size: 2;
+            -moz-tab-size: 2;
+            white-space: pre;
+            overflow: auto;
+        }
+
+        #codeEditor:focus {
+            background: #0f172a;
+        }
+
+        /* Resizer */
+        .resizer {
+            width: 1px;
+            background: rgba(148, 163, 184, 0.2);
+            cursor: ew-resize;
+            flex-shrink: 0;
+            transition: background-color 0.2s ease;
+        }
+
+        .resizer:hover {
+            background: #2dd4bf;
+            width: 2px;
+        }
+
+        /* Preview frame */
+        #previewFrame {
+            flex: 1;
+            border: none;
+            background: #ffffff;
+            min-width: 300px;
+            border-radius: 0;
+        }
+
+        /* Bottom prompt area */
+        .bottom-prompt-area {
+            flex-shrink: 0;
+            padding: 1rem 1.5rem;
+            background: rgba(7, 10, 18, 0.86);
+            backdrop-filter: blur(18px);
+            border-top: 1px solid rgba(148, 163, 184, 0.18);
+            display: flex;
+            align-items: flex-end;
+            gap: 1rem;
+        }
+
+        .prompt-actions {
+            display: flex;
+            align-items: flex-end;
+            gap: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        .model-select-wrap {
+            min-width: 178px;
+        }
+
+        .model-select-wrap label {
+            display: block;
+            color: #99f6e4;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0;
+            margin-bottom: 0.35rem;
+            text-transform: uppercase;
+        }
+
+        #modelSelect {
+            width: 100%;
+            height: 42px;
+            padding: 0 2.25rem 0 0.85rem;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 8px;
+            background:
+                linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.96)),
+                url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 9L12 15L18 9' stroke='%2399f6e4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 0.75rem center;
+            color: #f8fafc;
+            font-family: 'IRANSans', Tahoma, sans-serif;
+            font-size: 0.84rem;
+            font-weight: 800;
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+            color-scheme: dark;
+        }
+
+        #modelSelect:focus {
+            border-color: #2dd4bf;
+            box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
+        }
+
+        #modelSelect option,
+        #modelSelect optgroup {
+            background: #0f172a;
+            color: #f8fafc;
+        }
+
+        #modelSelect optgroup {
+            color: #99f6e4;
+            font-weight: 800;
+        }
+
+        #modelSelect option.locked-option {
+            color: #94a3b8;
+        }
+
+        #promptInput {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 8px;
+            outline: none;
+            font-family: 'IRANSans', Tahoma, sans-serif;
+            font-size: 0.875rem;
+            background: rgba(15, 23, 42, 0.96);
+            color: #f8fafc;
+            resize: vertical;
+            min-height: 40px;
+            max-height: 120px;
+            transition: all 0.2s ease;
+        }
+
+        #promptInput:focus {
+            border-color: #2dd4bf;
+            box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
+        }
+
+        #promptInput::placeholder {
+            color: #a0aec0;
+        }
+
+        #sendPromptBtn {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #14b8a6 0%, #4f46e5 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 800;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            min-width: 80px;
+        }
+
+        #sendPromptBtn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #2dd4bf 0%, #6366f1 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 12px 24px rgba(20, 184, 166, 0.22);
+        }
+
+        #sendPromptBtn:active {
+            transform: translateY(0);
+        }
+
+        #sendPromptBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Message box (modal) */
+        .message-box-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .message-box-content {
+            background: rgba(15, 23, 42, 0.96);
+            color: #e2e8f0;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-width: 400px;
+            text-align: center;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+        }
+
+        .message-box-content p {
+            margin: 0 0 1.5rem 0;
+            line-height: 1.6;
+        }
+
+        .message-box-content button {
+            padding: 0.5rem 1.5rem;
+            background: linear-gradient(135deg, #14b8a6 0%, #4f46e5 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .message-box-content button:hover {
+            background: linear-gradient(135deg, #2dd4bf 0%, #6366f1 100%);
+            transform: translateY(-1px);
+        }
+
+        /* Drag overlay */
+        #dragOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            z-index: 999;
+            display: none;
+            cursor: ew-resize;
+        }
+
+        /* Loading state */
+        .loading {
+            color: #a0aec0;
+            font-style: italic;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        @media (max-width: 760px) {
+            .header {
+                padding: 0.65rem 0.75rem;
+                gap: 0.75rem;
+            }
+            .header h1 {
+                font-size: 0.95rem;
+                max-width: 185px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .header h1 img {
+                width: 32px;
+                height: 32px;
+                flex: 0 0 auto;
+            }
+            .header .controls {
+                gap: 0.45rem;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+            }
+            .view-btn,
+            #sendPromptBtn {
+                padding: 0.55rem 0.75rem;
+                font-size: 0.8rem;
+            }
+            .bottom-prompt-area {
+                padding: 0.75rem;
+                gap: 0.65rem;
+                flex-wrap: wrap;
+            }
+            .prompt-actions {
+                width: 100%;
+            }
+            .model-select-wrap {
+                flex: 1;
+                min-width: 0;
+            }
+            #requestsCounter {
+                font-size: 0.78rem;
+                padding: 0.35rem 0.55rem;
+            }
+        }
+
+        /* Workspace shell */
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-elevated: #12172a;
+            --bg-soft: #171d33;
+            --accent: #5eead4;
+            --accent-strong: #2dd4bf;
+            --text-primary: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: rgba(148, 163, 184, 0.2);
+            --radius: 12px;
+        }
+        body {
+            height: 100dvh;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            direction: rtl;
+        }
+        body::before { display: none; }
+        .header {
+            min-height: 64px;
+            padding: 0 20px;
+            background: rgba(10, 14, 26, 0.96);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(16px);
+        }
+        .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .brand img { width: 150px; height: 42px; object-fit: contain; padding: 4px 8px; background: #fff; border-radius: 7px; box-sizing: border-box; }
+        .brand-copy { display: grid; gap: 1px; }
+        .brand-copy strong { font-size: 15px; color: var(--text-primary); }
+        .brand-copy small { font-size: 11px; color: var(--text-muted); }
+        .header .controls { gap: 8px; flex-wrap: nowrap; }
+        .primary-action, .view-btn, .menu-trigger {
+            min-height: 38px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .primary-action {
+            padding: 0 16px;
+            background: var(--accent);
+            color: #06201d;
+            border-color: transparent;
+            font-weight: 800;
+        }
+        .primary-action:hover { background: #99f6e4; }
+        .view-btn { padding: 0 12px; background: transparent; color: var(--text-muted); }
+        .view-btn:hover, .view-btn.active { color: var(--text-primary); border-color: var(--accent); background: rgba(94,234,212,.08); }
+        #requestsCounter { white-space: nowrap; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+        .more-menu { position: relative; }
+        .more-menu summary { list-style: none; }
+        .more-menu summary::-webkit-details-marker { display: none; }
+        .menu-trigger { display: grid; place-items: center; width: 38px; background: var(--bg-elevated); color: var(--text-primary); font-size: 18px; }
+        .menu-panel {
+            position: absolute; top: calc(100% + 10px); left: 0; z-index: 300;
+            width: 210px; padding: 6px; background: var(--bg-elevated);
+            border: 1px solid var(--border); border-radius: 8px;
+            box-shadow: 0 18px 48px rgba(0,0,0,.38);
+        }
+        .menu-panel button { width: 100%; text-align: right; border: 0; border-radius: 6px; padding: 10px 12px; color: var(--text-primary); background: transparent; font-family: inherit; cursor: pointer; }
+        .menu-panel button:hover { background: var(--bg-soft); }
+        .header .status { font-size: 12px; color: var(--text-muted); }
+
+        .main-content-wrapper { flex: 1; min-height: 0; background: #070a12; position: relative; direction: ltr; }
+        .left-pane { width: 48%; min-width: 320px; border-radius: 0; background: #090d18; }
+        .editor-header { height: 42px; box-sizing: border-box; color: var(--text-muted); background: var(--bg-elevated); letter-spacing: 0; text-transform: none; }
+        #codeEditor { padding: 18px; background: #090d18; }
+        #previewFrame { display: block; flex: 1 1 0; width: auto; min-width: 0; height: 100%; }
+        .preview-progress {
+            display: none; position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+            z-index: 20; direction: rtl; align-items: center; gap: 8px; padding: 8px 12px;
+            border: 1px solid rgba(94,234,212,.35); border-radius: 8px;
+            background: rgba(10,14,26,.88); color: var(--text-primary); backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0,0,0,.24); font-size: 12px; pointer-events: none;
+        }
+        .preview-progress::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite; }
+        body.is-generating .preview-progress { display: flex; }
+        .main-content-wrapper[data-state="empty"] .left-pane,
+        .main-content-wrapper[data-state="empty"] .resizer,
+        .main-content-wrapper[data-state="empty"] #previewFrame { display: none; }
+        .main-content-wrapper[data-state="preview"] .left-pane,
+        .main-content-wrapper[data-state="preview"] .resizer { display: none; }
+        .main-content-wrapper[data-state="code"] .left-pane { display: flex; }
+        .main-content-wrapper[data-state="code"] .resizer { display: block; }
+        .empty-state { display: none; width: 100%; place-items: center; direction: rtl; padding: 24px; text-align: center; background: var(--bg-primary); }
+        .main-content-wrapper[data-state="empty"] .empty-state { display: grid; }
+        .empty-state-inner { max-width: 580px; }
+        .empty-mark { width: 64px; height: 64px; margin: 0 auto 22px; display: grid; place-items: center; border: 1px solid rgba(94,234,212,.3); border-radius: 8px; color: var(--accent); background: rgba(94,234,212,.07); font-size: 26px; }
+        .empty-state h2 { margin: 0 0 10px; font-size: clamp(24px, 4vw, 38px); }
+        .empty-state p { margin: 0; color: var(--text-muted); line-height: 1.9; }
+
+        .bottom-prompt-area {
+            position: relative; z-index: 120; width: 100%; box-sizing: border-box;
+            padding: 12px max(16px, calc((100vw - 920px) / 2)) calc(12px + env(safe-area-inset-bottom));
+            display: block; background: rgba(10,14,26,.97); border-top: 1px solid var(--border);
+        }
+        .chat-composer { display: flex; align-items: flex-end; gap: 10px; padding: 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); }
+        #promptInput { min-height: 46px; max-height: 150px; padding: 12px; border: 0; background: transparent; box-shadow: none; resize: none; }
+        #promptInput[dir="rtl"] { text-align: right; }
+        #promptInput[dir="ltr"] { text-align: left; }
+        #promptInput:focus { border: 0; box-shadow: none; }
+        .prompt-actions { align-items: center; gap: 8px; }
+        .advanced-settings { position: relative; }
+        .advanced-settings summary { list-style: none; }
+        .advanced-settings summary::-webkit-details-marker { display: none; }
+        .settings-trigger { height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-muted); font-family: inherit; cursor: pointer; }
+        .settings-popover { position: absolute; bottom: calc(100% + 12px); left: 0; width: min(300px, calc(100vw - 32px)); padding: 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 18px 48px rgba(0,0,0,.42); }
+        .model-select-wrap { min-width: 0; }
+        #modelSelect { height: 44px; }
+        #sendPromptBtn { width: 46px; min-width: 46px; height: 42px; padding: 0; display: grid; place-items: center; background: var(--accent); color: #06201d; border-radius: 8px; font-size: 0; }
+        #sendPromptBtn::before { content: "↑"; font-size: 22px; font-weight: 900; }
+        #sendPromptBtn:hover:not(:disabled) { background: #99f6e4; box-shadow: none; transform: none; }
+        #sendPromptBtn:disabled::before { content: "…"; }
+
+        @media (max-width: 760px) {
+            .header { min-height: 58px; padding: 0 10px; }
+            .brand-copy small, .header .status, #requestsCounter span:first-child, #requestsCounter span:last-child { display: none; }
+            .brand-copy strong { font-size: 13px; }
+            .brand img { width: 132px; height: 37px; }
+            .primary-action { padding: 0 10px; font-size: 12px; }
+            .view-btn { padding: 0 9px; font-size: 12px; }
+            .main-content-wrapper[data-state="code"] #previewFrame { display: none; }
+            .main-content-wrapper[data-state="code"] .left-pane { width: 100% !important; min-width: 0; }
+            .main-content-wrapper[data-state="code"] .resizer { display: none; }
+            .bottom-prompt-area { padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); }
+            .chat-composer { gap: 6px; }
+            .settings-trigger { width: 42px; padding: 0; font-size: 0; }
+            .settings-trigger::before { content: "⚙"; font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <img src="/thinkflow-logo.svg?v=20260731-1" alt="لوگوی ThinkFlow">
+        </div>
+        <div class="controls">
+            <button id="startBtn" class="primary-action">شروع ساخت</button>
+            <button id="chatBtn" class="view-btn">مشاهده کد</button>
+            <button id="previewBtn" class="view-btn active">پیش‌نمایش</button>
+            <div id="requestsCounter" class="text-sm text-gray-400 flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-md"></div>
+            <div class="status">
+                <div class="status-dot"></div>
+                <span>آماده</span>
+            </div>
+            <details class="more-menu">
+                <summary class="menu-trigger" title="گزینه‌های بیشتر">⋯</summary>
+                <div class="menu-panel">
+                    <button id="dashboardBtn">داشبورد مصرف</button>
+                    <button id="adminBtn" class="hidden">مدیریت</button>
+                    <button id="plansBtn">مشاهده پلن‌ها</button>
+                    <button id="downloadBtn">دانلود خروجی</button>
+                    <button id="galleryBtn">گالری</button>
+                    <button id="blogBtn">بلاگ</button>
+                </div>
+            </details>
+        </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="main-content-wrapper" data-state="empty">
+        <section class="empty-state" id="emptyState">
+            <div class="empty-state-inner">
+                <div class="empty-mark" aria-hidden="true">+</div>
+                <h2>چه چیزی می‌خواهید بسازید؟</h2>
+                <p>ایده‌تان را پایین صفحه بنویسید. ThinkFlow ساخت را زنده آغاز می‌کند و نتیجه را همین‌جا نمایش می‌دهد.</p>
+            </div>
+        </section>
+        <div class="left-pane" id="leftPane">
+            <div class="editor-header">ویرایشگر HTML</div>
+            <textarea id="codeEditor" spellcheck="false" autocapitalize="off" autocomplete="off"><!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-NFR2DLMB');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پیش‌نمایش زنده</title>
+    <style>
+        body {
+            font-family: 'IRANSans', Tahoma, sans-serif;
+            padding: clamp(1rem, 4vw, 2rem);
+            background: linear-gradient(135deg, #070a12 0%, #101827 52%, #1a1020 100%);
+            color: #e2e8f0;
+            line-height: 1.8;
+            text-align: center;
+            direction: rtl;
+            overflow-x: hidden;
+        }
+
+        h1 {
+            color: #5eead4;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            font-size: clamp(1.8rem, 8vw, 3rem);
+            word-break: break-word;
+        }
+
+        .logo-img {
+            width: min(300px, 80vw);
+            margin-bottom: 1.5rem;
+            display: inline-block;
+            padding: 8px 12px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        p {
+            color: #cbd5e0;
+            margin-bottom: 1rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 1rem;
+            text-align: right;
+        }
+
+        .card h3 {
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NFR2DLMB"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <h1>ThinkFlow</h1>
+
+    <img src="/thinkflow-logo.svg?v=20260731-1" alt="لوگوی ThinkFlow" class="logo-img">
+
+    <p>چی می‌خوای بسازیم؟</p>
+    <p>ایده‌ات را بنویس تا یک صفحه تمیز، واکنش‌گرا و آماده تحویل بسازم.</p>
+
+    <div class="card">
+        <h3>به استودیوی ساخت سایت با هوش مصنوعی خوش آمدی</h3>
+        <p>صفحه‌ای که می‌خواهی را توضیح بده، خروجی را زنده ببین و مرحله‌به‌مرحله اصلاحش کن.</p>
+    </div>
+</body>
+</html></textarea>
+        </div>
+
+        <div class="resizer" id="resizer"></div>
+
+        <iframe id="previewFrame" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+        <div class="preview-progress" id="previewProgress">در حال ساخت پیش‌نمایش زنده</div>
+
+        <div id="dragOverlay"></div>
+    </main>
+
+    <!-- Prompt area -->
+    <div class="bottom-prompt-area">
+        <div class="chat-composer">
+            <textarea id="promptInput" dir="auto" placeholder="سایتی که می‌خواهید را توصیف کنید..." rows="1"></textarea>
+            <div class="prompt-actions">
+                <details class="advanced-settings">
+                    <summary class="settings-trigger">مدل و تنظیمات</summary>
+                    <div class="settings-popover">
+                        <div class="model-select-wrap">
+                            <label for="modelSelect">مدل هوش مصنوعی <span id="modelProviderLabel"></span></label>
+                            <select id="modelSelect" title="انتخاب مدل">
+                                <option value="">در حال دریافت فهرست مدل‌ها...</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
+                <button id="sendPromptBtn" title="ارسال پرامپت" aria-label="ارسال پرامپت">ارسال</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message box modal -->
+    <div id="messageBoxOverlay" class="message-box-overlay">
+        <div class="message-box-content">
+            <p id="messageBoxText"></p>
+            <button id="messageBoxCloseBtn">باشه</button>
+        </div>
+    </div>
+
+    <script>
+        // --- START: AUTHENTICATION CHECK ---
+        const authToken = sessionStorage.getItem('deepintelligence_token');
+        if (!authToken) {
+            window.location.href = '/';
+        }
+        // --- END: AUTHENTICATION CHECK ---
+
+
+        const codeEditor = document.getElementById('codeEditor');
+        const previewFrame = document.getElementById('previewFrame');
+        const promptInput = document.getElementById('promptInput');
+        const modelSelect = document.getElementById('modelSelect');
+        const sendPromptBtn = document.getElementById('sendPromptBtn');
+        const messageBoxOverlay = document.getElementById('messageBoxOverlay');
+        const messageBoxText = document.getElementById('messageBoxText');
+        const messageBoxCloseBtn = document.getElementById('messageBoxCloseBtn');
+        const leftPane = document.getElementById('leftPane');
+        const resizer = document.getElementById('resizer');
+        const mainContentWrapper = document.querySelector('.main-content-wrapper');
+        const dragOverlay = document.getElementById('dragOverlay');
+        const chatBtn = document.getElementById('chatBtn');
+        const previewBtn = document.getElementById('previewBtn');
+        const startBtn = document.getElementById('startBtn');
+        const dashboardBtn = document.getElementById('dashboardBtn');
+        const adminBtn = document.getElementById('adminBtn');
+        const plansBtn = document.getElementById('plansBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const galleryBtn = document.getElementById('galleryBtn');
+        const blogBtn = document.getElementById('blogBtn');
+        const requestsCounter = document.getElementById('requestsCounter'); 
+        const statusLabel = document.querySelector('.status span');
+        const moreMenu = document.querySelector('.more-menu');
+        const advancedSettings = document.querySelector('.advanced-settings');
+
+        const DEFAULT_EDITOR_CONTENT = codeEditor.value;
+        const backendBaseUrl = window.location.origin;
+        let lastRenderablePreviewHtml = DEFAULT_EDITOR_CONTENT;
+        let workspaceState = 'empty';
+        const PLAN_RANK = { free: 0, basic: 1, standard: 2, deluxe: 3 };
+        const PLAN_ALIASES = { premium: 'deluxe', pro: 'deluxe', 'پریمیوم': 'deluxe' };
+
+        function normalizePlan(plan) {
+            const normalized = String(plan || 'free').trim().toLowerCase();
+            const canonical = PLAN_ALIASES[normalized] || normalized;
+            return Object.hasOwn(PLAN_RANK, canonical) ? canonical : 'free';
+        }
+
+        function getCachedUser() {
+            try {
+                return JSON.parse(sessionStorage.getItem('deepintelligence_user'));
+            } catch (error) {
+                console.warn('Could not read the cached user:', error);
+                return null;
+            }
+        }
+
+        async function refreshCurrentUser() {
+            const response = await fetch(`${backendBaseUrl}/user/status?_=${Date.now()}`, {
+                headers: { 'Authorization': `Bearer ${authToken}` },
+                cache: 'no-store'
+            });
+            if (response.status === 401 || response.status === 403) {
+                sessionStorage.removeItem('deepintelligence_token');
+                sessionStorage.removeItem('deepintelligence_user');
+                window.location.replace('/');
+                return null;
+            }
+            if (!response.ok) throw new Error(`User status request failed with ${response.status}`);
+            const data = await response.json();
+            const user = { ...(getCachedUser() || {}), ...(data.user || {}) };
+            user.plan = normalizePlan(user.plan);
+            sessionStorage.setItem('deepintelligence_user', JSON.stringify(user));
+            return user;
+        }
+
+        function setWorkspaceState(nextState) {
+            const allowedStates = ['empty', 'preview', 'code'];
+            workspaceState = allowedStates.includes(nextState) ? nextState : 'empty';
+            mainContentWrapper.dataset.state = workspaceState;
+            chatBtn.classList.toggle('active', workspaceState === 'code');
+            previewBtn.classList.toggle('active', workspaceState === 'preview');
+            chatBtn.disabled = false;
+            previewBtn.disabled = false;
+        }
+
+        function closeDisclosureMenus(except = null) {
+            [moreMenu, advancedSettings].forEach(menu => {
+                if (menu && menu !== except) menu.open = false;
+            });
+        }
+
+        function updatePromptDirection() {
+            const value = promptInput.value.trimStart();
+            const firstStrongCharacter = value.match(/[A-Za-z\u0600-\u06FF]/)?.[0];
+            const isPersian = firstStrongCharacter && /[\u0600-\u06FF]/.test(firstStrongCharacter);
+            promptInput.dir = isPersian || !firstStrongCharacter ? 'rtl' : 'ltr';
+        }
+
+        function updateRequestsCounter() {
+            const user = getCachedUser();
+            if (!user) {
+                requestsCounter.innerHTML = '';
+                adminBtn.classList.add('hidden');
+                return;
+            };
+            adminBtn.classList.toggle('hidden', !user.is_admin);
+
+            const normalizedPlan = normalizePlan(user.plan);
+            const remaining = Math.max(Number(user.request_balance || 0), 0);
+            const planNames = { free: 'رایگان', basic: 'بیسک', standard: 'استاندارد', deluxe: 'پریمیوم' };
+            requestsCounter.innerHTML = `
+                <span>${planNames[normalizedPlan] || 'رایگان'}:</span>
+                <span class="font-semibold text-white">${remaining > 0 ? remaining : 0}</span>
+                <span>درخواست باقی‌مانده</span>`;
+        }
+
+        function redirectToPricing(message) {
+            displayMessageBox(message || "تعداد درخواست‌های پلن شما تمام شده است. برای ادامه یکی از پلن‌ها را انتخاب کنید.", () => {
+                window.location.href = '/pricing';
+            });
+        }
+
+        function setWorkStatus(message) {
+            if (statusLabel) statusLabel.textContent = message || 'Ready';
+        }
+
+        async function loadModelOptions(userOverride = null) {
+            try {
+                const previousModel = modelSelect.value;
+                const response = await fetch(`${backendBaseUrl}/ai/models?_=${Date.now()}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                    cache: 'no-store'
+                });
+                if (!response.ok) throw new Error(`Model list request failed with ${response.status}`);
+                const data = await response.json();
+                const providerLabel = document.getElementById('modelProviderLabel');
+                if (providerLabel) providerLabel.textContent = data.provider_label ? `(${data.provider_label})` : '';
+                const effectivePlan = normalizePlan(data.plan || userOverride?.plan || getCachedUser()?.plan);
+                modelSelect.innerHTML = '';
+                const groups = {};
+                const planLabels = {
+                    free: 'رایگان',
+                    basic: 'بیسک',
+                    standard: 'استاندارد',
+                    deluxe: 'پریمیوم'
+                };
+                data.models.forEach(model => {
+                    const requiredPlan = normalizePlan(model.required_plan || model.min_plan);
+                    const locked = PLAN_RANK[effectivePlan] < PLAN_RANK[requiredPlan];
+                    const groupName = planLabels[requiredPlan] || 'سایر';
+                    if (!groups[groupName]) {
+                        const group = document.createElement('optgroup');
+                        group.label = groupName;
+                        groups[groupName] = group;
+                        modelSelect.appendChild(group);
+                    }
+                    const option = document.createElement('option');
+                    option.value = model.id;
+                    option.textContent = locked
+                        ? `${model.label} - قفل (${planLabels[requiredPlan] || requiredPlan})`
+                        : model.label;
+                    option.title = locked
+                        ? `برای استفاده از این مدل پلن ${planLabels[requiredPlan] || requiredPlan} لازم است.`
+                        : (model.description || model.id);
+                    option.disabled = locked;
+                    option.dataset.available = model.available ? 'true' : 'false';
+                    option.dataset.requiredPlan = requiredPlan;
+                    if (locked) option.classList.add('locked-option');
+                    groups[groupName].appendChild(option);
+                });
+                const availableOption = [...modelSelect.options].find(option => !option.disabled);
+                const preferredOption = [...modelSelect.options].find(option => option.value === previousModel && !option.disabled);
+                const serverDefault = [...modelSelect.options].find(option => option.value === data.default_model && !option.disabled);
+                modelSelect.value = preferredOption?.value || serverDefault?.value || availableOption?.value || '';
+            } catch (error) {
+                console.warn('Could not load AI model list:', error);
+                setWorkStatus('خطا در دریافت فهرست مدل‌ها');
+            }
+        }
+
+        async function initializeAccountAccess() {
+            try {
+                const currentUser = await refreshCurrentUser();
+                if (!currentUser) return;
+                document.documentElement.classList.remove('account-checking');
+                updateRequestsCounter();
+                await loadModelOptions(currentUser);
+            } catch (error) {
+                console.warn('Could not refresh account access:', error);
+                document.documentElement.classList.remove('account-checking');
+                updateRequestsCounter();
+                await loadModelOptions(getCachedUser());
+            }
+        }
+
+        function resetToAvailableModel() {
+            const selected = modelSelect.selectedOptions[0];
+            if (selected && !selected.disabled) return;
+            const availableOption = [...modelSelect.options].find(option => !option.disabled);
+            if (availableOption) modelSelect.value = availableOption.value;
+        }
+
+        function applySearchReplace(responseText, currentCode) {
+            const regex = /<<<<<<< SEARCH\s*([\s\S]*?)\s*=======\s*([\s\S]*?)\s*>>>>>>> REPLACE/g;
+            let updatedCode = currentCode;
+            const matches = [...responseText.matchAll(regex)];
+            if (matches.length === 0) {
+                console.warn("AI response was not in SEARCH/REPLACE format. Displaying raw response.");
+                return responseText;
+            }
+            for (const match of matches) {
+                const searchBlock = match[1].trim();
+                const replaceBlock = match[2].trim();
+                if (searchBlock) {
+                    updatedCode = updatedCode.replace(searchBlock, replaceBlock);
+                }
+            }
+            return updatedCode;
+        }
+
+        function findHtmlInStructuredOutput(value) {
+            if (typeof value === 'string') {
+                return /(?:<!doctype\s+html|<html\b|<body\b|<main\b|<section\b|<div\b)/i.test(value) ? value : '';
+            }
+            if (Array.isArray(value)) {
+                return value.map(findHtmlInStructuredOutput).sort((a, b) => b.length - a.length)[0] || '';
+            }
+            if (!value || typeof value !== 'object') return '';
+            const preferredKeys = ['html', 'code', 'content', 'output_text', 'response', 'text'];
+            for (const key of preferredKeys) {
+                const candidate = findHtmlInStructuredOutput(value[key]);
+                if (candidate) return candidate;
+            }
+            return Object.values(value).map(findHtmlInStructuredOutput).sort((a, b) => b.length - a.length)[0] || '';
+        }
+
+        function unwrapStructuredModelOutput(fullText) {
+            let candidate = fullText.replace(/^\uFEFF/, '').trim();
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                if (!/^[\[{\"]/.test(candidate)) break;
+                try {
+                    const structured = JSON.parse(candidate);
+                    const extracted = findHtmlInStructuredOutput(structured);
+                    if (!extracted || extracted === candidate) break;
+                    candidate = extracted.trim();
+                } catch (error) {
+                    break;
+                }
+            }
+            return candidate;
+        }
+
+        function extractMainHtmlDocument(fullText) {
+            if (!fullText || typeof fullText !== 'string') return '';
+            let contentToParse = unwrapStructuredModelOutput(fullText);
+            const fencedBlocks = [...contentToParse.matchAll(/```(?:html|htm)?\s*([\s\S]*?)\s*```/gi)];
+            const fencedHtml = fencedBlocks
+                .map(match => match[1]?.trim() || '')
+                .find(block => /(?:<!doctype\s+html|<html\b|<body\b)/i.test(block));
+            if (fencedHtml) contentToParse = fencedHtml;
+            let startIndex = contentToParse.toLowerCase().indexOf('<!doctype html>');
+            if (startIndex === -1) startIndex = contentToParse.toLowerCase().indexOf('<html');
+            if (startIndex === -1) {
+                const frameworkSyntax = /(?:\bclassName\s*=|\bonClick\s*=\s*\{|\bimport\s+React\b|\bexport\s+default\b|<>|<\/\>)/i;
+                if (frameworkSyntax.test(contentToParse)) return contentToParse;
+                const fragmentStart = contentToParse.search(/<(?:head|body|header|main|section|div|article|nav)\b/i);
+                const fragmentTags = contentToParse.match(/<\/?(?:head|body|header|main|section|div|article|nav|h1|h2|p|img|button|form|ul|ol|canvas|video|svg)\b/gi) || [];
+                if (fragmentStart >= 0 && fragmentTags.length >= 2) {
+                    const fragment = contentToParse.slice(fragmentStart).replace(/```\s*$/i, '').trim();
+                    if (/<body\b/i.test(fragment)) {
+                        return `<!DOCTYPE html>\n<html>\n${fragment}\n</html>`;
+                    }
+                    return `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>\n<body>\n${fragment}\n</body>\n</html>`;
+                }
+                return contentToParse;
+            }
+            const htmlCloseTag = '</html>';
+            let endIndex = contentToParse.toLowerCase().lastIndexOf(htmlCloseTag);
+            if (endIndex > startIndex) {
+                return contentToParse.substring(startIndex, endIndex + htmlCloseTag.length).trim();
+            } else {
+                return contentToParse.substring(startIndex).trim();
+            }
+        }
+
+        function imageFallbackDataUri() {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#0f172a"/><stop offset="0.55" stop-color="#134e4a"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="960" height="540" rx="28" fill="url(#g)"/><circle cx="210" cy="170" r="64" fill="#2dd4bf" opacity="0.22"/><path d="M150 398l170-176 126 116 86-78 278 138H150z" fill="#f8fafc" opacity="0.18"/><text x="480" y="292" text-anchor="middle" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="34" font-weight="700">Image unavailable</text></svg>`;
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function hardenGeneratedHtml(htmlContent) {
+            const fallback = imageFallbackDataUri();
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlContent || '', 'text/html');
+                let base = doc.head.querySelector('base');
+                if (!base) {
+                    base = doc.createElement('base');
+                    doc.head.prepend(base);
+                }
+                base.setAttribute('href', `${window.location.origin}/`);
+                doc.querySelectorAll('img').forEach(img => {
+                    const src = (img.getAttribute('src') || '').trim();
+                    if (!src || src === '#') img.setAttribute('src', fallback);
+                    if (!img.getAttribute('alt')) img.setAttribute('alt', 'Generated visual');
+                    if (!img.getAttribute('loading')) img.setAttribute('loading', 'lazy');
+                    if (!img.getAttribute('decoding')) img.setAttribute('decoding', 'async');
+                    img.style.maxWidth = img.style.maxWidth || '100%';
+                    img.setAttribute('onerror', `this.onerror=null;this.src='${fallback}';`);
+                });
+                const script = doc.createElement('script');
+                script.textContent = `document.addEventListener('error',function(event){var img=event.target;if(img&&img.tagName==='IMG'){img.onerror=null;img.src='${fallback}';}},true);`;
+                doc.body.appendChild(script);
+                return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+            } catch (error) {
+                return htmlContent;
+            }
+        }
+
+        function isRenderableHtml(htmlContent) {
+            if (typeof htmlContent !== 'string' || htmlContent.trim().length < 20) return false;
+            if (!/(?:<!doctype\s+html|<html\b)/i.test(htmlContent)) return false;
+            const bodyStart = htmlContent.search(/<body\b/i);
+            if (bodyStart === -1) return false;
+            const bodySource = htmlContent.slice(bodyStart);
+            if (!/<(?:header|main|section|div|article|nav|h1|h2|p|img|button|form|ul|ol|table|canvas|video|svg)\b/i.test(bodySource)) return false;
+            if (/(?:\bclassName\s*=|\bonClick\s*=\s*\{|\bimport\s+React\b|\bexport\s+default\b|<>|<\/\>)/i.test(htmlContent)) return false;
+            try {
+                const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+                if (!doc.body) return false;
+                const visibleElements = [...doc.body.querySelectorAll('header, main, section, div, article, nav, h1, h2, p, img, button, form, ul, ol, table, canvas, video, svg')];
+                return visibleElements.some(element =>
+                    Boolean(
+                        element.textContent.trim()
+                        || element.children.length
+                        || ['IMG', 'CANVAS', 'VIDEO', 'SVG'].includes(element.tagName)
+                    )
+                );
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function updatePreview(htmlContent, options = {}) {
+            const allowFallback = options.allowFallback !== false;
+            const persist = options.persist !== false;
+            const candidate = isRenderableHtml(htmlContent)
+                ? htmlContent
+                : (allowFallback ? lastRenderablePreviewHtml : '');
+            if (!isRenderableHtml(candidate)) return false;
+            const hardenedHtml = hardenGeneratedHtml(candidate);
+            previewFrame.removeAttribute('srcdoc');
+            previewFrame.src = `data:text/html;charset=utf-8,${encodeURIComponent(hardenedHtml)}`;
+            if (persist) lastRenderablePreviewHtml = candidate;
+            return true;
+        }
+
+        function renderStreamingHtml(rawText) {
+            if (!rawText) return false;
+            const candidate = extractMainHtmlDocument(rawText)
+                .replace(/^```(?:html)?\s*/i, '')
+                .replace(/```\s*$/i, '')
+                .trim();
+            return updatePreview(candidate, { allowFallback: false, persist: false });
+        }
+
+        function streamingPreviewHtml(message, rawText) {
+            return `<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: #f8fafc; color: #0f172a; font-family: Tahoma, Arial, sans-serif; overflow: hidden; }
+        .shell { min-height: 100vh; padding: 22px clamp(18px, 5vw, 72px); }
+        .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: clamp(44px, 9vh, 96px); }
+        .logo, .navline, .eyebrow, .title, .copy, .action, .visual { position: relative; overflow: hidden; background: #e2e8f0; border-radius: 6px; }
+        .logo { width: 118px; height: 28px; }
+        .navline { width: 190px; height: 16px; }
+        .hero { display: grid; grid-template-columns: minmax(0, .9fr) minmax(280px, 1.1fr); gap: 8vw; align-items: center; }
+        .eyebrow { width: 110px; height: 12px; margin-bottom: 22px; }
+        .title { width: min(520px, 92%); height: 58px; margin-bottom: 14px; }
+        .title.short { width: min(390px, 72%); }
+        .copy { width: min(460px, 88%); height: 16px; margin-top: 12px; }
+        .action { width: 138px; height: 42px; margin-top: 30px; background: #cbd5e1; }
+        .visual { height: min(54vh, 520px); min-height: 300px; }
+        .logo::after, .navline::after, .eyebrow::after, .title::after, .copy::after, .action::after, .visual::after { content: ""; position: absolute; inset: 0; transform: translateX(-110%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent); animation: shimmer 1.5s ease-in-out infinite; }
+        @keyframes shimmer { to { transform: translateX(110%); } }
+        @media (max-width: 700px) { .shell { padding: 18px; } .navline { width: 100px; } .hero { grid-template-columns: 1fr; gap: 34px; } .visual { min-height: 240px; height: 34vh; } .title { height: 42px; } }
+    </style>
+</head>
+<body>
+    <main class="shell" aria-label="در حال ساخت صفحه">
+        <div class="nav"><div class="logo"></div><div class="navline"></div></div>
+        <section class="hero">
+            <div><div class="eyebrow"></div><div class="title"></div><div class="title short"></div><div class="copy"></div><div class="copy"></div><div class="action"></div></div>
+            <div class="visual"></div>
+        </section>
+    </main>
+</body>
+</html>`;
+        }
+
+        function updateStreamingProgress(rawText, message = 'Streaming response...') {
+            const progress = document.getElementById('previewProgress');
+            if (progress) progress.textContent = message || 'در حال ساخت پیش‌نمایش زنده';
+        }
+
+        function parseSseEvents(buffer) {
+            const events = [];
+            let boundary = buffer.indexOf('\n\n');
+            while (boundary !== -1) {
+                const block = buffer.slice(0, boundary);
+                buffer = buffer.slice(boundary + 2);
+                const lines = block.split('\n');
+                let eventName = 'message';
+                let data = '';
+                lines.forEach(line => {
+                    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                    if (line.startsWith('data:')) data += line.slice(5).trim();
+                });
+                if (data) {
+                    try {
+                        events.push({ eventName, payload: JSON.parse(data) });
+                    } catch (error) {
+                        console.warn('Could not parse stream event:', data);
+                    }
+                }
+                boundary = buffer.indexOf('\n\n');
+            }
+            return { events, buffer };
+        }
+
+        function streamErrorMessage(payload, fallbackStatus) {
+            const detail = payload?.detail;
+            if (typeof detail === 'object' && detail !== null) {
+                if (detail.message) return detail.message;
+                if (detail.provider_body) {
+                    if (/gap_api_error|request failed/i.test(detail.provider_body)) {
+                        return 'سرویس تولید کد موقتاً پاسخ نداد. چند لحظه صبر کنید و دوباره ارسال را بزنید.';
+                    }
+                    return `${detail.provider_status || fallbackStatus}: ${detail.provider_body}`;
+                }
+                return JSON.stringify(detail);
+            }
+            return detail || payload?.message || 'An unknown streaming error occurred.';
+        }
+
+        async function sendPromptToLLM() {
+            const userPrompt = promptInput.value;
+            const currentCode = codeEditor.value;
+            const token = sessionStorage.getItem('deepintelligence_token');
+
+            if (!token) {
+                displayMessageBox("نشست شما منقضی شده است. لطفاً دوباره وارد شوید.", () => {
+                    window.location.href = `${backendBaseUrl}/`;
+                });
+                return;
+            }
+            if (!userPrompt.trim()) {
+                displayMessageBox("لطفاً یک پرامپت وارد کنید.");
+                return;
+            }
+
+            const user = getCachedUser();
+            if (user) {
+                const remaining = Math.max(Number(user.request_balance || 0), 0);
+                if (remaining <= 0) {
+                    redirectToPricing("تعداد درخواست‌های پلن شما تمام شده است. برای ادامه یکی از پلن‌ها را انتخاب کنید.");
+                    return;
+                }
+            }
+
+            if (user && normalizePlan(user.plan) === 'free') {
+                const wordLimit = 50;
+                const wordCount = userPrompt.trim().split(/\s+/).length;
+                if (wordCount > wordLimit) {
+                    displayMessageBox(
+                        `در پلن رایگان پرامپت نمی‌تواند بیشتر از ${wordLimit} کلمه باشد. شما ${wordCount} کلمه نوشته‌اید. لطفاً کوتاه‌ترش کنید یا پلن را ارتقا بدهید.`,
+                        () => { window.location.href = '/pricing'; }
+                    );
+                    return;
+                }
+            }
+
+            const isInitialRequest = !currentCode.trim() || currentCode.trim() === DEFAULT_EDITOR_CONTENT.trim();
+            const dataToSend = {
+                prompt: userPrompt,
+                current_code: currentCode,
+                type: isInitialRequest ? 'initial' : 'follow_up',
+                model: modelSelect.value
+            };
+
+            setWorkspaceState('preview');
+            codeEditor.value = '';
+            codeEditor.classList.add('loading');
+            updatePreview(streamingPreviewHtml('در حال اتصال به مدل...', ''));
+            sendPromptBtn.disabled = true;
+            modelSelect.disabled = true;
+            sendPromptBtn.textContent = 'در حال ساخت...';
+            setWorkStatus('در حال اتصال...');
+            document.body.classList.add('is-generating');
+
+            let rawAccumulatedResponse = '';
+            let streamBuffer = '';
+            let renderTimer = null;
+            let lastRenderedLength = 0;
+            let lastLivePreviewAt = 0;
+            const scheduleStreamRender = () => {
+                if (renderTimer) return;
+                renderTimer = window.setTimeout(() => {
+                    renderTimer = null;
+                    if (lastRenderedLength === rawAccumulatedResponse.length) return;
+                    lastRenderedLength = rawAccumulatedResponse.length;
+                    codeEditor.value = rawAccumulatedResponse;
+                    codeEditor.scrollTop = codeEditor.scrollHeight;
+                    const now = Date.now();
+                    if (now - lastLivePreviewAt >= 700) {
+                        const rendered = renderStreamingHtml(rawAccumulatedResponse);
+                        if (rendered) lastLivePreviewAt = now;
+                        else updateStreamingProgress(rawAccumulatedResponse, 'در حال آماده‌سازی ساختار صفحه...');
+                    }
+                }, 160);
+            };
+
+            try {
+                const response = await fetch(`${backendBaseUrl}/generate-code/stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(dataToSend)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    const detail = errorData.detail;
+                    const providerMessage = typeof detail === 'object'
+                        ? `${detail.provider_status || response.status}: ${detail.provider_body || JSON.stringify(detail)}`
+                        : (detail || errorData.message || JSON.stringify(errorData));
+                    const errorCode = errorData.error || (detail && detail.error);
+                    const errorMessage = errorData.message || (detail && detail.message);
+                    const redirectTo = errorData.redirect_to || (detail && detail.redirect_to);
+                    if ((response.status === 402 || response.status === 403) && (errorCode === "limit_reached" || errorCode === "model_locked" || redirectTo === "/pricing")) {
+                        redirectToPricing(errorMessage);
+                    } else if (response.status === 401) {
+                            displayMessageBox("احراز هویت ناموفق بود. لطفاً دوباره وارد شوید.", () => { window.location.href = `${backendBaseUrl}/`; });
+                    } else {
+                        displayMessageBox(`Error: ${providerMessage || 'An unknown error occurred.'}`);
+                    }
+                    codeEditor.value = currentCode;
+                    setWorkspaceState(isInitialRequest ? 'empty' : 'preview');
+                    return; 
+                }
+
+                if (!response.body) {
+                    throw new Error('Streaming is not supported by this browser.');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let streamComplete = false;
+                let streamFinishReason = null;
+
+                while (!streamComplete) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    streamBuffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+                    const parsed = parseSseEvents(streamBuffer);
+                    streamBuffer = parsed.buffer;
+
+                    for (const { eventName, payload } of parsed.events) {
+                        if (eventName === 'status') {
+                            const message = payload.message || 'Working...';
+                            if (payload.reason) streamFinishReason = payload.reason;
+                            setWorkStatus(message);
+                            sendPromptBtn.textContent = message.length > 16 ? 'Working...' : message;
+                        } else if (eventName === 'delta') {
+                            rawAccumulatedResponse += payload.content || '';
+                            setWorkStatus('Streaming...');
+                            scheduleStreamRender();
+                        } else if (eventName === 'error') {
+                            const errorCode = payload?.detail?.error;
+                            const redirectTo = payload?.detail?.redirect_to;
+                            const errorMessage = streamErrorMessage(payload, payload?.status);
+                            codeEditor.value = currentCode;
+                            updatePreview(currentCode);
+                            setWorkspaceState(isInitialRequest ? 'empty' : 'preview');
+                            if ((payload.status === 402 || payload.status === 403) && (errorCode === 'limit_reached' || errorCode === 'model_locked' || redirectTo === '/pricing')) {
+                                redirectToPricing(errorMessage);
+                            } else {
+                                displayMessageBox(`Error: ${errorMessage}`);
+                            }
+                            return;
+                        } else if (eventName === 'done') {
+                            streamComplete = true;
+                            setWorkStatus('Finalizing...');
+                        }
+                    }
+                }
+
+                if (renderTimer) {
+                    window.clearTimeout(renderTimer);
+                    renderTimer = null;
+                }
+                codeEditor.classList.remove('loading');
+
+                let finalCode = isInitialRequest
+                    ? extractMainHtmlDocument(rawAccumulatedResponse)
+                    : applySearchReplace(rawAccumulatedResponse, currentCode);
+                if (!isInitialRequest && !isRenderableHtml(finalCode)) {
+                    const completeHtmlFallback = extractMainHtmlDocument(rawAccumulatedResponse);
+                    if (isRenderableHtml(completeHtmlFallback)) finalCode = completeHtmlFallback;
+                }
+                if (!isRenderableHtml(finalCode)) {
+                    codeEditor.value = currentCode || DEFAULT_EDITOR_CONTENT;
+                    updatePreview(codeEditor.value);
+                    setWorkspaceState('preview');
+                    const reasonText = streamFinishReason === 'length'
+                        ? 'خروجی مدل به سقف طول رسید و HTML کامل نشد.'
+                        : 'مدل به‌جای HTML مستقل، متن یا کد فریم‌ورکی برگرداند.';
+                    displayMessageBox(`${reasonText} پیش‌نمایش قبلی حفظ شد؛ لطفاً دوباره تلاش کنید.`);
+                    return;
+                }
+                codeEditor.value = finalCode;
+                updatePreview(finalCode);
+                setWorkspaceState('preview');
+
+                await refreshCurrentUser();
+                updateRequestsCounter();
+
+            } catch (error) {
+                displayMessageBox(`خطای اتصال: ${error.message}`);
+                codeEditor.value = currentCode;
+                updatePreview(currentCode);
+                setWorkspaceState(isInitialRequest ? 'empty' : 'preview');
+            } finally {
+                if (renderTimer) window.clearTimeout(renderTimer);
+                sendPromptBtn.disabled = false;
+                modelSelect.disabled = false;
+                sendPromptBtn.textContent = 'ارسال';
+                setWorkStatus('آماده');
+                codeEditor.classList.remove('loading');
+                document.body.classList.remove('is-generating');
+            }
+        }
+        
+        let onMessageBoxClose = null;
+
+        function displayMessageBox(message, callback) {
+            messageBoxText.textContent = message;
+            messageBoxOverlay.style.display = 'flex';
+            onMessageBoxClose = callback || null;
+        }
+
+        messageBoxCloseBtn.addEventListener('click', () => {
+            messageBoxOverlay.style.display = 'none';
+            if (typeof onMessageBoxClose === 'function') {
+                onMessageBoxClose();
+                onMessageBoxClose = null;
+            }
+        });
+
+        codeEditor.addEventListener('input', () => {
+            updatePreview(codeEditor.value);
+            if (workspaceState === 'empty') setWorkspaceState('code');
+        });
+        codeEditor.addEventListener('keydown', function(event) {
+            if (event.key === 'Tab' && !event.shiftKey) {
+                event.preventDefault();
+                const start = this.selectionStart, end = this.selectionEnd;
+                this.value = this.value.substring(0, start) + '  ' + this.value.substring(end);
+                this.selectionStart = this.selectionEnd = start + 2;
+                updatePreview(this.value);
+            }
+        });
+        promptInput.addEventListener('input', function() {
+            updatePromptDirection();
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+        promptInput.addEventListener('keydown', (event) => {
+            if (event.ctrlKey && event.key === 'Enter') {
+                event.preventDefault();
+                sendPromptToLLM();
+            }
+        });
+        sendPromptBtn.addEventListener('click', () => {
+            closeDisclosureMenus();
+            sendPromptToLLM();
+        });
+        startBtn.addEventListener('click', () => {
+            closeDisclosureMenus();
+            promptInput.focus();
+            promptInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+        moreMenu.addEventListener('toggle', () => {
+            if (moreMenu.open) closeDisclosureMenus(moreMenu);
+        });
+        advancedSettings.addEventListener('toggle', () => {
+            if (advancedSettings.open) closeDisclosureMenus(advancedSettings);
+        });
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.more-menu') && !event.target.closest('.advanced-settings')) {
+                closeDisclosureMenus();
+            }
+        });
+        modelSelect.addEventListener('change', () => {
+            const selected = modelSelect.selectedOptions[0];
+            if (!selected || !selected.disabled) return;
+            displayMessageBox("This model is locked for your current plan. Please choose a plan to unlock it.");
+            resetToAvailableModel();
+        });
+        dashboardBtn.addEventListener('click', () => {
+            window.location.href = '/dashboard';
+        });
+        adminBtn.addEventListener('click', () => {
+            window.location.href = '/admin';
+        });
+        plansBtn.addEventListener('click', () => {
+            window.location.href = '/pricing';
+        });
+        galleryBtn.addEventListener('click', () => {
+            window.location.href = '/gallery';
+        });
+        blogBtn.addEventListener('click', () => {
+            window.location.href = '/blog';
+        });
+        function downloadHtmlCode() {
+            const codeToDownload = codeEditor.value;
+            if (!codeToDownload) {
+                displayMessageBox("There is no code to download.");
+                return;
+            }
+            const blob = new Blob([codeToDownload], { type: 'text/html' });
+            const a = document.createElement('a');
+            a.href = window.URL.createObjectURL(blob);
+            a.download = 'index.html';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(a.href);
+            document.body.removeChild(a);
+        }
+
+        downloadBtn.addEventListener('click', downloadHtmlCode);
+        updatePreview(codeEditor.value);
+
+        chatBtn.addEventListener('click', () => {
+            closeDisclosureMenus();
+            setWorkspaceState('code');
+        });
+
+        previewBtn.addEventListener('click', () => {
+            closeDisclosureMenus();
+            updatePreview(codeEditor.value || DEFAULT_EDITOR_CONTENT);
+            setWorkspaceState('preview');
+        });
+
+        let isResizing = false;
+        resizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+            dragOverlay.style.display = 'block';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const leftPaneWidth = e.clientX;
+            const minWidth = 300;
+            const maxWidth = mainContentWrapper.offsetWidth - 300;
+            if (leftPaneWidth > minWidth && leftPaneWidth < maxWidth) {
+                leftPane.style.width = `${leftPaneWidth}px`;
+            }
+        });
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+            document.body.style.cursor = 'default';
+            document.body.style.userSelect = 'auto';
+            dragOverlay.style.display = 'none';
+        });
+
+        // --- UPDATED: Call the counter and check for payment status on page load ---
+        window.addEventListener('load', () => {
+            leftPane.style.width = '50%';
+            setWorkspaceState('empty');
+            updatePromptDirection();
+            initializeAccountAccess();
+            
+            // --- NEW: Check for payment success message ---
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('payment_status') === 'success') {
+                displayMessageBox("پرداخت موفق بود. پلن شما ارتقا پیدا کرد.", () => {
+                    // Clean the URL to prevent the message from showing on refresh
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

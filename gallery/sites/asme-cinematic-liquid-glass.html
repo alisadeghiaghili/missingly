@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Asme | Built for the Curious</title>
+    <meta name="description" content="لندینگ سینمایی Asme با ویدیوی تمام‌صفحه، رابط شیشه‌ای، فرم عضویت و کنترل محوشدن نرم ویدیو." />
+    <meta name="thinkflow:category" content="لندینگ ویدئویی" />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        /* ---------- Reset & Base ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ---------- App Container ---------- */
+        .app {
+            position: relative;
+            min-height: 100vh;
+            width: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        /* ---------- Video Background ---------- */
+        .video-bg {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .video-bg video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: translateY(17%);
+        }
+
+        .video-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+        }
+
+        /* ---------- Liquid Glass ---------- */
+        .liquid-glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        /* ---------- Navigation ---------- */
+        .navbar {
+            position: relative;
+            z-index: 20;
+            padding: 24px 24px 0;
+        }
+
+        .navbar-inner {
+            max-width: 1024px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-radius: 9999px;
+            padding: 12px 24px;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-left svg {
+            width: 24px;
+            height: 24px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .nav-left .brand {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .nav-links {
+            display: none;
+            align-items: center;
+            gap: 32px;
+            margin-left: 32px;
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover {
+            color: #fff;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .nav-right .sign-up {
+            display: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .btn-login {
+            border-radius: 9999px;
+            padding: 8px 24px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-login:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* ---------- Hero Content ---------- */
+        .hero {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            padding: 32px 24px 48px;
+            text-align: center;
+            transform: translateY(-20%);
+            min-height: calc(100vh - 120px);
+        }
+
+        .hero h1 {
+            font-family: 'Instrument Serif', serif;
+            font-size: clamp(2.8rem, 10vw, 4.5rem);
+            font-weight: 400;
+            letter-spacing: -0.02em;
+            color: #fff;
+            margin-bottom: 32px;
+            white-space: nowrap;
+        }
+
+        .hero-form {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .hero-input {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-radius: 9999px;
+            padding: 8px 8px 8px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .hero-input input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 1rem;
+            padding: 8px 0;
+            outline: none;
+            font-family: 'Inter', sans-serif;
+        }
+        .hero-input input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .hero-input button {
+            border-radius: 9999px;
+            background: #fff;
+            border: none;
+            padding: 12px;
+            color: #000;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .hero-input button:hover {
+            background: rgba(255, 255, 255, 0.9);
+            transform: scale(1.04);
+        }
+        .hero-input button svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .hero-sub {
+            font-size: 0.875rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.85);
+            padding: 0 16px;
+            max-width: 400px;
+        }
+
+        .btn-manifesto {
+            border-radius: 9999px;
+            padding: 12px 32px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: 'Inter', sans-serif;
+            margin-top: 8px;
+        }
+        .btn-manifesto:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* ---------- Social Footer ---------- */
+        .social-footer {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            padding-bottom: 48px;
+        }
+
+        .social-footer button {
+            border-radius: 9999px;
+            padding: 16px;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .social-footer button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .social-footer button svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* ---------- Responsive ---------- */
+        @media (min-width: 768px) {
+            .nav-links {
+                display: flex;
+            }
+            .nav-right .sign-up {
+                display: block;
+            }
+            .hero {
+                transform: translateY(-25%);
+            }
+            .hero h1 {
+                font-size: clamp(4rem, 8vw, 5.5rem);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .navbar {
+                padding: 16px 16px 0;
+            }
+            .navbar-inner {
+                padding: 10px 16px;
+            }
+            .hero h1 {
+                font-size: 2.5rem;
+                white-space: normal;
+            }
+            .hero-input {
+                padding: 6px 6px 6px 16px;
+            }
+            .hero-input input {
+                font-size: 0.9rem;
+            }
+            .social-footer button {
+                padding: 12px;
+            }
+            .social-footer button svg {
+                width: 16px;
+                height: 16px;
+            }
+        }
+
+        /* ---------- Fade Animation ---------- */
+        .fade-in {
+            opacity: 0;
+            animation: fadeUp 0.8s ease forwards;
+        }
+        .fade-in.delay-1 {
+            animation-delay: 0.15s;
+        }
+        .fade-in.delay-2 {
+            animation-delay: 0.3s;
+        }
+        .fade-in.delay-3 {
+            animation-delay: 0.45s;
+        }
+        .fade-in.delay-4 {
+            animation-delay: 0.6s;
+        }
+        .fade-in.delay-5 {
+            animation-delay: 0.75s;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ---------- Scrollbar hide ---------- */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ====== VIDEO BACKGROUND ====== -->
+        <div class="video-bg">
+            <video
+                id="bgVideo"
+                src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
+                muted
+                autoplay
+                playsinline
+                preload="auto"
+                style="opacity:0; transition: opacity 0.8s ease;"
+            ></video>
+            <div class="video-overlay"></div>
+        </div>
+
+        <!-- ====== NAVIGATION ====== -->
+        <nav class="navbar fade-in">
+            <div class="navbar-inner liquid-glass">
+                <div class="nav-left">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="2" y1="12" x2="22" y2="12"/>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    </svg>
+                    <span class="brand">Asme</span>
+                    <div class="nav-links">
+                        <a href="#">Features</a>
+                        <a href="#">Pricing</a>
+                        <a href="#">About</a>
+                    </div>
+                </div>
+                <div class="nav-right">
+                    <span class="sign-up">Sign Up</span>
+                    <button class="btn-login">Login</button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- ====== HERO CONTENT ====== -->
+        <div class="hero">
+            <h1 class="fade-in delay-1">Built for the curious</h1>
+
+            <div class="hero-form">
+                <div class="hero-input fade-in delay-2">
+                    <input type="email" placeholder="Enter your email" />
+                    <button>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="hero-sub fade-in delay-3">
+                    Stay updated with the latest news and insights. Subscribe to our newsletter today and never miss out on exciting updates.
+                </p>
+
+                <button class="btn-manifesto fade-in delay-4">Manifesto</button>
+            </div>
+        </div>
+
+        <!-- ====== SOCIAL FOOTER ====== -->
+        <div class="social-footer fade-in delay-5">
+            <button aria-label="Instagram">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+                </svg>
+            </button>
+            <button aria-label="Twitter">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4l11.733 16h4.267l-11.733 -16z"/>
+                    <path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>
+                </svg>
+            </button>
+            <button aria-label="Globe">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="2" y1="12" x2="22" y2="12"/>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+            </button>
+        </div>
+
+    </div>
+
+    <!-- ====== VIDEO FADE SCRIPT ====== -->
+    <script>
+        (function() {
+            const video = document.getElementById('bgVideo');
+            if (!video) return;
+
+            let opacity = 0;
+            let fadeStart = null;
+            let fadeDuration = 500;
+            let isFading = false;
+            let targetOpacity = 1;
+            let rafId = null;
+            let fadingOut = false;
+
+            const fadeTo = (target, duration = 500) => {
+                if (isFading && rafId) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
+                isFading = true;
+                fadeDuration = duration;
+                targetOpacity = target;
+                fadeStart = performance.now();
+                if (!rafId) {
+                    rafId = requestAnimationFrame(animateFade);
+                }
+            };
+
+            const animateFade = (now) => {
+                if (!fadeStart) {
+                    rafId = requestAnimationFrame(animateFade);
+                    return;
+                }
+                const elapsed = now - fadeStart;
+                const progress = Math.min(elapsed / fadeDuration, 1);
+                // ease-in-out cubic
+                const eased = progress < 0.5 ?
+                    4 * progress * progress * progress :
+                    1 - Math.pow(-2 * progress + 2, 3) / 2;
+                const current = opacity + (targetOpacity - opacity) * eased;
+                video.style.opacity = current;
+                opacity = current;
+
+                if (progress < 1) {
+                    rafId = requestAnimationFrame(animateFade);
+                } else {
+                    video.style.opacity = targetOpacity;
+                    opacity = targetOpacity;
+                    isFading = false;
+                    fadeStart = null;
+                    rafId = null;
+                }
+            };
+
+            const onCanPlay = () => {
+                video.play().catch(() => {});
+                fadeTo(1, 500);
+            };
+
+            const onTimeUpdate = () => {
+                const remaining = video.duration - video.currentTime;
+                if (remaining <= 0.55 && !fadingOut && opacity > 0.1) {
+                    fadingOut = true;
+                    fadeTo(0, 500);
+                }
+            };
+
+            const onEnded = () => {
+                video.style.opacity = 0;
+                opacity = 0;
+                fadingOut = false;
+                setTimeout(() => {
+                    video.currentTime = 0;
+                    video.play().catch(() => {});
+                    fadeTo(1, 500);
+                }, 100);
+            };
+
+            video.addEventListener('canplay', onCanPlay);
+            video.addEventListener('timeupdate', onTimeUpdate);
+            video.addEventListener('ended', onEnded);
+
+            // Fallback if video already loaded
+            if (video.readyState >= 3) {
+                video.play().catch(() => {});
+                fadeTo(1, 500);
+            }
+
+            // Cleanup
+            window.addEventListener('beforeunload', () => {
+                video.removeEventListener('canplay', onCanPlay);
+                video.removeEventListener('timeupdate', onTimeUpdate);
+                video.removeEventListener('ended', onEnded);
+                if (rafId) cancelAnimationFrame(rafId);
+            });
+        })();
+    </script>
+
+</body>
+</html>

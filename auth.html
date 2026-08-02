@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZMB75975WY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ZMB75975WY');
+    </script>
+
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-NFR2DLMB');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThinkFlow | سایت‌ساز هوشمند با هوش مصنوعی</title>
+    <meta name="description" content="با ThinkFlow فقط با نوشتن یک پرامپت، سایت حرفه‌ای و واکنش‌گرا بسازید، نتیجه را زنده ببینید و همان‌جا ویرایش کنید.">
+    <meta name="keywords" content="سایت ساز هوش مصنوعی, ساخت سایت با هوش مصنوعی, طراحی سایت با AI, سایت ساز فارسی, ThinkFlow">
+    <meta name="author" content="تیم هوش عمیق">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="theme-color" content="#070a12">
+    <link rel="canonical" href="https://thinkflow.ir/">
+    <link rel="icon" type="image/svg+xml" href="https://thinkflow.ir/thinkflow-logo-mark.svg?v=20260731-1">
+    <meta property="og:locale" content="fa_IR">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="ThinkFlow">
+    <meta property="og:title" content="ThinkFlow | سایت‌ساز هوشمند با هوش مصنوعی">
+    <meta property="og:description" content="ایده‌تان را بنویسید و یک وب‌سایت حرفه‌ای، واکنش‌گرا و آماده انتشار تحویل بگیرید.">
+    <meta property="og:url" content="https://thinkflow.ir/">
+    <meta property="og:image" content="https://thinkflow.ir/thinkflow-logo.svg?v=20260731-1">
+    <meta property="og:image:width" content="2048">
+    <meta property="og:image:height" content="2048">
+    <meta property="og:image:alt" content="لوگوی ThinkFlow، سایت‌ساز هوشمند">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ThinkFlow | ساخت سایت با هوش مصنوعی">
+    <meta name="twitter:description" content="با یک پرامپت، وب‌سایت حرفه‌ای و آماده انتشار بسازید.">
+    <meta name="twitter:image" content="https://thinkflow.ir/thinkflow-logo.svg?v=20260731-1">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://thinkflow.ir/#organization",
+          "name": "ThinkFlow",
+          "alternateName": "هوش عمیق",
+          "url": "https://thinkflow.ir/",
+          "logo": "https://thinkflow.ir/thinkflow-logo.svg?v=20260731-1",
+          "email": "reza.ghahtarani@gmail.com"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://thinkflow.ir/#website",
+          "url": "https://thinkflow.ir/",
+          "name": "ThinkFlow",
+          "inLanguage": "fa-IR",
+          "publisher": { "@id": "https://thinkflow.ir/#organization" }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://thinkflow.ir/#application",
+          "name": "ThinkFlow",
+          "url": "https://thinkflow.ir/",
+          "applicationCategory": "DesignApplication",
+          "operatingSystem": "Web",
+          "inLanguage": "fa-IR",
+          "description": "سایت‌ساز فارسی مبتنی بر هوش مصنوعی برای تولید و ویرایش زنده وب‌سایت‌های واکنش‌گرا.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "IRR",
+            "url": "https://thinkflow.ir/pricing"
+          },
+          "publisher": { "@id": "https://thinkflow.ir/#organization" }
+        }
+      ]
+    }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @font-face {
+            font-family: 'IRANSans';
+            src: url('/irsans.ttf?v=20260727-vazirmatn') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'IRANSans';
+            src: url('/irsansb.ttf?v=20260727-vazirmatn') format('truetype');
+            font-weight: 700 900;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        body {
+            font-family: 'IRANSans', Tahoma, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: calc(100vh - 48px);
+            background:
+                radial-gradient(circle at 20% 15%, rgba(20, 184, 166, 0.16), transparent 28rem),
+                radial-gradient(circle at 80% 20%, rgba(244, 63, 94, 0.14), transparent 24rem),
+                linear-gradient(135deg, #070a12 0%, #101827 48%, #1a1020 100%);
+            padding: 0;
+            color: #f8fafc;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+            background-size: 44px 44px;
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            pointer-events: none;
+        }
+
+        .auth-shell {
+            width: min(1120px, 100%);
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) 420px;
+            gap: 2rem;
+            align-items: center;
+            margin: 0 auto;
+            padding: 2rem 1.25rem 1rem;
+            position: relative;
+            z-index: 1;
+            box-sizing: border-box;
+        }
+
+        .product-panel {
+            padding: 2rem;
+        }
+
+        .landing-nav {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 0.55rem;
+            width: min(620px, 100%);
+            margin-bottom: 1.4rem;
+        }
+
+        .landing-nav a {
+            min-height: 42px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.55rem 0.65rem;
+            color: #cbd5e1;
+            background: rgba(15, 23, 42, 0.68);
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            white-space: nowrap;
+            text-decoration: none;
+            transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .landing-nav a:hover,
+        .landing-nav a:focus-visible {
+            color: #f8fafc;
+            border-color: rgba(94, 234, 212, 0.58);
+            background: rgba(20, 184, 166, 0.1);
+            outline: none;
+        }
+
+        .landing-nav a[aria-current="page"] {
+            color: #05201d;
+            background: #5eead4;
+            border-color: #5eead4;
+        }
+
+        .brand-mark {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #f8fafc;
+            font-weight: 800;
+            letter-spacing: 0;
+            margin-bottom: 2rem;
+        }
+
+        .brand-mark img {
+            width: 210px;
+            height: auto;
+            object-fit: contain;
+            padding: 5px 9px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        .product-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.75rem;
+            border: 1px solid rgba(45, 212, 191, 0.28);
+            background: rgba(15, 23, 42, 0.68);
+            color: #99f6e4;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+        }
+
+        .product-panel h1 {
+            max-width: 680px;
+            font-size: clamp(2.8rem, 5.6vw, 5.35rem);
+            line-height: 1.12;
+            margin: 0 0 1.25rem;
+            letter-spacing: 0;
+            color: #ffffff;
+            font-family: 'IRANSans', Tahoma, sans-serif;
+            font-weight: 900;
+            text-wrap: balance;
+        }
+
+        .product-panel h1 span {
+            display: inline-block;
+        }
+
+        .product-panel h1 .slogan-accent {
+            color: #5eead4;
+        }
+
+        .product-panel p {
+            max-width: 620px;
+            color: #b6c2d6;
+            font-size: 1.08rem;
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+            max-width: 720px;
+        }
+
+        .feature-chip {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.58);
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 0.85rem;
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .social-row {
+            display: flex;
+            align-items: center;
+            margin-top: 1.25rem;
+        }
+
+        .instagram-link {
+            width: 44px;
+            height: 44px;
+            display: inline-grid;
+            place-items: center;
+            color: #f8fafc;
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 8px;
+            text-decoration: none;
+            transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+        }
+
+        .instagram-link:hover,
+        .instagram-link:focus-visible {
+            color: #fb7185;
+            background: rgba(251, 113, 133, 0.08);
+            border-color: rgba(251, 113, 133, 0.68);
+            transform: translateY(-2px);
+            outline: none;
+        }
+
+        .instagram-link svg {
+            width: 23px;
+            height: 23px;
+            stroke-width: 2;
+        }
+
+        .auth-container {
+            background: rgba(9, 13, 24, 0.82);
+            backdrop-filter: blur(18px);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 14px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 28px 70px rgba(0, 0, 0, 0.38);
+        }
+
+        .site-credit {
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 2rem 1rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.12);
+        }
+
+        .gallery-section {
+            position: relative;
+            z-index: 1;
+            padding: 5rem 1.25rem 4rem;
+            background: rgba(5, 8, 15, 0.62);
+            border-top: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        .gallery-inner {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+        }
+
+        .gallery-heading {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .gallery-kicker {
+            margin: 0 0 0.65rem;
+            color: #5eead4;
+            font-size: 0.82rem;
+            font-weight: 800;
+        }
+
+        .gallery-heading h2 {
+            margin: 0;
+            color: #fff;
+            font-size: clamp(1.8rem, 4vw, 3.2rem);
+            line-height: 1.25;
+            letter-spacing: 0;
+        }
+
+        .gallery-heading > p {
+            max-width: 430px;
+            margin: 0;
+            color: #94a3b8;
+            line-height: 1.9;
+            font-size: 0.92rem;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .gallery-item {
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            background: #0b101c;
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-4px);
+            border-color: rgba(94, 234, 212, 0.48);
+        }
+
+        .site-preview {
+            direction: ltr;
+            height: 255px;
+            overflow: hidden;
+            position: relative;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        .preview-bar {
+            height: 28px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 0 10px;
+            background: rgba(2, 6, 23, 0.82);
+        }
+
+        .preview-bar i { width: 6px; height: 6px; border-radius: 50%; background: #64748b; }
+        .preview-bar i:first-child { background: #fb7185; }
+        .preview-bar i:nth-child(2) { background: #fbbf24; }
+        .preview-bar i:last-child { background: #34d399; }
+
+        .preview-store { background: #f8fafc; color: #15202b; }
+        .store-nav, .studio-nav { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; font-size: 8px; font-weight: 800; }
+        .store-brand { font-size: 13px; color: #0f766e; }
+        .store-hero { display: grid; grid-template-columns: 1fr 0.9fr; align-items: center; gap: 12px; padding: 14px 18px; }
+        .store-copy strong { display: block; max-width: 150px; font-size: 18px; line-height: 1.2; }
+        .store-copy p { color: #64748b; font-size: 7px; line-height: 1.6; }
+        .mini-button { display: inline-block; padding: 6px 10px; border-radius: 4px; background: #0f766e; color: white; font-size: 7px; font-weight: 800; }
+        .product-visual { height: 142px; display: grid; place-items: center; background: #dff7f0; border-radius: 6px; }
+        .bottle { width: 46px; height: 100px; border-radius: 10px 10px 16px 16px; background: linear-gradient(145deg, #0f766e, #34d399); box-shadow: 18px 12px 0 rgba(15, 118, 110, 0.13); }
+
+        .preview-dashboard { background: #0b1220; color: #e2e8f0; }
+        .dash-layout { display: grid; grid-template-columns: 62px 1fr; height: 227px; }
+        .dash-sidebar { padding: 14px 8px; background: #111827; }
+        .dash-logo { width: 24px; height: 24px; margin-bottom: 18px; border-radius: 5px; background: #f43f5e; }
+        .dash-line { height: 5px; margin: 9px 0; border-radius: 4px; background: #334155; }
+        .dash-main { padding: 16px; }
+        .dash-title { width: 90px; height: 10px; background: #e2e8f0; border-radius: 3px; }
+        .dash-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 15px 0; }
+        .dash-stat { height: 45px; padding: 8px; border: 1px solid #273449; border-radius: 5px; background: #121c2d; }
+        .dash-stat::after { content: ''; display: block; width: 55%; height: 8px; margin-top: 12px; border-radius: 3px; background: #38bdf8; }
+        .dash-chart { height: 92px; border-radius: 5px; background: linear-gradient(180deg, rgba(56,189,248,.18), transparent), repeating-linear-gradient(0deg, transparent 0 22px, #263247 23px); clip-path: polygon(0 72%, 14% 55%, 28% 63%, 43% 26%, 58% 44%, 72% 17%, 86% 34%, 100% 8%, 100% 100%, 0 100%); }
+
+        .preview-studio { background: #fff7ed; color: #292524; }
+        .studio-nav span { font-size: 13px; font-weight: 900; }
+        .studio-hero { padding: 13px 18px 0; text-align: center; }
+        .studio-hero small { color: #db2777; font-size: 7px; font-weight: 900; }
+        .studio-hero strong { display: block; max-width: 250px; margin: 7px auto; font-size: 20px; line-height: 1.2; }
+        .studio-shapes { height: 90px; margin-top: 14px; position: relative; overflow: hidden; }
+        .studio-shapes span { position: absolute; display: block; border-radius: 6px; }
+        .studio-shapes span:first-child { width: 120px; height: 75px; left: 12%; top: 14px; background: #fb7185; transform: rotate(-7deg); }
+        .studio-shapes span:nth-child(2) { width: 150px; height: 88px; left: 33%; top: 0; background: #fbbf24; transform: rotate(4deg); }
+        .studio-shapes span:last-child { width: 105px; height: 70px; right: 8%; top: 18px; background: #2563eb; transform: rotate(9deg); }
+
+        .gallery-meta { padding: 1.1rem; }
+        .gallery-type { color: #5eead4; font-size: 0.72rem; font-weight: 800; }
+        .gallery-meta h3 { margin: 0.4rem 0 0.7rem; color: #f8fafc; font-size: 1rem; letter-spacing: 0; }
+        .gallery-prompt { margin: 0; color: #94a3b8; font-size: 0.78rem; line-height: 1.8; }
+        .gallery-prompt strong { color: #cbd5e1; }
+        .home-gallery-link { display: block; color: inherit; text-decoration: none; }
+        .home-gallery-preview { position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; background: #070a12; border-bottom: 1px solid rgba(148, 163, 184, 0.16); }
+        .home-gallery-preview::after { content: 'مشاهده در گالری'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 0.82rem; font-weight: 800; background: rgba(4, 8, 15, 0.7); opacity: 0; transition: opacity 0.2s ease; }
+        .home-gallery-link:hover .home-gallery-preview::after, .home-gallery-link:focus-visible .home-gallery-preview::after { opacity: 1; }
+        .home-gallery-preview iframe { position: absolute; top: 0; left: 0; width: 1280px; height: 800px; border: 0; transform: scale(var(--home-preview-scale, 0.25)); transform-origin: top left; pointer-events: none; background: #fff; }
+        .home-gallery-empty { display: none; grid-column: 1 / -1; min-height: 220px; place-items: center; padding: 32px; color: #94a3b8; text-align: center; border: 1px dashed rgba(148, 163, 184, 0.2); border-radius: 8px; }
+        .home-gallery-empty.show { display: grid; }
+        .gallery-actions { display: flex; justify-content: center; margin-top: 1.5rem; }
+        .gallery-all-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0.7rem 1.4rem; color: #06201d; background: #5eead4; border: 1px solid #5eead4; border-radius: 8px; font-size: 0.86rem; font-weight: 900; text-decoration: none; transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease; }
+        .gallery-all-link:hover, .gallery-all-link:focus-visible { background: #99f6e4; border-color: #99f6e4; transform: translateY(-1px); outline: none; }
+
+        .auth-header { text-align: center; margin-bottom: 2rem; }
+        .auth-header h1 { color: #f8fafc; font-size: 1.85rem; font-weight: 800; margin-bottom: 0.5rem; letter-spacing: 0; }
+        .auth-header p { color: #94a3b8; font-size: 0.9rem; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-label { display: block; color: #dbeafe; font-size: 0.875rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .form-input { width: 100%; padding: 0.82rem 1rem; background: rgba(15, 23, 42, 0.88); border: 1px solid rgba(148, 163, 184, 0.26); border-radius: 8px; color: #f8fafc; font-size: 0.9rem; transition: all 0.2s ease; box-sizing: border-box; }
+        .form-input:focus { outline: none; border-color: #2dd4bf; box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16); }
+        .auth-button { width: 100%; padding: 0.86rem 1.5rem; background: linear-gradient(135deg, #14b8a6 0%, #4f46e5 100%); color: #ffffff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 800; cursor: pointer; transition: all 0.2s ease; margin-bottom: 1rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 16px 34px rgba(20, 184, 166, 0.22); }
+        .auth-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 20px 40px rgba(79, 70, 229, 0.28); }
+        .auth-button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .auth-toggle { text-align: center; color: #94a3b8; font-size: 0.875rem; }
+        .auth-toggle a { color: #5eead4; text-decoration: none; font-weight: 800; cursor: pointer; }
+        .trust-seal {
+            display: flex;
+            justify-content: flex-start;
+            margin-top: 1.25rem;
+        }
+        .trust-seal img {
+            width: 86px;
+            height: auto;
+            object-fit: contain;
+        }
+        .error-message, .success-message { padding: 0.75rem; border-radius: 6px; font-size: 0.875rem; margin-bottom: 1rem; display: none; }
+        .error-message { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .success-message { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); color: #86efac; }
+        .hidden { display: none; }
+        .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: #ffffff; animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* --- NEW: Styles for password help section --- */
+        .password-help-icon {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            line-height: 18px;
+            text-align: center;
+            border-radius: 50%;
+            background-color: #4a5568;
+            color: #e2e8f0;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 8px;
+            user-select: none;
+        }
+        .password-requirements {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+        .password-requirements ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            color: #a0aec0;
+        }
+        .password-requirements li {
+            margin-bottom: 0.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .auth-shell {
+                grid-template-columns: 1fr;
+            }
+            .product-panel {
+                padding: 1rem 0 0;
+                text-align: center;
+            }
+            .landing-nav {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                margin-right: auto;
+                margin-left: auto;
+            }
+            .product-panel p {
+                margin-left: auto;
+                margin-right: auto;
+            }
+            .feature-row {
+                grid-template-columns: 1fr;
+            }
+            .social-row {
+                justify-content: center;
+            }
+            .auth-container {
+                margin: 0 auto;
+            }
+            .gallery-heading { align-items: start; flex-direction: column; gap: 1rem; }
+            .gallery-grid { grid-template-columns: 1fr; }
+            .site-preview { height: 290px; }
+            .dash-layout { height: 262px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NFR2DLMB"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <main class="auth-shell">
+        <section class="product-panel">
+            <nav class="landing-nav" aria-label="صفحات اصلی سایت">
+                <a href="/" aria-current="page">صفحه اصلی</a>
+                <a href="/gallery">گالری</a>
+                <a href="/blog">بلاگ</a>
+                <a href="/pricing">مشاهده پلن‌ها</a>
+                <a href="/contact">تماس با ما</a>
+            </nav>
+            <div class="brand-mark">
+                <img src="/thinkflow-logo.svg?v=20260731-1" alt="لوگوی ThinkFlow">
+            </div>
+            <div class="product-badge">سایت‌ساز هوشمند با هوش مصنوعی</div>
+            <h1 class="hero-slogan"><span>فکر کن،</span> <span class="slogan-accent">بساز،</span> <span>رشد کن</span></h1>
+            <p>ایده‌ات را توضیح بده، صفحه را در چت اصلاح کن، پیش‌نمایش زنده ببین و بدون خروج از ویرایشگر از یک صفحه خالی به یک رابط حرفه‌ای برس.</p>
+            <div class="feature-row">
+                <div class="feature-chip">HTML واکنش‌گرا</div>
+                <div class="feature-chip">پیش‌نمایش زنده</div>
+                <div class="feature-chip">مدیریت مصرف بر اساس پلن</div>
+            </div>
+            <div class="social-row">
+                <a class="instagram-link" href="https://www.instagram.com/thinkflow.ir?igsh=MWZmbm83Z3p5bWtkMw==" target="_blank" rel="noopener noreferrer" aria-label="اینستاگرام ThinkFlow" title="اینستاگرام ThinkFlow">
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
+                        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                        <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+                    </svg>
+                </a>
+            </div>
+        </section>
+
+        <section class="auth-container">
+        <!-- Login Form -->
+        <div id="loginForm" class="hidden">
+            <div class="auth-header"><h1>خوش برگشتی</h1><p>برای ادامه وارد حساب خودت شو</p></div>
+            <div id="loginError" class="error-message"></div>
+            <form id="loginFormElement">
+                <div class="form-group"><label class="form-label" for="loginEmail">ایمیل</label><input type="email" id="loginEmail" class="form-input" required></div>
+                <div class="form-group"><label class="form-label" for="loginPassword">رمز عبور</label><input type="password" id="loginPassword" class="form-input" required></div>
+                <div class="auth-toggle text-right -mt-4 mb-4"><a id="showForgotPassword">رمز عبور را فراموش کردی؟</a></div>
+                <button type="submit" id="loginButton" class="auth-button"><span id="loginButtonText">ورود</span><span id="loginButtonLoading" class="loading hidden"></span></button>
+            </form>
+            <div class="auth-toggle">حساب نداری؟ <a id="showSignup">ثبت‌نام کن</a></div>
+            <div class="trust-seal">
+                <a referrerpolicy="origin" target="_blank" href="https://trustseal.enamad.ir/?id=7021542&Code=viqb6cD757MLqBmHsiyTypDMIVIJbdGJ"><img referrerpolicy="origin" src="https://trustseal.enamad.ir/logo.aspx?id=7021542&Code=viqb6cD757MLqBmHsiyTypDMIVIJbdGJ" alt="نماد اعتماد الکترونیکی" style="cursor:pointer" code="viqb6cD757MLqBmHsiyTypDMIVIJbdGJ"></a>
+            </div>
+        </div>
+
+        <!-- Signup Form -->
+        <div id="signupForm" class="hidden">
+            <div class="auth-header"><h1>ساخت حساب</h1><p>ثبت‌نام کن و شروع به ساختن کن</p></div>
+            <div id="signupError" class="error-message"></div>
+            <div id="signupSuccess" class="success-message"></div>
+            <form id="signupFormElement">
+                <div class="form-group"><label class="form-label" for="signupName">نام کامل</label><input type="text" id="signupName" class="form-input" required></div>
+                <div class="form-group"><label class="form-label" for="signupEmail">ایمیل</label><input type="email" id="signupEmail" class="form-input" required></div>
+                <div class="form-group">
+                    <label class="form-label" for="signupPassword">
+                        رمز عبور
+                        <!-- NEW: Password help icon -->
+                        <span id="passwordHelpIcon" class="password-help-icon">?</span>
+                    </label>
+                    <input type="password" id="signupPassword" class="form-input" required>
+                    <!-- NEW: Password requirements help section -->
+                    <div id="passwordRequirements" class="password-requirements hidden">
+                        <ul>
+                            <li>حداقل ۸ کاراکتر</li>
+                            <li>دارای یک حرف بزرگ انگلیسی</li>
+                            <li>دارای یک حرف کوچک انگلیسی</li>
+                            <li>دارای یک عدد</li>
+                            <li>دارای یک کاراکتر خاص مثل !@#$</li>
+                        </ul>
+                    </div>
+                </div>
+                <button type="submit" id="signupButton" class="auth-button"><span id="signupButtonText">ساخت حساب</span><span id="signupButtonLoading" class="loading hidden"></span></button>
+            </form>
+            <div class="auth-toggle">قبلاً حساب ساختی؟ <a id="showLogin">وارد شو</a></div>
+        </div>
+        
+        <!-- Forgot Password Form -->
+        <div id="forgotPasswordForm" class="hidden">
+            <div class="auth-header"><h1>بازیابی رمز عبور</h1><p>ایمیلت را وارد کن تا لینک بازیابی ساخته شود.</p></div>
+            <div id="forgotPasswordError" class="error-message"></div>
+            <div id="forgotPasswordSuccess" class="success-message"></div>
+            <form id="forgotPasswordFormElement">
+                <div class="form-group"><label class="form-label" for="forgotEmail">ایمیل</label><input type="email" id="forgotEmail" class="form-input" required></div>
+                <button type="submit" id="forgotPasswordButton" class="auth-button"><span id="forgotPasswordButtonText">ارسال لینک بازیابی</span><span id="forgotPasswordButtonLoading" class="loading hidden"></span></button>
+            </form>
+            <div class="auth-toggle"><a id="backToLoginFromForgot">بازگشت به ورود</a></div>
+        </div>
+        
+        <!-- Reset Password Form -->
+        <div id="resetPasswordForm" class="hidden">
+            <div class="auth-header"><h1>رمز عبور جدید</h1><p>برای حسابت یک رمز عبور تازه بساز.</p></div>
+            <div id="resetPasswordError" class="error-message"></div>
+            <div id="resetPasswordSuccess" class="success-message"></div>
+            <form id="resetPasswordFormElement">
+                <input type="hidden" id="resetToken" value="">
+                <div class="form-group"><label class="form-label" for="newPassword">رمز عبور جدید</label><input type="password" id="newPassword" class="form-input" required></div>
+                <button type="submit" id="resetPasswordButton" class="auth-button"><span id="resetPasswordButtonText">ثبت رمز جدید</span><span id="resetPasswordButtonLoading" class="loading hidden"></span></button>
+            </form>
+        </div>
+
+        </section>
+    </main>
+    <section class="gallery-section" aria-labelledby="galleryTitle">
+        <div class="gallery-inner">
+            <div class="gallery-heading">
+                <div>
+                    <p class="gallery-kicker">ساخته‌شده با ThinkFlow</p>
+                    <h2 id="galleryTitle">از یک پرامپت تا یک وب‌سایت حرفه‌ای</h2>
+                </div>
+                <p>هر بار سه نمونه متفاوت از وب‌سایت‌های ساخته‌شده با ThinkFlow را به‌صورت زنده ببینید.</p>
+            </div>
+            <div class="gallery-grid" id="homeGalleryGrid" aria-live="polite">
+                <div class="home-gallery-empty" id="homeGalleryEmpty">در حال دریافت نمونه‌ها...</div>
+            </div>
+            <div class="gallery-actions">
+                <a class="gallery-all-link" href="/gallery">مشاهده گالری کامل</a>
+            </div>
+        </div>
+    </section>
+    <footer class="site-credit">کاری از تیم هوش عمیق</footer>
+
+    <script>
+        const API_URL = window.location.origin;
+        const homeGalleryGrid = document.getElementById('homeGalleryGrid');
+        const homeGalleryEmpty = document.getElementById('homeGalleryEmpty');
+
+        function createHomeGalleryCard(item) {
+            const article = document.createElement('article');
+            article.className = 'gallery-item';
+            const link = document.createElement('a');
+            link.className = 'home-gallery-link';
+            link.href = '/gallery';
+            link.setAttribute('aria-label', `مشاهده ${item.title} در گالری`);
+            const preview = document.createElement('div');
+            preview.className = 'home-gallery-preview';
+            const frame = document.createElement('iframe');
+            frame.src = item.preview_url;
+            frame.title = `پیش‌نمایش ${item.title}`;
+            frame.loading = 'lazy';
+            frame.tabIndex = -1;
+            frame.setAttribute('sandbox', 'allow-scripts allow-forms');
+            preview.appendChild(frame);
+            const meta = document.createElement('div');
+            meta.className = 'gallery-meta';
+            const category = document.createElement('span');
+            category.className = 'gallery-type';
+            category.textContent = item.category;
+            const title = document.createElement('h3');
+            title.textContent = item.title;
+            meta.append(category, title);
+            link.append(preview, meta);
+            article.appendChild(link);
+            return article;
+        }
+
+        function syncHomeGalleryScales() {
+            document.querySelectorAll('.home-gallery-preview').forEach(preview => {
+                preview.style.setProperty('--home-preview-scale', Math.max(preview.clientWidth / 1280, 0.05));
+            });
+        }
+
+        function randomGallerySample(items, count = 3) {
+            const shuffled = [...items];
+            for (let index = shuffled.length - 1; index > 0; index -= 1) {
+                const randomIndex = Math.floor(Math.random() * (index + 1));
+                [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+            }
+            return shuffled.slice(0, count);
+        }
+
+        async function loadHomeGallery() {
+            try {
+                const response = await fetch(`${API_URL}/gallery/api/sites`, { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error('Gallery request failed');
+                const data = await response.json();
+                const items = randomGallerySample(Array.isArray(data.items) ? data.items : []);
+                homeGalleryGrid.replaceChildren(...items.map(createHomeGalleryCard));
+                homeGalleryEmpty.classList.toggle('show', items.length === 0);
+                if (items.length === 0) homeGalleryGrid.appendChild(homeGalleryEmpty);
+                requestAnimationFrame(syncHomeGalleryScales);
+            } catch (error) {
+                homeGalleryEmpty.textContent = 'نمایش نمونه‌ها در حال حاضر امکان‌پذیر نیست.';
+                homeGalleryEmpty.classList.add('show');
+            }
+        }
+
+        window.addEventListener('resize', syncHomeGalleryScales);
+        loadHomeGallery();
+        
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+        const resetPasswordForm = document.getElementById('resetPasswordForm');
+
+        const loginFormElement = document.getElementById('loginFormElement');
+        const signupFormElement = document.getElementById('signupFormElement');
+        const forgotPasswordFormElement = document.getElementById('forgotPasswordFormElement');
+        const resetPasswordFormElement = document.getElementById('resetPasswordFormElement');
+
+        const showSignupLink = document.getElementById('showSignup');
+        const showLoginLink = document.getElementById('showLogin');
+        const showForgotPasswordLink = document.getElementById('showForgotPassword');
+        const backToLoginFromForgotLink = document.getElementById('backToLoginFromForgot');
+
+        // --- NEW: Password help elements ---
+        const passwordHelpIcon = document.getElementById('passwordHelpIcon');
+        const passwordRequirements = document.getElementById('passwordRequirements');
+        
+        function showMessage(elementId, message, isError = true) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = isError ? 'error-message' : 'success-message';
+        }
+
+        function hideMessages() {
+            document.querySelectorAll('.error-message, .success-message').forEach(el => el.style.display = 'none');
+        }
+
+        function setLoadingState(buttonId, isLoading) {
+            const button = document.getElementById(buttonId);
+            const textEl = document.getElementById(`${buttonId}Text`);
+            const loadingEl = document.getElementById(`${buttonId}Loading`);
+            if(button && textEl && loadingEl){
+                button.disabled = isLoading;
+                textEl.style.display = isLoading ? 'none' : 'inline';
+                loadingEl.classList.toggle('hidden', !isLoading);
+            }
+        }
+
+        function switchForm(formToShow) {
+            [loginForm, signupForm, forgotPasswordForm, resetPasswordForm].forEach(form => {
+                form.classList.add('hidden');
+            });
+            formToShow.classList.remove('hidden');
+            hideMessages();
+        }
+
+        showSignupLink.addEventListener('click', () => switchForm(signupForm));
+        showLoginLink.addEventListener('click', () => switchForm(loginForm));
+        showForgotPasswordLink.addEventListener('click', () => switchForm(forgotPasswordForm));
+        backToLoginFromForgotLink.addEventListener('click', () => switchForm(loginForm));
+        
+        // --- NEW: Event listener for password help icon ---
+        passwordHelpIcon.addEventListener('click', () => {
+            passwordRequirements.classList.toggle('hidden');
+        });
+
+        loginFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+            setLoadingState('loginButton', true);
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                const response = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Failed to login');
+                
+                sessionStorage.setItem('deepintelligence_token', data.token);
+                sessionStorage.setItem('deepintelligence_user', JSON.stringify(data.user));
+                window.location.href = '/app';
+
+            } catch (error) {
+                showMessage('loginError', error.message);
+            } finally {
+                setLoadingState('loginButton', false);
+            }
+        });
+
+        signupFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+            setLoadingState('signupButton', true);
+
+            const name = document.getElementById('signupName').value;
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+
+            try {
+                const response = await fetch(`${API_URL}/signup`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Failed to sign up');
+                
+                showMessage('signupSuccess', data.message, false);
+                signupFormElement.reset();
+                setTimeout(() => {
+                    switchForm(loginForm);
+                    document.getElementById('loginEmail').value = email;
+                }, 2000);
+
+            } catch (error) {
+                showMessage('signupError', error.message);
+            } finally {
+                setLoadingState('signupButton', false);
+            }
+        });
+        
+        forgotPasswordFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+            setLoadingState('forgotPasswordButton', true);
+
+            const email = document.getElementById('forgotEmail').value;
+
+            try {
+                const response = await fetch(`${API_URL}/forgot-password`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Failed to send reset link');
+                
+                showMessage('forgotPasswordSuccess', data.message, false);
+                forgotPasswordFormElement.reset();
+
+            } catch (error) {
+                showMessage('forgotPasswordError', error.message);
+            } finally {
+                setLoadingState('forgotPasswordButton', false);
+            }
+        });
+        
+        resetPasswordFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+            setLoadingState('resetPasswordButton', true);
+            
+            const token = document.getElementById('resetToken').value;
+            const new_password = document.getElementById('newPassword').value;
+
+            try {
+                const response = await fetch(`${API_URL}/reset-password`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ token, new_password })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Failed to reset password');
+                
+                showMessage('resetPasswordSuccess', data.message, false);
+                resetPasswordFormElement.reset();
+                setTimeout(() => {
+                    switchForm(loginForm);
+                }, 3000);
+
+            } catch (error) {
+                showMessage('resetPasswordError', error.message);
+            } finally {
+                setLoadingState('resetPasswordButton', false);
+            }
+        });
+
+        (function() {
+            if (sessionStorage.getItem('deepintelligence_token')) {
+                window.location.href = '/app';
+                return;
+            }
+
+            const path = window.location.pathname;
+            if (path.startsWith('/reset-password-form/')) {
+                const token = path.split('/').pop();
+                document.getElementById('resetToken').value = token;
+                switchForm(resetPasswordForm);
+            } else {
+                switchForm(loginForm);
+            }
+        })();
+    </script>
+</body>
+</html>

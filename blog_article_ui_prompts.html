@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZMB75975WY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ZMB75975WY');
+    </script>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-NFR2DLMB');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>آموزش پرامپت‌نویسی برای طراحی رابط کاربری | ThinkFlow</title>
+    <meta name="description" content="یاد بگیرید چگونه با چارچوب PROMPT، خواسته خود را دقیق‌تر بنویسید و از ابزارهای هوش مصنوعی رابط‌های کاربری زیباتر و حرفه‌ای‌تری بگیرید.">
+    <meta name="author" content="تیم هوش عمیق">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="theme-color" content="#070a12">
+    <link rel="canonical" href="https://thinkflow.ir/blog/rahnamaye-jame-nveshtan-prompthaye-hosh-masnooi-bara-tarahi-ui">
+    <link rel="icon" type="image/svg+xml" href="/thinkflow-logo-mark.svg?v=20260731-1">
+    <meta property="og:locale" content="fa_IR">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="ThinkFlow">
+    <meta property="og:title" content="راهنمای جامع نوشتن پرامپت‌های هوش مصنوعی برای طراحی UI حرفه‌ای">
+    <meta property="og:description" content="با چارچوب PROMPT، پرامپت‌هایی بنویسید که رابط‌های کاربری زیبا و حرفه‌ای تولید کنند. راهنمای کامل ۲۰۲۶ برای ابزارهای طراحی UI با AI.">
+    <meta property="og:url" content="https://thinkflow.ir/blog/rahnamaye-jame-nveshtan-prompthaye-hosh-masnooi-bara-tarahi-ui">
+    <meta property="og:image" content="https://thinkflow.ir/blog/assets/ai-ui-design-framework-2026.png">
+    <meta property="og:image:width" content="766">
+    <meta property="og:image:height" content="416">
+    <meta property="og:image:alt" content="نمونه رابط‌های فروشگاهی برای طراحی UI با هوش مصنوعی">
+    <meta property="article:published_time" content="2026-07-28T00:00:00+03:30">
+    <meta property="article:modified_time" content="2026-07-31T00:00:00+03:30">
+    <meta property="article:section" content="طراحی و توسعه، هوش مصنوعی">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="راهنمای جامع نوشتن پرامپت‌های هوش مصنوعی برای طراحی UI حرفه‌ای">
+    <meta name="twitter:description" content="چارچوب PROMPT و تکنیک‌های عملی برای تولید رابط‌های حرفه‌ای با ابزارهای هوش مصنوعی.">
+    <meta name="twitter:image" content="https://thinkflow.ir/blog/assets/ai-ui-design-framework-2026.png">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Article",
+          "@id": "https://thinkflow.ir/blog/rahnamaye-jame-nveshtan-prompthaye-hosh-masnooi-bara-tarahi-ui#article",
+          "headline": "راهنمای جامع نوشتن پرامپت‌های هوش مصنوعی برای طراحی رابط کاربری (UI) حرفه‌ای در سال ۲۰۲۶",
+          "description": "یاد بگیرید چگونه با چارچوب PROMPT، خواسته خود را دقیق‌تر بنویسید و از ابزارهای هوش مصنوعی رابط‌های کاربری زیباتر و حرفه‌ای‌تری بگیرید.",
+          "image": { "@type": "ImageObject", "url": "https://thinkflow.ir/blog/assets/ai-ui-design-framework-2026.png", "width": 766, "height": 416 },
+          "datePublished": "2026-07-28T00:00:00+03:30",
+          "dateModified": "2026-07-31T00:00:00+03:30",
+          "timeRequired": "PT15M",
+          "inLanguage": "fa-IR",
+          "keywords": ["پرامپت‌نویسی هوش مصنوعی", "طراحی UI با هوش مصنوعی", "چارچوب PROMPT", "مهندسی پرامپت", "طراحی رابط کاربری", "v0", "Cursor", "تولید UI با AI"],
+          "articleSection": ["طراحی و توسعه", "هوش مصنوعی"],
+          "author": { "@type": "Organization", "name": "تیم هوش عمیق", "url": "https://thinkflow.ir/" },
+          "publisher": { "@type": "Organization", "name": "ThinkFlow", "logo": { "@type": "ImageObject", "url": "https://thinkflow.ir/thinkflow-logo.svg?v=20260731-1" } },
+          "mainEntityOfPage": { "@type": "WebPage", "@id": "https://thinkflow.ir/blog/rahnamaye-jame-nveshtan-prompthaye-hosh-masnooi-bara-tarahi-ui" }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "صفحه اصلی", "item": "https://thinkflow.ir/" },
+            { "@type": "ListItem", "position": 2, "name": "بلاگ", "item": "https://thinkflow.ir/blog" },
+            { "@type": "ListItem", "position": 3, "name": "راهنمای پرامپت طراحی UI", "item": "https://thinkflow.ir/blog/rahnamaye-jame-nveshtan-prompthaye-hosh-masnooi-bara-tarahi-ui" }
+          ]
+        }
+      ]
+    }
+    </script>
+    <style>
+        @font-face { font-family:'IRANSans'; src:url('/irsans.ttf?v=20260727-vazirmatn') format('truetype'); font-weight:400; font-display:swap; }
+        @font-face { font-family:'IRANSans'; src:url('/irsansb.ttf?v=20260727-vazirmatn') format('truetype'); font-weight:700 900; font-display:swap; }
+        :root { --bg:#070a12; --surface:#101624; --surface-soft:#151d2d; --accent:#5eead4; --text:#e2e8f0; --muted:#94a3b8; --border:rgba(148,163,184,.2); --radius:8px; }
+        * { box-sizing:border-box; letter-spacing:0; }
+        html { color-scheme:dark; scroll-behavior:smooth; }
+        body { margin:0; min-height:100vh; color:var(--text); background:var(--bg); font-family:'IRANSans',Tahoma,sans-serif; }
+        a { color:inherit; }
+        .topbar { position:sticky; top:0; z-index:50; min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:20px; padding:10px max(18px,calc((100vw - 1180px)/2)); background:rgba(7,10,18,.94); border-bottom:1px solid var(--border); backdrop-filter:blur(16px); }
+        .brand { display:inline-flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; font-weight:900; }
+        .brand img { width:150px; height:42px; object-fit:contain; padding:4px 8px; background:#fff; border-radius:7px; box-sizing:border-box; }
+        .main-nav { display:grid; grid-template-columns:repeat(4,minmax(86px,1fr)); gap:7px; }
+        .nav-link { min-height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 14px; color:#cbd5e1; text-decoration:none; border:1px solid var(--border); border-radius:var(--radius); font-size:13px; font-weight:800; }
+        .nav-link:hover,.nav-link:focus-visible { color:#fff; border-color:rgba(94,234,212,.58); background:rgba(94,234,212,.08); outline:none; }
+        .nav-link[aria-current="page"] { color:#05201d; background:var(--accent); border-color:var(--accent); }
+        main { width:min(1180px,calc(100% - 36px)); margin:0 auto; padding:34px 0 80px; }
+        .breadcrumb { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:30px; color:var(--muted); font-size:12px; }
+        .breadcrumb a { text-decoration:none; }
+        .breadcrumb a:hover { color:var(--accent); }
+        .article-header { max-width:960px; margin:0 auto 28px; text-align:center; }
+        .kicker { margin:0 0 12px; color:var(--accent); font-size:13px; font-weight:900; }
+        h1 { margin:0; color:#fff; font-size:46px; line-height:1.55; }
+        .dek { max-width:820px; margin:18px auto 0; color:#aebacf; font-size:16px; line-height:2; }
+        .article-meta { display:flex; flex-wrap:wrap; justify-content:center; gap:10px 18px; margin-top:18px; color:var(--muted); font-size:12px; }
+        .hero-figure { max-width:1040px; margin:0 auto 42px; }
+        .hero-figure img { width:100%; height:auto; display:block; aspect-ratio:766/416; object-fit:cover; background:#c1c1df; border:1px solid var(--border); border-radius:var(--radius); }
+        .hero-figure figcaption { margin-top:8px; color:var(--muted); font-size:11px; text-align:center; }
+        .article-layout { display:grid; grid-template-columns:230px minmax(0,760px); gap:44px; justify-content:center; align-items:start; }
+        .toc { position:sticky; top:88px; padding:18px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+        .toc strong { display:block; margin-bottom:10px; color:#fff; font-size:13px; }
+        .toc a { display:block; padding:7px 0; color:var(--muted); text-decoration:none; font-size:11px; line-height:1.8; border-bottom:1px solid rgba(148,163,184,.1); }
+        .toc a:last-child { border-bottom:0; }
+        .toc a:hover { color:var(--accent); }
+        .prose { min-width:0; color:#c4cfdf; font-size:15px; line-height:2.2; }
+        .prose h2 { scroll-margin-top:90px; margin:56px 0 15px; padding-bottom:10px; color:#fff; font-size:28px; line-height:1.7; border-bottom:1px solid var(--border); }
+        .prose h2:first-child { margin-top:0; }
+        .prose h3 { scroll-margin-top:90px; margin:34px 0 10px; color:#fff; font-size:20px; line-height:1.8; }
+        .prose h4 { margin:24px 0 6px; color:var(--accent); font-size:16px; }
+        .prose p { margin:0 0 17px; }
+        .prose strong { color:#f8fafc; }
+        .prose blockquote { margin:18px 0; padding:14px 18px; color:#d9e4f2; background:#10221f; border-right:3px solid var(--accent); border-radius:6px; }
+        .prose code { direction:ltr; unicode-bidi:plaintext; color:#99f6e4; font-family:Consolas,monospace; font-size:13px; }
+        .prose pre { overflow:auto; margin:16px 0 22px; padding:16px; color:#dbeafe; background:#0b1020; border:1px solid var(--border); border-radius:6px; white-space:pre-wrap; line-height:1.9; }
+        .prose ul,.prose ol { margin:0 0 20px; padding-right:24px; }
+        .prose li { margin-bottom:8px; }
+        .example-list { list-style:none; padding:0!important; }
+        .example-list li { margin-bottom:9px; padding:10px 13px; background:var(--surface); border:1px solid var(--border); border-radius:6px; }
+        .callout { padding:15px 17px; color:#d7e2f0; background:var(--surface); border:1px solid rgba(94,234,212,.25); border-radius:6px; }
+        .table-wrap { width:100%; overflow:auto; margin:18px 0 26px; border:1px solid var(--border); border-radius:6px; }
+        table { width:100%; min-width:620px; border-collapse:collapse; font-size:13px; line-height:1.9; }
+        th,td { padding:12px 14px; text-align:right; vertical-align:top; border-bottom:1px solid var(--border); }
+        th { color:#fff; background:var(--surface-soft); }
+        tr:last-child td { border-bottom:0; }
+        .article-end { margin-top:52px; padding:24px; background:#10221f; border:1px solid rgba(94,234,212,.3); border-radius:var(--radius); }
+        .article-end h2 { margin:0 0 8px; padding:0; border:0; font-size:22px; }
+        .article-end p { margin:0 0 16px; color:#a7c7c1; }
+        .end-actions { display:flex; flex-wrap:wrap; gap:8px; }
+        .button { min-height:42px; display:inline-flex; align-items:center; justify-content:center; padding:0 16px; color:#05201d; background:var(--accent); border:1px solid var(--accent); border-radius:var(--radius); text-decoration:none; font-size:13px; font-weight:900; }
+        .button.secondary { color:var(--text); background:transparent; border-color:var(--border); }
+        footer { padding:24px 18px; color:var(--muted); text-align:center; border-top:1px solid var(--border); font-size:12px; }
+        @media(max-width:900px){ .article-layout{grid-template-columns:1fr}.toc{position:static}.toc nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px} }
+        @media(max-width:660px){
+            .topbar{align-items:stretch;flex-direction:column;padding:10px 12px}.brand{justify-content:center}.main-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.nav-link{min-width:0;padding:0 8px;font-size:12px}
+            main{width:min(100% - 24px,1180px);padding-top:24px}.article-header{text-align:right}h1{font-size:32px}.dek{font-size:14px}.article-meta{justify-content:flex-start}.hero-figure{margin-bottom:28px}.article-layout{gap:24px}.toc nav{grid-template-columns:1fr}.prose{font-size:14px}.prose h2{font-size:23px}.prose h3{font-size:18px}.end-actions{flex-direction:column}.button{width:100%}
+        }
+        @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important}}
+    </style>
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NFR2DLMB" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="ThinkFlow"><img src="/thinkflow-logo.svg?v=20260731-1" alt="لوگوی ThinkFlow"></a>
+        <nav class="main-nav" aria-label="صفحات اصلی سایت"><a class="nav-link" href="/">صفحه اصلی</a><a class="nav-link" href="/gallery">گالری</a><a class="nav-link" href="/blog" aria-current="page">بلاگ</a><a class="nav-link" href="/contact">تماس با ما</a></nav>
+    </header>
+    <main>
+        <nav class="breadcrumb" aria-label="مسیر صفحه"><a href="/">صفحه اصلی</a><span>/</span><a href="/blog">بلاگ</a><span>/</span><span>راهنمای پرامپت طراحی UI</span></nav>
+        <article>
+            <header class="article-header">
+                <p class="kicker">طراحی و توسعه، هوش مصنوعی</p>
+                <h1>راهنمای جامع نوشتن پرامپت‌های هوش مصنوعی برای طراحی رابط کاربری (UI) حرفه‌ای در سال ۲۰۲۶</h1>
+                <p class="dek">چطور خواسته‌مان را طوری بنویسیم که هوش مصنوعی دقیقاً همان رابطی را بسازد که در ذهن داریم؟ در این راهنما، چارچوب PROMPT را با مثال‌های واقعی و قابل‌استفاده بررسی می‌کنیم.</p>
+                <div class="article-meta"><time datetime="2026-07-28">تاریخ انتشار: ۶ مرداد ۱۴۰۵</time><time datetime="2026-07-31">به‌روزرسانی: ۹ مرداد ۱۴۰۵</time><span>زمان مطالعه: ۱۵ دقیقه</span><span>نویسنده و ویراستار: تیم هوش عمیق</span></div>
+            </header>
+            <figure class="hero-figure"><img src="/blog/assets/ai-ui-design-framework-2026.png" alt="نمونه رابط‌های فروشگاهی تولیدشده برای طراحی UI با هوش مصنوعی" width="766" height="416" fetchpriority="high"><figcaption>چارچوب و نمونه‌های طراحی رابط کاربری با کمک هوش مصنوعی</figcaption></figure>
+            <div class="article-layout">
+                <aside class="toc" aria-label="فهرست مطالب"><strong>در این مقاله</strong><nav>
+                    <a href="#introduction">چرا پرامپت خوب مهم است؟</a><a href="#ai-ui-problems">دلیل خروجی‌های تکراری</a><a href="#prompt-framework">چارچوب PROMPT چیست؟</a><a href="#framework-example">یک مثال کامل</a><a href="#basic-prompts">ده الگوی آماده</a><a href="#advanced-techniques">بهبود مرحله‌به‌مرحله</a><a href="#professional-workflow">روند کاری پیشنهادی</a><a href="#common-mistakes">اشتباهات رایج</a><a href="#conclusion">جمع‌بندی</a>
+                </nav></aside>
+                <div class="prose">
+                    <h2 id="introduction">چرا پرامپت خوب این‌قدر مهم است؟</h2>
+                    <p>اگر چند بار از هوش مصنوعی خواسته باشید یک صفحه یا اپلیکیشن طراحی کند، احتمالاً این تجربه را داشته‌اید: ایده در ذهن شما روشن است، اما خروجی چیزی شبیه ده‌ها قالب تکراری از آب درمی‌آید. معمولاً مشکل فقط از مدل نیست؛ بخشی از ماجرا به شیوه توضیح‌دادن خواسته برمی‌گردد.</p>
+                    <p>جمله‌ای مثل «یک اپلیکیشن خوب طراحی کن» فضای زیادی برای حدس‌زدن باقی می‌گذارد. مدل هم ناچار است سراغ انتخاب‌های امن و عمومی برود. هرچه درباره کاربر، محتوا، حال‌وهوا و محدودیت‌های فنی روشن‌تر بنویسید، احتمال رسیدن به طرحی که واقعاً به درد پروژه بخورد بیشتر می‌شود.</p>
+                    <p>در این مقاله از چارچوبی به نام PROMPT استفاده می‌کنیم تا این توضیحات پراکنده را مرتب کنیم. این روش به ابزار خاصی وابسته نیست و می‌توانید آن را در بیشتر ابزارهای طراحی و کدنویسی با هوش مصنوعی به کار ببرید.</p>
+                    <p>برای تدوین این راهنما، نکته‌های مطرح‌شده در پژوهش‌های Nielsen Norman Group، چارچوب TC-EBC فیگما و راهنمای پرامپت‌نویسی v0 ورسل را کنار تجربه‌های عملی گذاشته‌ایم. هدف این نیست که یک فرمول خشک حفظ کنید؛ قرار است یاد بگیرید هنگام نوشتن پرامپت به چه چیزهایی فکر کنید.</p>
+                    <h2 id="ai-ui-problems">چرا بیشتر رابط‌های کاربری تولیدشده با هوش مصنوعی عمومی و بی‌کیفیت هستند؟</h2>
+                    <p>پیش از معرفی چارچوب، بد نیست ببینیم چرا بسیاری از خروجی‌ها با وجود ظاهر مرتب، هنوز حس یک طراحی آماده و بی‌هویت را دارند.</p>
+                    <h3>۱. مشکل &quot;چیدمان فرانکنشتاین&quot;</h3>
+                    <p>پژوهشگران NN/g الگویی را شناسایی کرده‌اند که آن را «چیدمان فرانکنشتاین» می‌نامند. این وضعیت زمانی رخ می‌دهد که هوش مصنوعی اجزای نامرتبط را کنار هم قرار می‌دهد و صفحه‌ای می‌سازد که هر جزء آن آشناست، اما مجموعه نهایی هماهنگی ندارد؛ برای مثال، صفحه ورود موبایل با نوار کناری دسکتاپ، داشبوردی با تب‌های هم‌زمان در بالا و پایین یا صفحه محصولی با سه سبک متفاوت برای دکمه‌ها.</p>
+                    <p>دلیلش ساده است: پرامپت مبهم مرز مشخصی برای تصمیم‌های طراحی نمی‌گذارد. مدل هر بخش را جداگانه می‌سازد و نتیجه ممکن است از نظر ظاهری سالم باشد، اما در مجموع یکدست به نظر نرسد.</p>
+                    <h3>۲. چرا &quot;تمیز و مدرن&quot; بدترین پرامپت است؟</h3>
+                    <p>عبارت «تمیز و مدرن» به هوش مصنوعی می‌گوید که ترجیح طراحی مشخصی ندارید. مدل هم معمولاً با عمومی‌ترین انتخاب‌ها پاسخ می‌دهد: رنگ اصلی آبی، فونت ساده sans-serif، فاصله‌گذاری استاندارد و بدون هویت بصری متمایز.</p>
+                    <p>تقریباً هر اپلیکیشنی می‌تواند خود را «تمیز و مدرن» بنامد. این عبارت به‌تنهایی اطلاعات کافی برای رسیدن به یک خروجی متمایز ارائه نمی‌دهد.</p>
+                    <h3>۳. سه دلیل رایج برای ضعیف‌شدن خروجی</h3>
+                    <div class="table-wrap"><table><thead><tr><th>دلیل</th><th>توضیح</th></tr></thead><tbody><tr><td>پرامپت‌های مبهم</td><td>کاربر جزئیات کافی مشخص نمی‌کند، بنابراین هوش مصنوعی شکاف‌ها را با پیش‌فرض‌های عمومی پر می‌کند</td></tr><tr><td>عدم بافت طراحی</td><td>هوش مصنوعی پلتفرم، کاربر یا صنعت را نمی‌شناسد</td></tr><tr><td>عدم محدودیت</td><td>بدون مرزها (رنگ‌ها، چیدمان، کتابخانه کامپوننت)، هوش مصنوعی انتخاب‌های دلخواه انجام می‌دهد</td></tr></tbody></table></div>
+                    <p>خبر خوب این است که برای حل این مشکلات لازم نیست طراح حرفه‌ای باشید. کافی است اطلاعات درست را در زمان درست به مدل بدهید. چارچوب PROMPT دقیقاً برای همین کار ساخته شده است.</p>
+                    <h2 id="prompt-framework">چارچوب PROMPT چیست؟</h2>
+                    <p>PROMPT یک چک‌لیست شش‌بخشی است. لازم نیست در هر درخواست، هر شش بخش را با جزئیات پر کنید؛ اما مرور آنها کمک می‌کند نکته مهمی از قلم نیفتد.</p>
+                    <h3>P — Platform &amp; Device (پلتفرم و دستگاه)</h3>
+                    <p class="labeled"><strong>چه بنویسیم؟</strong> مشخص کنید خروجی برای iOS، Android یا وب است و در چه اندازه یا دستگاهی دیده می‌شود.</p>
+                    <p class="labeled"><strong>چرا مهم است؟</strong> یک صفحه موبایل با داشبورد دسکتاپ قواعد یکسانی ندارد. وقتی پلتفرم را روشن می‌کنید، مدل انتخاب‌های مناسب‌تری برای پیمایش، فاصله‌گذاری و اجزای رابط انجام می‌دهد.</p>
+                    <p class="labeled"><strong>مثال‌ها:</strong></p>
+                    <blockquote>اپلیکیشن iOS برای آیفون ۱۶</blockquote>
+                    <blockquote>اپلیکیشن Android با پیروی از Material Design 3</blockquote>
+                    <blockquote>داشبورد وب برای دسکتاپ (عرض ۱۴۴۰ پیکسل)</blockquote>
+                    <blockquote>برنامه وب واکنش‌گرا، ابتدا برای موبایل</blockquote>
+                    <p class="callout"><strong>اگر پلتفرم را ننویسید:</strong> ممکن است خروجی ترکیبی از الگوهای موبایل و دسکتاپ باشد و روی هیچ‌کدام طبیعی به نظر نرسد.</p>
+                    <h3>R — Role &amp; User (نقش و کاربر)</h3>
+                    <p class="labeled"><strong>چه بنویسیم؟</strong> بگویید چه کسی از صفحه استفاده می‌کند، دنبال انجام چه کاری است و در چه موقعیتی قرار دارد.</p>
+                    <p class="labeled"><strong>چرا مهم است؟</strong> مدیرعامل و تحلیلگر از یک داشبورد انتظار یکسانی ندارند. شناخت کاربر مشخص می‌کند کدام اطلاعات باید زودتر دیده شوند و کدام اقدام‌ها اهمیت بیشتری دارند.</p>
+                    <p class="labeled"><strong>مثال‌ها:</strong></p>
+                    <blockquote>مورد استفاده طراح فریلنسر که مهلت‌های پروژه و فاکتورهای مشتری را پیگیری می‌کند</blockquote>
+                    <blockquote>برای والدینی پرمشغله که در زمان ناهار سریع مواد غذایی سفارش می‌دهند</blockquote>
+                    <blockquote>برای کاربری که به‌تازگی اپلیکیشن را نصب کرده و باید برای نخستین بار پروفایل خود را تنظیم کند</blockquote>
+                    <blockquote>برای کاربر حرفه‌ای که روزانه ۱۰+ بار این را بررسی می‌کند</blockquote>
+                    <p class="callout"><strong>اگر کاربر را معرفی نکنید:</strong> نتیجه معمولاً برای همه ساخته می‌شود و در عمل نیاز هیچ گروه مشخصی را خوب پاسخ نمی‌دهد.</p>
+                    <h3>O — Output Specification (مشخصات خروجی)</h3>
+                    <p class="labeled"><strong>چه بنویسیم؟</strong> نوع صفحه، بخش‌های اصلی، محتوای مهم و نمونه داده‌هایی را که باید دیده شوند مشخص کنید.</p>
+                    <p class="labeled"><strong>چرا مهم است؟</strong> واژه «داشبورد» به‌تنهایی چیز زیادی نمی‌گوید. اما وقتی از چهار کارت آماری، یک نمودار خطی و جدول فعالیت پنج‌ردیفی حرف می‌زنید، مدل تصویری روشن از صفحه دارد.</p>
+                    <p class="labeled"><strong>مثال‌ها:</strong></p>
+                    <blockquote>صفحه اصلی نمایش‌دهنده: موجودی کل (۱۲,۴۵۰ دلار)، نمودار دسته‌بندی هزینه‌ها، ۵ تراکنش اخیر، و دکمه‌های اقدام سریع برای ارسال، درخواست و واریز</blockquote>
+                    <blockquote>صفحه تنظیمات با بخش‌های: حساب (نام، ایمیل، عکس)، اعلان‌ها (۳ کلید)، ظاهر (کلید حالت تاریک، اندازه قلم)، حریم خصوصی (۲ کلید)، درباره (نسخه، قوانین)</blockquote>
+                    <blockquote>صفحه جزئیات محصول شامل تصویر بزرگ، نام «AirFlow Pro»، قیمت ۱۸۹ دلار، امتیاز ۴٫۷ از ۵ (بر اساس ۲۳۴ نظر)، انتخابگر رنگ با چهار گزینه، انتخابگر اندازه و دکمه افزودن به سبد خرید</blockquote>
+                    <p class="callout"><strong>اگر خروجی را توضیح ندهید:</strong> مدل جاهای خالی را با حدس‌های خودش پر می‌کند و این حدس‌ها لزوماً با پروژه شما هماهنگ نیستند.</p>
+                    <h3>M — Mood &amp; Style (حالت و سبک)</h3>
+                    <p class="labeled"><strong>چه بنویسیم؟</strong> حال‌وهوای موردنظر، پالت رنگ، سبک تایپوگرافی و چند صفت دقیق برای شخصیت بصری صفحه را بنویسید.</p>
+                    <p class="labeled"><strong>چرا مهم است؟</strong> عبارت «فین‌تک تیره و لوکس» مسیر متفاوتی از «اپلیکیشن اجتماعی شاد و رنگارنگ» باز می‌کند، حتی اگر ساختار هر دو صفحه یکسان باشد.</p>
+                    <p>سبک‌های طراحی نام‌گذاری‌شده که مؤثرند:</p>
+                    <p>Glassmorphism (شیشه مات، افکت‌های محو)</p>
+                    <p>Neobrutalism (حاشیه‌های ضخیم، رنگ‌های جسورانه، حس خام)</p>
+                    <p>Minimal (فضای سفید، ملایم، محدود)</p>
+                    <p>Dark premium (نزدیک به مشکی، گرادیان، لهجه‌های طلایی/نقره‌ای)</p>
+                    <p>Bento grid (چیدمان کارتی مدولار)</p>
+                    <p>iOS native (راهنمای HIG اپل، فونت‌های سیستمی، رنگ‌های سیستمی)</p>
+                    <p>Material Design 3 (سیستم طراحی گوگل)</p>
+                    <p>Skeuomorphic (بافت‌های واقع‌گرایانه، افکت‌های سه‌بعدی)</p>
+                    <p>گزینه‌های مشخص‌کردن رنگ:</p>
+                    <p>کدهای هگز: &quot;رنگ اصلی #6366f1، پس‌زمینه #0a0a0a&quot;</p>
+                    <p>رنگ‌های نام‌گذاری‌شده: &quot;آبی تیره دریایی با لهجه‌های مرجانی&quot;</p>
+                    <p>مرجع برند: «رنگ‌هایی مانند اسپاتیفای؛ پس‌زمینه تیره با رنگ تأکیدی سبز»</p>
+                    <p>حال‌وهوا: «طیف‌های خاکی و گرم؛ سفالی، مریم‌گلی و کرم»</p>
+                    <p class="callout"><strong>اگر حال‌وهوا را مشخص نکنید:</strong> احتمال زیادی دارد دوباره همان ترکیب آشنای آبی و سفید را ببینید.</p>
+                    <h3>P — Patterns &amp; Components (الگوها و کامپوننت‌ها)</h3>
+                    <p class="labeled"><strong>چه بنویسیم؟</strong> اگر الگوی مشخصی برای پیمایش، چیدمان یا کامپوننت‌ها در نظر دارید، نام آن را صریح بنویسید.</p>
+                    <p class="labeled"><strong>چرا مهم است؟</strong> عبارت‌هایی مثل «نوار پیمایش پایین»، «شبکه کارت‌ها» یا «دکمه اقدام شناور» کوتاه‌اند، اما اطلاعات ساختاری زیادی به مدل می‌دهند.</p>
+                    <p>الگوهای ناوبری:</p>
+                    <blockquote>ناوبری تب پایین با ۵ تب</blockquote>
+                    <blockquote>ناوبری نوار کناری با بخش‌های گروه‌بندی‌شده</blockquote>
+                    <blockquote>منوی کشویی همبرگری</blockquote>
+                    <blockquote>نوار تب بالا با تب‌های قابل پیمایش</blockquote>
+                    <p>الگوهای چیدمان:</p>
+                    <blockquote>فید مبتنی بر کارت مانند اینستاگرام</blockquote>
+                    <blockquote>شبکه محصولات ۲ ستونی</blockquote>
+                    <blockquote>چیدمان فهرست و جزئیات (Master–Detail)</blockquote>
+                    <blockquote>داشبورد با کارت‌های متریک + نمودار + جدول</blockquote>
+                    <p>مراجع کامپوننت:</p>
+                    <blockquote>از کامپوننت‌های shadcn/ui استفاده کن</blockquote>
+                    <blockquote>کامپوننت‌های بومی iOS با نمادهای SF</blockquote>
+                    <blockquote>کامپوننت‌های Material Design 3</blockquote>
+                    <p class="callout"><strong>اگر الگوها را مشخص نکنید:</strong> ممکن است مدل سراغ ساختاری برود که با پلتفرم یا عادت کاربران شما جور نیست.</p>
+                    <h3>T — Technical Constraints (محدودیت‌های فنی)</h3>
+                    <p class="labeled"><strong>چه بنویسیم؟</strong> فریم‌ورک، الزامات دسترسی‌پذیری، رفتار واکنش‌گرا و نیاز به حالت روشن یا تاریک را مشخص کنید.</p>
+                    <p class="labeled"><strong>چرا مهم است؟</strong> محدودیت فنی جلوی بسیاری از اصلاحات بعدی را می‌گیرد. برای نمونه، ذکر WCAG AA روی انتخاب رنگ‌ها اثر می‌گذارد و درخواست Tailwind CSS شکل کد خروجی را از همان ابتدا مشخص می‌کند.</p>
+                    <p class="labeled"><strong>مثال‌ها:</strong></p>
+                    <blockquote>مطابق با WCAG AA با حداقل کنتراست ۴.۵:۱</blockquote>
+                    <blockquote>خروجی HTML + Tailwind CSS</blockquote>
+                    <blockquote>طراحی واکنش‌گرا، ابتدا برای موبایل</blockquote>
+                    <blockquote>پشتیبانی از حالت‌های روشن و تاریک</blockquote>
+                    <blockquote>حداقل هدف لمسی ۴۴ پیکسل</blockquote>
+                    <blockquote>از فونت Inter استفاده کن</blockquote>
+                    <p class="callout"><strong>اگر محدودیت فنی را ننویسید:</strong> ممکن است صفحه زیبا باشد، اما روی موبایل درست کار نکند یا با استانداردهای دسترسی‌پذیری سازگار نباشد.</p>
+                    <h2 id="framework-example">یک مثال کامل از چارچوب PROMPT</h2>
+                    <p>برای اینکه تفاوت روشن‌تر شود، یک درخواست کوتاه را با نسخه دقیق‌تر همان درخواست مقایسه کنیم:</p>
+                    <p>پرامپت مبهم:</p>
+                    <blockquote>داشبورد یک اپلیکیشن تناسب‌اندام طراحی کن</blockquote>
+                    <p>پرامپت با چارچوب PROMPT:</p>
+                    <p>[P] اپلیکیشن iOS برای آیفون ۱۶. [R] مناسب افراد علاقه‌مند به سلامت در بازه سنی ۲۰ تا ۴۰ سال که هر روز صبح روند تناسب‌اندام خود را بررسی می‌کنند. [O] صفحه اصلی شامل تعداد گام‌های روزانه (۸٬۴۳۲ با حلقه پیشرفت دایره‌ای)، کالری مصرف‌شده (۳۴۰)، دقیقه‌های فعالیت (۴۵)، نمودار میله‌ای فعالیت هفتگی و کارت تمرین امروز («تمرین HIIT، ساعت ۵:۳۰ بعدازظهر»). [M] تم تیره و لوکس با رنگ تأکیدی نعنایی (#4ade80)، فونت Inter و فضای خالی مناسب. [P] نوار پیمایش پایین شامل خانه، تمرینات، پیشرفت و پروفایل. حلقه پیشرفت دایره‌ای به‌عنوان عنصر اصلی. [T] خروجی HTML و Tailwind CSS، مطابق با WCAG AA.</p>
+                    <p>نسخه دوم طولانی‌تر است، اما مدل مجبور نیست درباره کاربر، محتوا یا ظاهر صفحه حدس بزند. همین تفاوت ساده معمولاً کیفیت خروجی را چند پله بهتر می‌کند.</p>
+                    <h2 id="basic-prompts">ده الگوی آماده برای شروع</h2>
+                    <p>اگر نمی‌دانید پرامپت را از کجا شروع کنید، الگوهای زیر نقطه شروع خوبی هستند. لازم نیست آنها را کلمه‌به‌کلمه نگه دارید؛ بخش‌های داخل کروشه را با اطلاعات پروژه خودتان جایگزین کنید.</p>
+                    <h3>۱. صفحه اصلی/داشبورد</h3>
+                    <pre><code>[پلتفرم] صفحه اصلی اپلیکیشن [نوع اپلیکیشن]. نمایش [۳-۵ متریک کلیدی با مقادیر مثال]، [نوع نمودار] برای [چه داده‌ای]، و [منطقه محتوای ثانویه]. [الگوی ناوبری]. [توضیحات سبک با رنگ].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>صفحه اصلی اپلیکیشن iOS برای مدیریت مالی شخصی. نمایش موجودی کل (۱۲٬۸۴۷٫۳۲ دلار با فونت درشت و ضخیم)، نمودار دونات هزینه‌های این ماه (غذا ۳۵٪، حمل‌ونقل ۲۰٪، تفریح ۱۵٪ و سایر موارد ۳۰٪) و فهرست چهار تراکنش اخیر همراه با نام فروشگاه و مبلغ. نوار پیمایش پایین شامل خانه، بودجه، حساب‌ها و پروفایل. طراحی سفید و ساده با رنگ تأکیدی آبی دریایی (#1e3a5f).</p>
+                    <h3>۲. صفحه ورود</h3>
+                    <pre><code>[پلتفرم] صفحه ورود برای [نام/نوع اپلیکیشن]. شامل [روش‌های احراز هویت: ایمیل/رمز، ورود اجتماعی، بیومتریک]. [عنصر برند: لوگو، شعار]. [سبک].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>صفحه ورود iOS برای اپلیکیشن مدیتیشن «Stillness». فیلدهای ایمیل و رمز عبور، دکمه ورود با اپل و گزینه ورود با گوگل. لوگوی اپلیکیشن در مرکز بخش بالایی با شعار «آرامش خود را پیدا کن». پس‌زمینه با گرادیان ملایم از اسطوخودوسی تا سفید، فیلدهای ورودی با گوشه‌های گرد و دکمه اصلی بنفش تیره.</p>
+                    <h3>۳. صفحه پروفایل</h3>
+                    <pre><code>[پلتفرم] پروفایل کاربر برای [توضیحات شخص]. نمایش [عناصر پروفایل: عکس، نام، بیو، آمار]. [محتوای زیر: شبکه، لیست، تب‌ها]. [سبک].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>پروفایل یک شبکه اجتماعی iOS برای عکاس غذا به نام «Marcus Chen». تصویر کاور بزرگ، تصویر پروفایل دایره‌ای با هم‌پوشانی روی کاور، نام، زندگی‌نامه کوتاه دوخطی و آمار فعالیت (۲٫۴ هزار دنبال‌کننده، ۸۹۲ دنبال‌شونده و ۱۵۶ پست). نوار تب شامل عکس‌ها، دستورها و ذخیره‌شده‌ها، به‌همراه شبکه سه‌ستونی تصاویر. سبک بصری گرم و شبیه اینستاگرام با پس‌زمینه کرم.</p>
+                    <h3>۴. صفحه تنظیمات</h3>
+                    <pre><code>[پلتفرم] تنظیمات با بخش‌های: [لیست ۴-۶ بخش با گزینه‌های خاص در هر کدام]. [سبک مخصوص پلتفرم].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>صفحه تنظیمات iOS با بخش‌های حساب (تصویر پروفایل، نام «Sarah Kim» و ایمیل)، اعلان‌ها (کلید اعلان‌های پوش، ایمیل و خلاصه هفتگی)، ظاهر (حالت تاریک و تنظیم اندازه قلم)، حریم خصوصی (اشتراک‌گذاری داده و تحلیل استفاده)، ذخیره‌سازی (۳٫۲ گیگابایت از ۱۰ گیگابایت و دکمه پاک‌کردن حافظه پنهان) و درباره (نسخه ۲٫۴٫۱، قوانین و سیاست حریم خصوصی). استفاده از سبک فهرست گروه‌بندی‌شده بومی iOS با فونت SF Pro.</p>
+                    <h3>۵. جزئیات محصول</h3>
+                    <pre><code>[پلتفرم] جزئیات محصول برای [نوع محصول و محصول خاص]. نمایش [تصویر، نام، قیمت، امتیاز، انتخابگرها، دکمه اقدام]. [سبک مطابق با برند].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>صفحه جزئیات محصول iOS برای یک فروشگاه هدفون لوکس. تصویر بزرگ محصول شامل هدفون مشکی مات، نام «Studio Pro Max»، قیمت ۳۴۹ دلار، امتیاز ۴٫۸ از ۵ بر اساس ۱٬۲۳۴ نظر، انتخابگر رنگ شامل مشکی، نقره‌ای و آبی نیمه‌شب، دکمه تمام‌عرض «افزودن به سبد خرید» و مشخصات کلیدی شامل عمر باتری ۴۰ ساعته، ANC و صدای فضایی. تم تیره و لوکس با رنگ تأکیدی طلایی (#d4a574).</p>
+                    <h3>۶. پیام‌رسانی/چت</h3>
+                    <pre><code>[پلتفرم] صفحه پیام‌رسانی بین [چه کسانی]. نمایش [تعداد پیام] با [استایل فرستاده/دریافت‌شده]. [موضوع محتوای پیام]. [توضیح نوار ورودی].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>صفحه پیام‌رسانی iOS میان دو دوست که برای سفر برنامه‌ریزی می‌کنند. نمایش هشت پیام فرستاده‌شده و دریافت‌شده با حباب‌های آبی و خاکستری. مکالمه درباره رزرو بلیت سفر به ژاپن در ماه آوریل، زمان ارسال میان گروه‌های پیام و نوار ورودی پایین صفحه شامل فیلد متن، دکمه دوربین و دکمه آبی ارسال. وضعیت خوانده‌شدن پیام‌ها نیز نمایش داده شود.</p>
+                    <h3>۷. لیست محصولات فروشگاهی</h3>
+                    <pre><code>[پلتفرم] لیست محصولات برای [نوع فروشگاه]. نمایش [تعداد محصول] در [چیدمان شبکه/لیست] با [چه اطلاعاتی در هر محصول]. [گزینه‌های فیلتر/مرتب‌سازی]. [سبک].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>فهرست محصولات iOS برای یک فروشگاه مبلمان مینیمال. نمایش شش محصول در شبکه‌ای دو‌ستونی همراه با تصویر، نام و قیمت محصول و نشان «جدید» روی دو مورد. نوار جست‌وجوی ثابت در بالا و تراشه‌های فیلتر شامل همه، صندلی‌ها، میزها، روشنایی و ذخیره‌سازی. گزینه‌های مرتب‌سازی شامل محبوب‌ترین، قیمت از کم به زیاد و جدیدترین. طراحی سفید و خلوت با رنگ‌های تأکیدی گرم و چوبی.</p>
+                    <h3>۸. خوش‌آمدگویی/راه‌اندازی</h3>
+                    <pre><code>[پلتفرم] صفحه خوش‌آمدگویی [مرحله X از Y] برای [نوع اپلیکیشن]. [منطقه تصویر/تصویرسازی]، [عنوان اصلی]، [توضیحات]، [دکمه اقدام و گزینه رد]. [سبک].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>صفحه خوش‌آمدگویی iOS، مرحله دوم از چهار مرحله، برای اپلیکیشن پیگیری عادت‌ها. ۶۰ درصد بالای صفحه به تصویرسازی فردی اختصاص یابد که عادت‌های روزانه‌اش را بررسی می‌کند. عنوان اصلی: «عادت‌هایی بساز که ماندگار باشند». توضیحات: «یادآوری‌های روزانه تنظیم کنید، روند پیشرفت خود را پیگیری کنید و تداوم عادت‌ها را در طول زمان ببینید.» نشانگرهای نقطه‌ای مرحله دوم از چهار مرحله را نمایش دهند. دکمه «ادامه» و پیوند متنی «ردکردن» با ترکیب رنگ سبز آرام‌بخش (#4ade80) و سفید.</p>
+                    <h3>۹. داده/تحلیل</h3>
+                    <pre><code>[پلتفرم] نمای تحلیل برای [چه داده‌ای]. نمایش [کارت‌های متریک با مقادیر]، [نوع نمودار] برای [دوره زمانی]، [جدول/لیست جزئیات]. [سبک].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>داشبورد تحلیل SaaS وب برای بازاریابی ایمیلی. نمایش ۴ کارت متریک: مشترکین ۴۸,۲۳۴ (↑۱۲٪)، نرخ باز ۳۴.۲٪ (↑۳٪)، نرخ کلیک ۸.۷٪ (↓۱٪)، درآمد ۱۲,۴۵۰ دلار (↑۸٪). نمودار خطی رشد مشترکین در ۶ ماه. جدول ۵ کمپین اخیر با نام، تاریخ ارسال، گیرندگان، نرخ باز، نرخ کلیک. ناوبری نوار کناری تیره. طراحی تمیز و داده‌محور مانند Postmark.</p>
+                    <h3>۱۰. حالت خالی</h3>
+                    <pre><code>[پلتفرم] حالت خالی برای [نوع صفحه] زمانی که [شرایط]. نمایش [تصویرسازی/آیکون]، [عنوان دوستانه]، [توضیحات تشویق‌کننده]، [دکمه اقدام]. [سبک مطابق با اپلیکیشن].</code></pre>
+                    <p class="labeled"><strong>مثال:</strong></p>
+                    <p>حالت خالی iOS برای اپلیکیشن مدیریت کارها، زمانی که کاربر هنوز کاری ثبت نکرده است. تصویرسازی خطی ساده‌ای از فردی که روی بانوج استراحت می‌کند. عنوان: «هنوز کاری در برنامه نداری». توضیحات: «اولین کار خود را اضافه کن و برنامه‌ریزی را شروع کن.» دکمه اصلی: «ایجاد کار». طرح رنگ آبی و سفید اپلیکیشن حفظ شود و همه عناصر به‌صورت عمودی در مرکز قرار گیرند.</p>
+                    <h2 id="advanced-techniques">چطور خروجی را یک مرحله بهتر کنیم؟</h2>
+                    <p>گاهی یک پرامپت دقیق هم در اولین تلاش به نتیجه نهایی نمی‌رسد. در این مواقع بهتر است به‌جای شروع دوباره، خروجی موجود را با چند تغییر مشخص جلو ببرید.</p>
+                    <h3>استفاده از مرجع بصری</h3>
+                    <p>مؤثرترین راه برای انتقال هدف بصری، ارائه یک مرجع مشخص است:</p>
+                    <blockquote>داشبوردی شبیه رابط Linear طراحی کن؛ چیدمان تمیز مبتنی بر کارت، نوار کناری ساده و تراکم اطلاعات بالا، اما برای ابزار پشتیبانی مشتری با معیارهای مربوط به تیکت‌ها.</blockquote>
+                    <p>با نام‌بردن از اپلیکیشن‌های واقعی، هوش مصنوعی سبک مرجع را بهتر تشخیص می‌دهد و آن را با کاربرد موردنظر شما تطبیق می‌دهد.</p>
+                    <h3>ارجاع به یک سیستم طراحی مشخص</h3>
+                    <p>برای خروجی دقیق‌تر به سیستم‌های طراحی خاص اشاره کنید:</p>
+                    <blockquote>با پیروی از راهنمای Human Interface اپل: از فونت SF Pro، رنگ‌های سیستمی iOS (آبی)، نوار ناوبری عنوان بزرگ، لیست گروهی توکار برای تنظیمات، و فاصله‌گذاری ایمن مناسب برای آیفون ۱۶ استفاده کن.</blockquote>
+                    <blockquote>با پیروی از Material Design 3، از فونت Roboto، پالت رنگی تونال تولیدشده از رنگ پایه #6366f1، دکمه‌های دارای تأکید متوسط، فیلدهای متنی پُرشده و نوار پیمایش پایین استفاده کن.</blockquote>
+                    <h3>استفاده از داده‌های واقعی‌نما</h3>
+                    <p>داده‌های واقع‌گرایانه ارائه دهید تا چیدمان‌ها معنادار شوند:</p>
+                    <blockquote>تراکنش‌های اخیر: ۶۷.۲۳ دلار در Whole Foods (امروز، آیکون خواربار)، ۱۵.۹۹ دلار Netflix (دیروز، آیکون سرگرمی)، ۲۴.۵۰ دلار Uber (دیروز، آیکون حمل‌ونقل)، ۱,۲۹۹.۰۰ دلار Apple Store (۱۲ مارس، آیکون خرید)، ۵۲.۸۷ دلار Shell Gas (۱۱ مارس، آیکون حمل‌ونقل)</blockquote>
+                    <p>داده‌های واقعی، چیدمان‌های واقعی ایجاد می‌کنند. &quot;۴۲.۵۰ دلار&quot; فضای متفاوتی از &quot;۱,۲۹۹.۰۰ دلار&quot; اشغال می‌کند و هوش مصنوعی بر اساس آن تنظیم می‌کند.</p>
+                    <h3>اصلاح تدریجی در سه مرحله</h3>
+                    <h4>مرحله ۱، چیدمان: ساختار را اصلاح کنید و فعلاً نگران رنگ‌ها یا جزئیات نهایی نباشید.</h4>
+                    <blockquote>چیدمان پایه را ایجاد کن: سربرگ شامل لوگو و جست‌وجو، چهار کارت متریک، بخش اصلی نمودار و جدول داده در پایین.</blockquote>
+                    <h4>مرحله ۲، سبک: طراحی بصری را اعمال کنید.</h4>
+                    <blockquote>تم لوکس تاریک اعمال کن: پس‌زمینه #0f172a، کارت‌ها با حاشیه‌های ملایم و پس‌زمینه #1e293b، لهجه نیلی (#6366f1) برای عناصر تعاملی، فونت Inter.</blockquote>
+                    <h4>مرحله ۳، پرداخت نهایی: جزئیات را اصلاح کنید.</h4>
+                    <blockquote>گرادیانی ملایم به کارت‌های متریک اضافه کن. کنار معیارهای مثبت، فلش روند سبز و کنار معیارهای منفی، فلش قرمز نمایش بده. برای ردیف‌های جدول حالت هاور تعریف کن و انتخابگر بازه زمانی «۷ روز / ۳۰ روز / ۹۰ روز / ۱ سال» را بالای نمودار قرار بده.</blockquote>
+                    <h3>نوشتن پرامپت برای یک کامپوننت</h3>
+                    <p>کامپوننت‌های جداگانه را همراه با مشخصات کامل همه حالت‌ها تولید کنید:</p>
+                    <p>&quot;یک کامپوننت دکمه با ۵ واریانت تولید کن:</p>
+                    <p>اصلی: bg-indigo-600، متن سفید، rounded-lg، هاور تیره‌تر</p>
+                    <p>ثانویه: bg-gray-100، متن تیره، rounded-lg، هاور تیره‌تر</p>
+                    <p>طرح‌دار: پس‌زمینه شفاف، حاشیه نیلی، متن نیلی، هاور پر می‌شود</p>
+                    <p>شبح‌وار: پس‌زمینه شفاف، متن خاکستری، هاور پس‌زمینه روشن نشان می‌دهد</p>
+                    <p>مخرب: bg-red-600، متن سفید، rounded-lg، هاور تیره‌تر</p>
+                    <p>هر کدام در ۳ سایز: sm (ارتفاع ۳۲px، متن ۱۴px)، md (ارتفاع ۴۰px، متن ۱۶px)، lg (ارتفاع ۴۸px، متن ۱۸px). حالت غیرفعال را برای هر واریانت نشان بده.&quot;</p>
+                    <h3>مشخص‌کردن محدودیت‌ها</h3>
+                    <p>گفتن اینکه چه کاری انجام ندهد به اندازه گفتن اینکه چه کاری انجام دهد مفید است:</p>
+                    <blockquote>صفحه تنظیمات طراحی کن. محدودیت‌ها: بدون منوی همبرگری. حداکثر ۵ بخش در یک زمان قابل مشاهده. برچسب‌های کلید بیشتر از ۳ کلمه نباشند. اهداف لمسی حداقل ۴۴px باشند. کنتراست متن حداقل ۴.۵:۱ باشد.</blockquote>
+                    <h2 id="professional-workflow">یک روند کاری ساده و قابل‌تکرار</h2>
+                    <p>برای پروژه‌های واقعی، نوشتن یک پرامپت بلند و انتظار یک نتیجه بی‌نقص معمولاً جواب نمی‌دهد. این روند کوتاه کمک می‌کند هر بار از همان خروجی قبلی یک قدم جلوتر بروید.</p>
+                    <h3>بازخورد با اسکرین‌شات</h3>
+                    <h3>۱. یک صفحه اولیه تولید کنید</h3>
+                    <h3>۲. از خروجی اسکرین‌شات بگیرید</h3>
+                    <h3>۳. اسکرین‌شات را به‌عنوان مرجع به هوش مصنوعی بدهید: «این صفحه فعلی من است. این تغییرات را اعمال کن: [اصلاحات مشخص]»</h3>
+                    <p>این چرخه بازخورد مبتنی بر اسکرین‌شات، خروجی را در هر مرحله دقیق‌تر می‌کند؛ زیرا هوش مصنوعی وضعیت فعلی صفحه را به‌وضوح می‌بیند.</p>
+                    <h3>استفاده از توکن‌های طراحی</h3>
+                    <p>یک فایل مارک‌داون تعریف‌کننده توکن‌های طراحی خود ایجاد کنید و در هر پرامپت بگنجانید:</p>
+                    <blockquote>با استفاده از توکن‌های طراحی فوق، صفحه تنظیمات با بخش‌های حساب، اعلان‌ها و ظاهر را تولید کن.</blockquote>
+                    <p>این کار هماهنگی بصری را در تمام خروجی‌ها حفظ می‌کند.</p>
+                    <h3>ترکیب حال‌وهوا و مرجع بصری</h3>
+                    <h3>۱. یک طراحی که دوست دارید پیدا کنید (Dribbble، اپلیکیشن رقیب، اپلیکیشن واقعی)</h3>
+                    <h3>۲. از هوش مصنوعی بخواهید آن را تحلیل کند: &quot;سبک طراحی، رنگ‌ها، تایپوگرافی و الگوهای چیدمان این اسکرین‌شات را توصیف کن&quot;</h3>
+                    <h3>۳. از آن تحلیل در پرامپت خود استفاده کنید: &quot;ویژگی‌های طراحی زیر را در [نوع صفحه شما] اعمال کن: [تحلیل هوش مصنوعی را پیست کن]&quot;</h3>
+                    <p>این روش، سلیقه بصری را به ویژگی‌های مشخص و قابل‌توصیف در پرامپت تبدیل می‌کند.</p>
+                    <h3>تولید چندمرحله‌ای</h3>
+                    <p>برای صفحات پیچیده، تولید را لایه‌به‌لایه انجام دهید:</p>
+                    <h3>۱. مرحله چیدمان: وایرفریم ساختاری را تولید کنید</h3>
+                    <h3>۲. مرحله تم: رنگ‌ها، تایپوگرافی و استایل را اعمال کنید</h3>
+                    <h3>۳. مرحله محتوا: صفحه را با داده‌ها و متن‌های واقع‌گرایانه تکمیل کنید</h3>
+                    <h3>۴. مرحله حالت‌ها: حالت‌های بارگذاری، خالی و خطا را تولید کنید</h3>
+                    <h3>۵. مرحله واکنش‌گرا: طرح را با اندازه‌های مختلف صفحه تطبیق دهید</h3>
+                    <p>هر مرحله بر پایه مرحله قبلی شکل می‌گیرد و در مقایسه با تلاش برای تعریف همه‌چیز در یک مرحله، خروجی دقیق‌تری می‌سازد.</p>
+                    <h2 id="common-mistakes">اشتباه‌هایی که نتیجه را ضعیف می‌کنند</h2>
+                    <div class="table-wrap"><table><thead><tr><th>اشتباه</th><th>چرا نتیجه ضعیف می‌شود؟</th><th>راه‌حل</th></tr></thead><tbody><tr><td>«خوب به نظر برسد»</td><td>واژه «خوب» برای هوش مصنوعی معنای مشخصی ندارد</td><td>یک سبک مشخص نام ببرید</td></tr><tr><td>«ساده و تمیز»</td><td>عمومی‌ترین خروجی ممکن را تولید می‌کند</td><td>توضیح دهید «ساده» یعنی چه؛ برای مثال، «حداکثر دو بخش، فضای خالی کافی و رنگ‌های ملایم»</td></tr><tr><td>نیازمندی‌های متعدد در یک پرامپت</td><td>هوش مصنوعی می‌کوشد همه‌چیز را در یک چیدمان نامنسجم جای دهد</td><td>برای هر صفحه یک پرامپت بنویسید و خروجی را مرحله‌به‌مرحله اصلاح کنید</td></tr><tr><td>مشخص نکردن پلتفرم</td><td>ترکیبی نامرتبط تولید می‌شود که نه با iOS هماهنگ است و نه با Android</td><td>پرامپت را با «اپلیکیشن iOS» یا «اپلیکیشن Android» آغاز کنید</td></tr><tr><td>مشخص نکردن کاربر هدف</td><td>رابط کاربری برای هیچ‌کس بهینه نمی‌شود</td><td>اضافه کنید: «مناسب [چه کسی] برای [انجام چه کاری]»</td></tr><tr><td>فراموش‌کردن حالت‌ها</td><td>فقط مسیر عادی طراحی می‌شود و حالت‌های خالی، بارگذاری و خطا نادیده می‌مانند</td><td>هر حالت را به‌صراحت درخواست کنید</td></tr><tr><td>مشخص نکردن حالت رنگ</td><td>انتخاب میان حالت روشن و تاریک تصادفی می‌شود</td><td>«تم روشن» یا «تم تاریک» را مشخص کنید</td></tr><tr><td>استفاده از متن جایگزین عمومی</td><td>«لورم ایپسوم» سنجش واقعی چیدمان را دشوار می‌کند</td><td>داده‌ها و متن‌های واقع‌گرایانه ارائه دهید</td></tr></tbody></table></div>
+                    <h2 id="conclusion">جمع‌بندی</h2>
+                    <p>قرار نیست اولین خروجی بی‌نقص باشد. یک پرامپت خوب فقط نقطه شروع بهتری می‌سازد و تعداد حدس‌های مدل را کم می‌کند. بعد از آن، با دیدن نتیجه می‌توانید دقیق‌تر بگویید چه چیزی باید تغییر کند.</p>
+                    <p class="callout"><strong>یک پیشنهاد ساده:</strong> پیش از فشردن دکمه ارسال، یک بار متن را بخوانید و ببینید آیا کاربر، نوع صفحه، محتوای اصلی و حال‌وهوای بصری در آن مشخص است یا نه. همین مرور کوتاه اغلب از چند دور اصلاح اضافی جلوگیری می‌کند.</p>
+                    <aside class="source-note" aria-label="یادداشت تحریریه"><strong>یادداشت تحریریه:</strong> این راهنما با تمرکز بر تولید رابط وب مستقل بازبینی شده است. نمونه‌ها نقطه شروع‌اند و نتیجه هر ابزار باید از نظر دسترس‌پذیری، واکنش‌گرایی، محتوا و عملکرد توسط انسان بررسی شود.</aside>
+                    <section aria-labelledby="related-ui-guide"><h2 id="related-ui-guide">مطالب مرتبط</h2><ul><li><a href="/blog/ultimate-guide-to-ai-web-design">راهنمای طراحی وب با هوش مصنوعی از ایده تا انتشار</a></li><li><a href="/blog/best-ai-prompts-ui-ux-design-2026">۱۶ پرامپت آماده برای طراحی UI/UX با هوش مصنوعی</a></li><li><a href="/gallery">نمونه وب‌سایت‌های ساخته‌شده با پرامپت در گالری ThinkFlow</a></li><li><a href="/">ساخت وب‌سایت با هوش مصنوعی در ThinkFlow</a></li></ul></section>
+                    <section class="article-end"><h2>شروع استفاده از چارچوب PROMPT</h2><p>ایده خود را با شش بخش چارچوب PROMPT بنویسید و نتیجه را در ThinkFlow به‌صورت زنده و رندرشده بررسی کنید.</p><div class="end-actions"><a class="button" href="/app">شروع ساخت سایت</a><a class="button secondary" href="/blog">بازگشت به بلاگ</a></div></section>
+                </div>
+            </div>
+        </article>
+    </main>
+    <footer>کاری از تیم هوش عمیق</footer>
+</body>
+</html>

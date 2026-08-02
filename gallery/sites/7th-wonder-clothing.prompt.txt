@@ -1,0 +1,78 @@
+Create a comprehensive, fully responsive 3D animated portfolio website for the clothing company "7th Wonder" using HTML, CSS, and JavaScript. The color scheme must revolve around cream, beige, grays, black, white, and bold contrasting colors to reflect modern aesthetics and brand identity.
+
+The website should embody modern design principles with smooth and engaging animations, advanced interactivity, and clean, organized, well-documented code adhering to best performance practices.
+
+Key Requirements:
+
+1. **Homepage:**
+   - Develop a dynamic 3D hero section incorporating particle effects and interactive elements that respond to user input or cursor movement.
+
+2. **Projects Section:**
+   - Showcase multiple projects with:
+     - Hover-triggered animations enhancing user engagement.
+     - A filtering system allowing users to sort projects by categories or tags.
+     - Detailed project cards displaying thumbnails and summary info.
+     - Modal windows that open with further project details upon selection.
+
+3. **Skills Section:**
+   - Present skills using:
+     - Animated progress bars that visually indicate proficiency.
+     - Interactive skill cards that reveal more info on interaction.
+     - Technology icons enhanced with tooltips describing each skill.
+
+4. **About Page:**
+   - Include a professionally written biography.
+   - Feature an animated timeline illustrating milestones or career highlights.
+   - Describe educational background clearly.
+
+5. **Contact Page:**
+   - Implement a fully functioning contact form with validation.
+   - Provide social media buttons linking to relevant platforms.
+   - Embed an interactive location map for the company.
+
+6. **Navigation Features:**
+   - Enable smooth scroll behavior for in-page navigation.
+   - Design an animated hamburger menu optimized for mobile devices.
+   - Create a fixed navigation bar that remains visible and accessible during scrolling.
+
+7. **Additional Elements:**
+   - Incorporate engaging loading animations to create anticipation.
+   - Use smooth page transitions for seamless navigation.
+   - Add scroll-triggered animations that activate as users move through the site.
+   - Implement custom cursor effects to enhance interactivity.
+
+**Performance and Responsiveness:**
+- Use modern CSS techniques including Grid and Flexbox to ensure the website is fully responsive across all devices and screen sizes.
+- Ensure clean, modular code with thorough in-line comments and separate documentation explaining code structure and usage.
+- Optimize code and assets for fast loading and efficient performance.
+
+**Content:**
+- Populate all sections with high-quality, professional, and engaging content, using persuasive copywriting techniques suitable for portfolio and brand storytelling.
+- Utilize advanced JavaScript libraries where appropriate (e.g., Three.js for 3D effects, GSAP for animations) to enhance functionality and user experience.
+
+# Steps
+
+1. Plan site structure and navigation hierarchy.
+2. Design color palette consistent with cream, beige, grays, black, white, and bold contrasting colors.
+3. Implement Homepage with dynamic 3D hero and particle effects.
+4. Code Projects section with filtering, hover effects, project cards, and modals.
+5. Develop Skills section with animated progress bars, interactive cards, and technology icons with tooltips.
+6. Build About page with biography, animated timeline, and education details.
+7. Create Contact page with validated form, social media links, and interactive map.
+8. Add navigation features including smooth scroll, animated hamburger menu, and fixed navbar.
+9. Include loading animations, smooth page transitions, scroll-triggered animations, and custom cursor effects.
+10. Optimize responsiveness using CSS Grid/Flexbox and verify performance.
+11. Write thorough comments and comprehensive documentation.
+12. Review and populate all content sections with professional copy.
+
+# Output Format
+
+Provide the complete website source code files including HTML, CSS, and JavaScript, fully commented and documented. Include any asset files, a README document explaining installation and usage, and instructions for integrating necessary JavaScript libraries. Deliver the final result as a packaged project folder structure ready for deployment.
+
+# Notes
+
+- Ensure accessibility best practices are followed.
+- Interactive elements must be keyboard-navigable.
+- Confirm that all animations are smooth and do not degrade performance.
+- Use semantic HTML5 tags where appropriate.
+- All interactive features should degrade gracefully if JavaScript is disabled.

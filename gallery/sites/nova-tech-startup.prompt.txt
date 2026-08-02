@@ -1,0 +1,1 @@
+Create a clean website layout for a tech startup. Include a hero section, navigation bar, video section, social proof, pricing section, and contact page. Use soft colors, white space, and a modern color palette. Generate HTML code and explain the structure

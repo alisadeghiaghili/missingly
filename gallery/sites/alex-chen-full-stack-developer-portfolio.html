@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alex Chen · Full-Stack Developer Portfolio</title>
+  <meta name="description" content="پورتفولیوی تیره و فنی برای یک توسعه‌دهنده فول‌استک با معرفی پروژه‌ها، مهارت‌ها، سوابق کاری، نظرات مشتریان و فرم تماس." />
+  <meta name="thinkflow:category" content="پورتفولیو" />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/gallery/assets/vendor/tailwind-alex.css">
+  <link rel="stylesheet" href="/gallery/assets/vendor/fontawesome/css/all.min.css">
+
+  <!-- React & ReactDOM -->
+  <script src="/gallery/assets/vendor/react-18.3.1.min.js"></script>
+  <script src="/gallery/assets/vendor/react-dom-18.3.1.min.js"></script>
+  
+  <!-- Framer Motion -->
+  <script src="/gallery/assets/vendor/framer-motion-10.16.4.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="/gallery/assets/vendor/lucide-1.28.0.min.js"></script>
+
+  <!-- Babel for JSX in Browser -->
+  <script src="/gallery/assets/vendor/babel-7.26.4.min.js"></script>
+
+  <style>
+    @keyframes cursor-blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .animate-cursor {
+      animation: cursor-blink 1s step-end infinite;
+    }
+    .glow-card {
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    }
+    .glow-card:hover {
+      border-color: #22d472 !important;
+      box-shadow: 0 0 32px rgba(34, 212, 114, 0.12);
+    }
+  </style>
+</head>
+<body class="bg-[#0a0a0a] text-[#f2f2f2] font-sans selection:bg-[#22d472]/30 selection:text-[#22d472] relative overflow-x-hidden">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { motion, AnimatePresence } = window.Motion;
+
+    const BRAND_ICONS = {
+      github: 'fa-github',
+      linkedin: 'fa-linkedin-in',
+      twitter: 'fa-x-twitter'
+    };
+
+    // Helper component for Lucide and brand icons in standalone mode.
+    const Icon = ({ name, className = "w-4 h-4" }) => {
+      const iconRef = React.useRef(null);
+      const brandIcon = BRAND_ICONS[name];
+      
+      useEffect(() => {
+        if (!brandIcon && iconRef.current) {
+          iconRef.current.innerHTML = `<i data-lucide="${name}" class="${className}"></i>`;
+          lucide.createIcons();
+        }
+      }, [name, className, brandIcon]);
+
+      if (brandIcon) {
+        return <i className={`fa-brands ${brandIcon} ${className}`} aria-hidden="true"></i>;
+      }
+
+      return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
+    };
+
+    // Images Data
+    const IMAGES = {
+      project1: "/gallery/assets/alex-chen-portfolio/project-analytics.jpg",
+      project2: "/gallery/assets/alex-chen-portfolio/project-commerce.jpg",
+      project3: "/gallery/assets/alex-chen-portfolio/project-design-system.jpg",
+      portrait: "/gallery/assets/alex-chen-portfolio/portrait.jpg"
+    };
+
+    // Tech Stack Data
+    const TECH_STACK = [
+      { name: 'React 19', category: 'Frontend', icon: 'code-2', level: 'Expert' },
+      { name: 'Next.js 15', category: 'Frontend', icon: 'globe', level: 'Advanced' },
+      { name: 'TypeScript', category: 'Frontend', icon: 'terminal', level: 'Expert' },
+      { name: 'Tailwind CSS', category: 'Frontend', icon: 'layout', level: 'Expert' },
+      { name: 'Framer Motion', category: 'Frontend', icon: 'sparkles', level: 'Advanced' },
+      { name: 'Redux / Zustand', category: 'Frontend', icon: 'box', level: 'Advanced' },
+      { name: 'Node.js', category: 'Backend', icon: 'server', level: 'Expert' },
+      { name: 'Express / NestJS', category: 'Backend', icon: 'cpu', level: 'Advanced' },
+      { name: 'PostgreSQL', category: 'Backend', icon: 'database', level: 'Expert' },
+      { name: 'Redis', category: 'Backend', icon: 'zap', level: 'Intermediate' },
+      { name: 'Prisma ORM', category: 'Backend', icon: 'layers', level: 'Expert' },
+      { name: 'GraphQL', category: 'Backend', icon: 'globe', level: 'Advanced' },
+      { name: 'AWS (S3/EC2/Lambda)', category: 'DevOps & Tools', icon: 'server', level: 'Intermediate' },
+      { name: 'Docker', category: 'DevOps & Tools', icon: 'box', level: 'Advanced' },
+      { name: 'CI/CD Pipelines', category: 'DevOps & Tools', icon: 'flame', level: 'Advanced' },
+      { name: 'Git / GitHub', category: 'DevOps & Tools', icon: 'github', level: 'Expert' }
+    ];
+
+    // Projects Data
+    const PROJECTS = [
+      {
+        id: 'analytics-saas',
+        title: 'PulseAnalytics Pro',
+        category: 'REACT · NODE · POSTGRES · REDIS',
+        description: 'High-throughput real-time telemetry dashboard designed for enterprise infrastructure monitoring. Features live WebSocket streaming, custom visualization charts, and zero-latency alert triggers.',
+        tags: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Tailwind', 'Recharts'],
+        image: IMAGES.project1,
+        link: '#',
+        github: '#',
+        metrics: 'Handles 10k+ events/sec'
+      },
+      {
+        id: 'ecommerce-engine',
+        title: 'Aura Commerce Protocol',
+        category: 'NEXT.JS · TYPESCRIPT · STRIPE · TAILWIND',
+        description: 'Headless, ultra-fast e-commerce engine with real-time inventory synchronization, dynamic localized pricing, and sub-100ms global page transitions.',
+        tags: ['Next.js 15', 'Stripe API', 'Prisma', 'Tailwind CSS', 'Redis Cache'],
+        image: IMAGES.project2,
+        link: '#',
+        github: '#',
+        metrics: 'Sub-second checkout TTFB'
+      },
+      {
+        id: 'collaboration-hub',
+        title: 'FlowSync Studio',
+        category: 'REACT · WEBSOCKETS · CANVAS · NODE',
+        description: 'Real-time collaborative canvas and document space built for remote engineering teams. Powered by Conflict-Free Replicated Data Types (CRDTs) for offline-first resilience.',
+        tags: ['React', 'WebSockets', 'Yjs CRDT', 'Canvas API', 'Node.js'],
+        image: IMAGES.project3,
+        link: '#',
+        github: '#',
+        metrics: 'Multi-user concurrent editing'
+      }
+    ];
+
+    // Open Source Repositories
+    const REPOSITORIES = [
+      {
+        name: 'alexchen/react-fast-state',
+        description: 'Atomic, zero-boilerplate reactive state management optimized for React 19 concurrent features.',
+        stars: '1,420',
+        forks: '184',
+        language: 'TypeScript',
+        langColor: '#22d472'
+      },
+      {
+        name: 'alexchen/tailwind-grid-builder',
+        description: 'CLI tool and VSCode extension for generating complex dynamic grid configurations automatically.',
+        stars: '890',
+        forks: '62',
+        language: 'TypeScript',
+        langColor: '#22d472'
+      },
+      {
+        name: 'alexchen/node-express-boilerplate',
+        description: 'Production-ready Node.js starter template with automated JWT auth, OpenAPI docs, and Prisma schema.',
+        stars: '2,150',
+        forks: '410',
+        language: 'JavaScript',
+        langColor: '#f7df1e'
+      }
+    ];
+
+    function App() {
+      const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+      const [activeNav, setActiveNav] = useState('home');
+
+      useEffect(() => {
+        lucide.createIcons();
+      }, []);
+
+      const scrollToSection = (id) => {
+        setMobileMenuOpen(false);
+        setActiveNav(id);
+        const element = document.getElementById(id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }
+      };
+
+      return (
+        <div className="min-h-screen bg-[#0a0a0a] text-[#f2f2f2]">
+          
+          {/* NAVBAR */}
+          <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0a]/92 backdrop-blur-md border-b border-[#212121] h-16 transition-all">
+            <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
+              <div onClick={() => scrollToSection('hero')} className="flex items-center gap-3 cursor-pointer group">
+                <span className="font-extrabold text-base tracking-tight text-[#f2f2f2] group-hover:text-[#22d472] transition-colors">
+                  Alex Chen
+                </span>
+                <span className="font-mono text-[10px] text-[#22d472] bg-[#22d472]/10 border border-[#22d472]/20 px-2 py-0.5 rounded font-medium tracking-wide">
+                  Full-Stack Dev
+                </span>
+              </div>
+
+              <div className="hidden md:flex items-center gap-8 font-mono text-xs text-[#6b6b6b]">
+                {[
+                  { label: '// 01. projects', id: 'projects' },
+                  { label: '// 02. stack', id: 'stack' },
+                  { label: '// 03. about', id: 'about' },
+                  { label: '// 04. open-source', id: 'open-source' },
+                  { label: '// 05. contact', id: 'contact' },
+                ].map((link) => (
+                  <button
+                    key={link.id}
+                    onClick={() => scrollToSection(link.id)}
+                    className={`hover:text-[#22d472] transition-colors tracking-tight ${
+                      activeNav === link.id ? 'text-[#22d472] font-semibold' : ''
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="hidden md:flex items-center gap-4">
+                <button
+                  onClick={() => scrollToSection('contact')}
+                  className="bg-[#22d472] hover:bg-[#18a355] text-[#0a0a0a] px-4 py-2 rounded font-semibold text-xs transition-all flex items-center gap-1.5 shadow-[0_0_20px_rgba(34,212,114,0.2)] hover:shadow-[0_0_25px_rgba(34,212,114,0.35)]"
+                >
+                  Hire me <Icon name="arrow-right" className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden text-[#f2f2f2] p-2 focus:outline-none"
+                aria-label="Toggle menu"
+              >
+                <Icon name={mobileMenuOpen ? "x" : "menu"} className="w-6 h-6" />
+              </button>
+            </div>
+
+            {mobileMenuOpen && (
+              <div className="md:hidden bg-[#121212] border-b border-[#212121] px-6 py-8 flex flex-col gap-6">
+                {[
+                  { label: 'Projects', id: 'projects' },
+                  { label: 'Stack', id: 'stack' },
+                  { label: 'About', id: 'about' },
+                  { label: 'Open Source', id: 'open-source' },
+                  { label: 'Contact', id: 'contact' },
+                ].map((link) => (
+                  <button
+                    key={link.id}
+                    onClick={() => scrollToSection(link.id)}
+                    className="text-left font-mono text-sm text-[#f2f2f2] hover:text-[#22d472] transition-colors"
+                  >
+                    {link.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => scrollToSection('contact')}
+                  className="w-full bg-[#22d472] text-[#0a0a0a] py-3 rounded font-semibold text-xs tracking-wide uppercase flex items-center justify-center gap-2 mt-2"
+                >
+                  Hire me <Icon name="arrow-right" className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </nav>
+
+          {/* HERO */}
+          <section id="hero" className="min-h-screen pt-28 pb-16 px-6 max-w-7xl mx-auto flex items-center">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center w-full">
+              <div className="lg:col-span-7 flex flex-col items-start">
+                <div className="inline-flex items-center gap-2 bg-[#121212] border border-[#212121] px-3 py-1.5 rounded-full mb-8">
+                  <span className="w-2 h-2 rounded-full bg-[#22d472] animate-pulse"></span>
+                  <span className="font-mono text-[11px] text-[#22d472] font-medium tracking-wide uppercase">
+                    AVAILABLE FOR HIRE · 2026
+                  </span>
+                  <span className="text-[#22d472] font-mono font-bold animate-cursor">|</span>
+                </div>
+
+                <h1 className="text-[clamp(44px,6vw,84px)] font-extrabold text-[#f2f2f2] tracking-[-0.04em] leading-[0.94] mb-6">
+                  Building apps <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#f2f2f2] via-[#e2e2e2] to-[#6b6b6b]">
+                    people actually use.
+                  </span>
+                </h1>
+
+                <p className="font-light text-base text-[#6b6b6b] max-w-lg mb-8 leading-relaxed">
+                  Full-stack developer specialising in React, Node.js, and TypeScript. Fast, accessible, and built to scale with clean architecture.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-4 mb-12 w-full sm:w-auto">
+                  <button
+                    onClick={() => scrollToSection('projects')}
+                    className="bg-[#22d472] hover:bg-[#18a355] text-[#0a0a0a] px-6 py-3.5 rounded-md font-semibold text-xs tracking-wide uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(34,212,114,0.25)] hover:scale-[1.02]"
+                  >
+                    View projects <Icon name="arrow-right" className="w-4 h-4" />
+                  </button>
+                  <a
+                    href="#cv"
+                    onClick={(e) => { e.preventDefault(); alert("Alex_Chen_Resume_2026.pdf downloading..."); }}
+                    className="border border-[#212121] bg-[#121212] hover:bg-[#1a1a1a] text-[#f2f2f2] px-6 py-3.5 rounded-md font-medium text-xs tracking-wide transition-all flex items-center justify-center gap-2 hover:border-[#6b6b6b]"
+                  >
+                    <Icon name="download" className="w-4 h-4 text-[#6b6b6b]" /> Download CV
+                  </a>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] text-[#6b6b6b] mr-2 uppercase tracking-wider">
+                    CORE STACK:
+                  </span>
+                  {['React 19', 'Node.js', 'TypeScript', 'PostgreSQL', 'AWS'].map((tech) => (
+                    <span key={tech} className="font-mono text-[10px] text-[#22d472] bg-[#121212] border border-[#212121] px-2.5 py-1 rounded-md">
+                      {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Code Terminal Mockup */}
+              <div className="lg:col-span-5 flex justify-center lg:justify-end w-full">
+                <div className="w-full max-w-md bg-[#121212] border border-[#212121] rounded-xl p-6 font-mono text-xs leading-relaxed shadow-2xl relative overflow-hidden glow-card">
+                  <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#212121]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+                      <span className="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+                      <span className="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+                    </div>
+                    <span className="text-[10px] text-[#6b6b6b]">alex@thinkflow: ~/portfolio</span>
+                  </div>
+
+                  <div className="space-y-1 text-[#f2f2f2]">
+                    <div className="text-[#6b6b6b]">// building the future</div>
+                    <div>
+                      <span className="text-[#22d472]">const</span> <span className="text-[#f2f2f2]">alex</span> = {'{'}
+                    </div>
+                    <div className="pl-4">
+                      role: <span className="text-[#22d472]">"Full-Stack Dev"</span>,
+                    </div>
+                    <div className="pl-4">
+                      location: <span className="text-[#22d472]">"San Francisco, CA"</span>,
+                    </div>
+                    <div className="pl-4">
+                      stack: [<span className="text-[#22d472]">"React"</span>, <span className="text-[#22d472]">"Node"</span>, <span className="text-[#22d472]">"TS"</span>],
+                    </div>
+                    <div className="pl-4">
+                      status: <span className="text-[#22d472]">"Ready for impact"</span>,
+                    </div>
+                    <div className="pl-4">
+                      open: <span className="text-[#22d472]">true</span>
+                    </div>
+                    <div>{'}'}</div>
+                    <div className="pt-2 text-[#6b6b6b]">
+                      // Execute build check <br />
+                      <span className="text-[#22d472]">&gt; alex.deploy()</span>
+                      <span className="inline-block w-2 h-4 bg-[#22d472] ml-1 align-middle animate-cursor"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* PROJECTS SECTION */}
+          <section id="projects" className="py-24 px-6 max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-4 border-b border-[#212121] pb-6">
+              <div>
+                <span className="font-mono text-[11px] text-[#22d472] uppercase tracking-wider block mb-2">
+                  // SELECTED WORK
+                </span>
+                <h2 className="text-4xl md:text-5xl font-extrabold text-[#f2f2f2] tracking-tight">
+                  Featured Projects.
+                </h2>
+              </div>
+              <p className="font-light text-sm text-[#6b6b6b] max-w-md">
+                Architected for performance, precision, and high-scale production readiness.
+              </p>
+            </div>
+
+            <div className="space-y-10">
+              {PROJECTS.map((project) => (
+                <div key={project.id} className="bg-[#121212] border border-[#212121] rounded-xl p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center glow-card">
+                  <div className="lg:col-span-6 flex flex-col justify-between h-full">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-mono text-[10px] text-[#22d472] uppercase tracking-wider bg-[#22d472]/10 border border-[#22d472]/20 px-2.5 py-1 rounded">
+                          {project.category}
+                        </span>
+                        <span className="font-mono text-[10px] text-[#6b6b6b]">
+                          {project.metrics}
+                        </span>
+                      </div>
+
+                      <h3 className="text-2xl font-bold text-[#f2f2f2] mb-3">
+                        {project.title}
+                      </h3>
+
+                      <p className="font-light text-sm text-[#6b6b6b] leading-relaxed mb-6">
+                        {project.description}
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 mb-8">
+                        {project.tags.map((tag) => (
+                          <span key={tag} className="font-mono text-[10px] text-[#f2f2f2] bg-[#1a1a1a] border border-[#212121] px-2.5 py-1 rounded">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <a href={project.link} className="inline-flex items-center gap-2 font-mono text-xs text-[#22d472] hover:text-[#18a355] font-medium transition-colors">
+                        View project <Icon name="arrow-right" className="w-3.5 h-3.5" />
+                      </a>
+                      <a href={project.github} className="inline-flex items-center gap-1.5 font-mono text-xs text-[#6b6b6b] hover:text-[#f2f2f2] transition-colors">
+                        <Icon name="github" className="w-3.5 h-3.5" /> Source
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-6 overflow-hidden rounded-lg border border-[#212121] bg-[#1a1a1a] relative group">
+                    <img src={project.image} loading="lazy" alt={project.title} className="w-full h-64 lg:h-80 object-cover object-top filter brightness-90 group-hover:scale-105 transition-transform duration-500" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-transparent opacity-60"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* TECH STACK */}
+          <section id="stack" className="py-24 bg-[#121212] border-y border-[#212121] px-6">
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-16">
+                <span className="font-mono text-[11px] text-[#22d472] uppercase tracking-wider block mb-2">
+                  // ARCHITECTURE & TOOLS
+                </span>
+                <h2 className="text-4xl md:text-5xl font-extrabold text-[#f2f2f2] tracking-tight">
+                  The stack.
+                </h2>
+              </div>
+
+              <div className="space-y-12">
+                {['Frontend', 'Backend', 'DevOps & Tools'].map((category) => {
+                  const categoryItems = TECH_STACK.filter(item => item.category === category);
+                  return (
+                    <div key={category}>
+                      <h3 className="font-mono text-[10px] text-[#6b6b6b] uppercase tracking-widest mb-4">
+                        {category} // EFFICIENCY & SPEED
+                      </h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                        {categoryItems.map((tech) => (
+                          <div key={tech.name} className="bg-[#0a0a0a] border border-[#212121] rounded-lg p-4 flex flex-col justify-between h-28 glow-card">
+                            <div className="flex items-center justify-between text-[#22d472]">
+                              <Icon name={tech.icon} />
+                              <span className="font-mono text-[9px] text-[#6b6b6b] uppercase">
+                                {tech.level}
+                              </span>
+                            </div>
+                            <div className="font-mono text-xs font-semibold text-[#f2f2f2]">
+                              {tech.name}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* ABOUT SECTION */}
+          <section id="about" className="py-24 px-6 max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+              <div className="lg:col-span-7 space-y-6">
+                <div>
+                  <span className="font-mono text-[11px] text-[#22d472] uppercase tracking-wider block mb-2">
+                    // BACKGROUND & APPROACH
+                  </span>
+                  <h2 className="text-4xl md:text-5xl font-extrabold text-[#f2f2f2] tracking-tight mb-6">
+                    About me.
+                  </h2>
+                </div>
+
+                <div className="font-light text-sm text-[#6b6b6b] space-y-4 leading-relaxed">
+                  <p>
+                    I am a full-stack software engineer with over five years of hands-on experience building resilient web software. My journey started with custom Unix scripts and evolved into architecting scalable distributed applications.
+                  </p>
+                  <p>
+                    My philosophy is grounded in technical clarity: minimal client bloat, robust backend API contracts, and intuitive design interfaces that prioritize user workflow over unnecessary flair.
+                  </p>
+                  <p>
+                    When not shipping production code, I contribute to open-source developer tooling, write technical deep-dives on web protocols, and experiment with low-latency browser architectures.
+                  </p>
+                </div>
+
+                <div className="pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { label: '5+ YRS EXP', value: 'Production' },
+                    { label: '30+ SHIPPED', value: 'Projects' },
+                    { label: 'OPEN SOURCE', value: 'Contributor' },
+                    { label: 'REMOTE-READY', value: 'Global UTC' },
+                  ].map((stat) => (
+                    <div key={stat.label} className="bg-[#121212] border border-[#212121] p-3 rounded-md">
+                      <div className="font-mono text-[10px] text-[#22d472] uppercase font-semibold">
+                        {stat.label}
+                      </div>
+                      <div className="text-xs text-[#f2f2f2] font-medium mt-0.5">
+                        {stat.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="lg:col-span-5 flex justify-center">
+                <div className="relative max-w-sm w-full bg-[#121212] border border-[#212121] rounded-xl p-4 glow-card">
+                  <img src={IMAGES.portrait} loading="lazy" alt="Alex Chen Full-Stack Developer" className="w-full h-80 object-cover rounded-lg filter grayscale contrast-125 mb-4" />
+                  <div className="flex items-center justify-between font-mono text-xs px-2">
+                    <span className="text-[#f2f2f2] font-semibold">Alex Chen</span>
+                    <span className="text-[#22d472] text-[10px]">// DEV_ID: 8841-SF</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* OPEN SOURCE */}
+          <section id="open-source" className="py-20 bg-[#121212] border-y border-[#212121] px-6">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center max-w-xl mx-auto mb-12">
+                <span className="font-mono text-[11px] text-[#22d472] uppercase tracking-wider block mb-2">
+                  // COMMUNITY & CODE
+                </span>
+                <h2 className="text-3xl md:text-4xl font-extrabold text-[#f2f2f2]">
+                  Open Source.
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-4xl mx-auto">
+                <div className="bg-[#0a0a0a] border border-[#212121] p-6 rounded-lg text-center glow-card">
+                  <div className="text-4xl font-extrabold text-[#22d472] mb-1">4,460+</div>
+                  <div className="font-mono text-[10px] text-[#6b6b6b] uppercase">Total Stars Earned</div>
+                </div>
+                <div className="bg-[#0a0a0a] border border-[#212121] p-6 rounded-lg text-center glow-card">
+                  <div className="text-4xl font-extrabold text-[#22d472] mb-1">42</div>
+                  <div className="font-mono text-[10px] text-[#6b6b6b] uppercase">Public Repositories</div>
+                </div>
+                <div className="bg-[#0a0a0a] border border-[#212121] p-6 rounded-lg text-center glow-card">
+                  <div className="text-4xl font-extrabold text-[#22d472] mb-1">1,840</div>
+                  <div className="font-mono text-[10px] text-[#6b6b6b] uppercase">Contributions (2026)</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {REPOSITORIES.map((repo) => (
+                  <div key={repo.name} className="bg-[#0a0a0a] border border-[#212121] p-6 rounded-lg flex flex-col justify-between glow-card">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-mono text-xs text-[#22d472] font-semibold">
+                          {repo.name}
+                        </span>
+                        <Icon name="github" className="w-4 h-4 text-[#6b6b6b]" />
+                      </div>
+                      <p className="font-light text-xs text-[#6b6b6b] leading-relaxed mb-6">
+                        {repo.description}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between font-mono text-[10px] text-[#6b6b6b] border-t border-[#212121] pt-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: repo.langColor }}></span>
+                        <span>{repo.language}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="flex items-center gap-1">
+                          <Icon name="star" className="w-3 h-3 text-[#22d472]" /> {repo.stars}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Icon name="git-fork" className="w-3 h-3" /> {repo.forks}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* CONTACT CTA */}
+          <section id="contact" className="py-24 px-6 bg-[#0a0a0a] relative overflow-hidden text-center border-t border-[#212121]">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#22d472] opacity-[0.05] rounded-full blur-[120px] pointer-events-none"></div>
+
+            <div className="max-w-3xl mx-auto relative z-10">
+              <span className="font-mono text-[11px] text-[#22d472] uppercase tracking-wider block mb-4">
+                Currently available · 2–3 project slots open
+              </span>
+
+              <h2 className="text-4xl sm:text-6xl font-black text-[#f2f2f2] tracking-tight mb-8">
+                Let's build something.
+              </h2>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+                <a href="mailto:alex@thinkflow.ir" className="w-full sm:w-auto bg-[#22d472] hover:bg-[#18a355] text-[#0a0a0a] px-8 py-4 rounded-md font-bold text-xs tracking-wide uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(34,212,114,0.3)]">
+                  Start a conversation <Icon name="arrow-right" className="w-4 h-4" />
+                </a>
+                <a href="mailto:alex@thinkflow.ir" className="w-full sm:w-auto border border-[#212121] bg-[#121212] hover:bg-[#1a1a1a] text-[#f2f2f2] px-8 py-4 rounded-md font-medium text-xs tracking-wide transition-all flex items-center justify-center gap-2">
+                  <Icon name="mail" className="w-4 h-4 text-[#6b6b6b]" /> alex@thinkflow.ir
+                </a>
+              </div>
+
+              <p className="font-mono text-[11px] text-[#6b6b6b]">
+                Average response time: &lt; 12 hours // PST & UTC Friendly
+              </p>
+            </div>
+          </section>
+
+          {/* FOOTER */}
+          <footer className="bg-[#050505] border-t border-[#212121] py-10 px-6">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+              <div>
+                <div className="text-sm font-bold text-[#f2f2f2]">Alex Chen</div>
+                <div className="font-mono text-[10px] text-[#6b6b6b]">
+                  Full-Stack Developer · thinkflow.ir
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6">
+                <a href="#" className="text-[#6b6b6b] hover:text-[#22d472] transition-colors" aria-label="GitHub">
+                  <Icon name="github" className="w-4 h-4" />
+                </a>
+                <a href="#" className="text-[#6b6b6b] hover:text-[#22d472] transition-colors" aria-label="LinkedIn">
+                  <Icon name="linkedin" className="w-4 h-4" />
+                </a>
+                <a href="#" className="text-[#6b6b6b] hover:text-[#22d472] transition-colors" aria-label="Twitter">
+                  <Icon name="twitter" className="w-4 h-4" />
+                </a>
+              </div>
+
+              <div className="font-mono text-[10px] text-[#6b6b6b]">
+                © 2026 Alex Chen. All rights reserved.
+              </div>
+            </div>
+          </footer>
+
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>

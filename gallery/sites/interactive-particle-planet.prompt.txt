@@ -1,0 +1,5 @@
+Building interactive 3D animations used to require deep WebGL knowledge, custom shaders, and hours of debugging. But lucky for us, not anymore.
+
+With AI-powered coding tools, you can drop a stunning 3D particle system into your site with a single prompt and some borrowed code.
+
+I'm going to show you how I added this interactive 3D planet animation to a homepage using [Builder.io Fusion](http://fusion.builder.io/), but this technique works with pretty much any AI coding tool that can handle visual updates.
