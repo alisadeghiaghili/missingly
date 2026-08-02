@@ -623,6 +623,8 @@
                     <button id="dashboardBtn">داشبورد مصرف</button>
                     <button id="adminBtn" class="hidden">مدیریت</button>
                     <button id="plansBtn">مشاهده پلن‌ها</button>
+                    <button id="saveProjectBtn">ذخیره پروژه</button>
+                    <button id="loadProjectBtn">باز کردن پروژه</button>
                     <button id="downloadBtn">دانلود خروجی</button>
                     <button id="galleryBtn">گالری</button>
                     <button id="blogBtn">بلاگ</button>
@@ -789,6 +791,8 @@
         const dashboardBtn = document.getElementById('dashboardBtn');
         const adminBtn = document.getElementById('adminBtn');
         const plansBtn = document.getElementById('plansBtn');
+        const saveProjectBtn = document.getElementById('saveProjectBtn');
+        const loadProjectBtn = document.getElementById('loadProjectBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const galleryBtn = document.getElementById('galleryBtn');
         const blogBtn = document.getElementById('blogBtn');
@@ -800,6 +804,7 @@
         const DEFAULT_EDITOR_CONTENT = codeEditor.value;
         const backendBaseUrl = window.location.origin;
         let lastRenderablePreviewHtml = DEFAULT_EDITOR_CONTENT;
+        let activeProjectId = null;
         let workspaceState = 'empty';
         const PLAN_RANK = { free: 0, basic: 1, standard: 2, deluxe: 3 };
         const PLAN_ALIASES = { premium: 'deluxe', pro: 'deluxe', 'پریمیوم': 'deluxe' };
@@ -836,6 +841,85 @@
             user.plan = normalizePlan(user.plan);
             sessionStorage.setItem('deepintelligence_user', JSON.stringify(user));
             return user;
+        }
+
+        async function projectFetch(path, options = {}) {
+            const response = await fetch(`${backendBaseUrl}${path}`, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`,
+                    ...(options.headers || {})
+                }
+            });
+            if (response.status === 401) {
+                sessionStorage.removeItem('deepintelligence_token');
+                sessionStorage.removeItem('deepintelligence_user');
+                window.location.replace('/');
+                throw new Error('نشست شما منقضی شده است.');
+            }
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.detail || 'عملیات پروژه انجام نشد.');
+            return payload;
+        }
+
+        async function saveCurrentProject() {
+            const currentCode = codeEditor.value;
+            const prompt = promptInput.value;
+            try {
+                let project;
+                if (activeProjectId) {
+                    const data = await projectFetch(`/projects/${activeProjectId}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ current_code: currentCode, prompt })
+                    });
+                    project = data.project;
+                } else {
+                    const name = window.prompt('نام پروژه را وارد کنید:', 'پروژه بدون نام');
+                    if (name === null) return;
+                    const data = await projectFetch('/projects', {
+                        method: 'POST',
+                        body: JSON.stringify({ name, current_code: currentCode, prompt })
+                    });
+                    project = data.project;
+                    activeProjectId = project.id;
+                }
+                setWorkStatus(`پروژه «${project.name}» در نسخه ${project.current_revision} ذخیره شد`);
+                closeDisclosureMenus();
+            } catch (error) {
+                displayMessageBox(error.message || 'ذخیره پروژه انجام نشد.');
+            }
+        }
+
+        async function loadSavedProject() {
+            try {
+                const data = await projectFetch('/projects');
+                if (!data.projects.length) {
+                    displayMessageBox('هنوز پروژه‌ای ذخیره نشده است.');
+                    return;
+                }
+                const choices = data.projects
+                    .map(project => `${project.id}: ${project.name} (نسخه ${project.current_revision})`)
+                    .join('\n');
+                const choice = window.prompt(`شناسه پروژه را وارد کنید:\n${choices}`);
+                if (choice === null) return;
+                const projectId = Number(choice.trim());
+                if (!Number.isInteger(projectId) || projectId < 1) {
+                    displayMessageBox('شناسه پروژه معتبر نیست.');
+                    return;
+                }
+                const projectData = await projectFetch(`/projects/${projectId}`);
+                const project = projectData.project;
+                activeProjectId = project.id;
+                codeEditor.value = project.current_code || DEFAULT_EDITOR_CONTENT;
+                promptInput.value = project.prompt || '';
+                updatePreview(codeEditor.value);
+                setWorkspaceState('preview');
+                setWorkStatus(`پروژه «${project.name}» باز شد`);
+                closeDisclosureMenus();
+            } catch (error) {
+                displayMessageBox(error.message || 'باز کردن پروژه انجام نشد.');
+            }
         }
 
         function setWorkspaceState(nextState) {
@@ -1487,6 +1571,8 @@
         plansBtn.addEventListener('click', () => {
             window.location.href = '/pricing';
         });
+        saveProjectBtn.addEventListener('click', saveCurrentProject);
+        loadProjectBtn.addEventListener('click', loadSavedProject);
         galleryBtn.addEventListener('click', () => {
             window.location.href = '/gallery';
         });

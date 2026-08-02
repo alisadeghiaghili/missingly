@@ -423,6 +423,18 @@ class PasswordReset(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class ProjectCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    current_code: str = Field(default="", max_length=MAX_CURRENT_CODE_CHARS)
+    prompt: str = Field(default="", max_length=MAX_PROMPT_CHARS)
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    current_code: str | None = Field(default=None, max_length=MAX_CURRENT_CODE_CHARS)
+    prompt: str | None = Field(default=None, max_length=MAX_PROMPT_CHARS)
+
+
 class CodeGenRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
     current_code: str = Field(default="", max_length=MAX_CURRENT_CODE_CHARS)
@@ -577,6 +589,43 @@ def create_tables() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                current_code TEXT NOT NULL DEFAULT '',
+                latest_prompt TEXT NOT NULL DEFAULT '',
+                current_revision INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                revision_number INTEGER NOT NULL,
+                code TEXT NOT NULL,
+                prompt TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, revision_number),
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_projects_user_updated "
+            "ON projects(user_id, updated_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_project_revisions_project "
+            "ON project_revisions(project_id, revision_number DESC)"
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
@@ -727,6 +776,33 @@ def row_to_user(row: sqlite3.Row) -> dict[str, Any]:
         "successful_payment_count": row["successful_payment_count"],
         "token_usage": row["token_usage"],
     }
+
+
+def clean_project_name(value: str) -> str:
+    name = " ".join(value.split())
+    if not name:
+        raise HTTPException(status_code=422, detail="Project name cannot be blank")
+    return name
+
+
+def project_summary(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "name": row["name"],
+        "current_revision": int(row["current_revision"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def get_owned_project(project_id: int, user_id: int) -> sqlite3.Row:
+    row = fetch_one(
+        "SELECT * FROM projects WHERE id = ? AND user_id = ?",
+        (project_id, user_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return row
 
 
 def get_app_setting(key: str, default: str | None = None) -> str | None:
@@ -2320,6 +2396,158 @@ async def login(user: UserLogin, request: Request):
 async def logout(request: Request, current_user: dict[str, Any] = Depends(get_current_user)):
     revoke_auth_session(bearer_token_from_request(request), current_user["id"])
     return {"message": "Logged out"}
+
+
+@app.get("/projects")
+async def list_projects(current_user: dict[str, Any] = Depends(get_current_user)):
+    rows = fetch_all(
+        """
+        SELECT id, name, current_revision, created_at, updated_at
+        FROM projects
+        WHERE user_id = ?
+        ORDER BY datetime(updated_at) DESC, id DESC
+        """,
+        (current_user["id"],),
+    )
+    return {"projects": [project_summary(row) for row in rows]}
+
+
+@app.post("/projects", status_code=201)
+async def create_project(
+    body: ProjectCreate,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    name = clean_project_name(body.name)
+    now = dt.datetime.utcnow().isoformat()
+    with db_connection() as conn:
+        created = conn.execute(
+            """
+            INSERT INTO projects (
+                user_id, name, current_code, latest_prompt, current_revision, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+            """,
+            (current_user["id"], name, body.current_code, body.prompt, now, now),
+        )
+        project_id = int(created.lastrowid)
+        conn.execute(
+            """
+            INSERT INTO project_revisions (project_id, revision_number, code, prompt, created_at)
+            VALUES (?, 1, ?, ?, ?)
+            """,
+            (project_id, body.current_code, body.prompt, now),
+        )
+        project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return {"project": {**project_summary(project), "current_code": body.current_code, "prompt": body.prompt}}
+
+
+@app.get("/projects/{project_id}")
+async def get_project(project_id: int, current_user: dict[str, Any] = Depends(get_current_user)):
+    project = get_owned_project(project_id, current_user["id"])
+    return {
+        "project": {
+            **project_summary(project),
+            "current_code": project["current_code"],
+            "prompt": project["latest_prompt"],
+        }
+    }
+
+
+@app.patch("/projects/{project_id}")
+async def update_project(
+    project_id: int,
+    body: ProjectUpdate,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    current = get_owned_project(project_id, current_user["id"])
+    name = clean_project_name(body.name) if body.name is not None else current["name"]
+    current_code = body.current_code if body.current_code is not None else current["current_code"]
+    prompt = body.prompt if body.prompt is not None else current["latest_prompt"]
+    code_changed = current_code != current["current_code"] or prompt != current["latest_prompt"]
+    revision = int(current["current_revision"]) + (1 if code_changed else 0)
+    now = dt.datetime.utcnow().isoformat()
+
+    with db_connection() as conn:
+        conn.execute(
+            """
+            UPDATE projects
+            SET name = ?, current_code = ?, latest_prompt = ?, current_revision = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (name, current_code, prompt, revision, now, project_id, current_user["id"]),
+        )
+        if code_changed:
+            conn.execute(
+                """
+                INSERT INTO project_revisions (project_id, revision_number, code, prompt, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (project_id, revision, current_code, prompt, now),
+            )
+        project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+
+    return {
+        "project": {
+            **project_summary(project),
+            "current_code": project["current_code"],
+            "prompt": project["latest_prompt"],
+        }
+    }
+
+
+@app.get("/projects/{project_id}/revisions")
+async def list_project_revisions(
+    project_id: int,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    get_owned_project(project_id, current_user["id"])
+    rows = fetch_all(
+        """
+        SELECT revision_number, prompt, created_at
+        FROM project_revisions
+        WHERE project_id = ?
+        ORDER BY revision_number DESC
+        LIMIT 100
+        """,
+        (project_id,),
+    )
+    return {
+        "revisions": [
+            {
+                "revision_number": int(row["revision_number"]),
+                "prompt": row["prompt"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.get("/projects/{project_id}/revisions/{revision_number}")
+async def get_project_revision(
+    project_id: int,
+    revision_number: int,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    get_owned_project(project_id, current_user["id"])
+    row = fetch_one(
+        """
+        SELECT revision_number, code, prompt, created_at
+        FROM project_revisions
+        WHERE project_id = ? AND revision_number = ?
+        """,
+        (project_id, revision_number),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Project revision not found")
+    return {
+        "revision": {
+            "revision_number": int(row["revision_number"]),
+            "code": row["code"],
+            "prompt": row["prompt"],
+            "created_at": row["created_at"],
+        }
+    }
 
 
 @app.get("/user/status")
