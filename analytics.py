@@ -15,7 +15,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from scipy import stats
+from scipy import optimize, special, stats
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer, KNNImputer
 import statsmodels.api as sm
@@ -1113,6 +1113,180 @@ def zero_inflated_count_regression(
         "aic": _round(fitted.aic),
         "bic": _round(fitted.bic),
         "warning": "The inflation component models structural-zero odds. Assess fit, sparse covariate patterns, dependence, and study design before treating observed zeros as structural.",
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
+def hurdle_poisson_regression(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    exposure_column: str | None = None,
+    hurdle_predictors: list[str] | None = None,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit a logit hurdle and a zero-truncated Poisson count model for positive counts."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    hurdle = hurdle_predictors or predictors
+    if len(set(hurdle)) != len(hurdle) or outcome in hurdle:
+        raise AnalyticsError("hurdle_predictors must be unique and must not contain outcome")
+    if exposure_column and exposure_column in {outcome, *predictors, *hurdle}:
+        raise AnalyticsError("exposure_column must differ from outcome and predictor columns")
+    frame = _frame(records)
+    numeric = _numeric_columns(frame)
+    required = [outcome, *predictors, *hurdle, *([exposure_column] if exposure_column else [])]
+    for column in required:
+        if column not in numeric:
+            raise AnalyticsError(f"Hurdle Poisson regression requires numeric column: '{column}'")
+    observed_outcome = numeric[outcome].dropna()
+    if (observed_outcome < 0).any() or not np.isclose(observed_outcome, np.round(observed_outcome)).all():
+        raise AnalyticsError("Hurdle Poisson regression outcome must contain non-negative integer counts")
+    data = pd.DataFrame({"outcome": numeric[outcome]})
+    for column in dict.fromkeys([*predictors, *hurdle]):
+        data[column] = numeric[column]
+    if exposure_column:
+        data["exposure"] = numeric[exposure_column]
+    data = data.dropna()
+    positive = data["outcome"] > 0
+    if not positive.any() or positive.all():
+        raise AnalyticsError("Hurdle Poisson regression requires both zero and positive observed counts")
+    if exposure_column and (data["exposure"] <= 0).any():
+        raise AnalyticsError("exposure_column must contain strictly positive values")
+    count_exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    hurdle_exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for column in predictors:
+        values = data[column].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Count predictor '{column}' must not be constant")
+        count_exog[column] = values
+    for column in hurdle:
+        values = data[column].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Hurdle predictor '{column}' must not be constant")
+        hurdle_exog[column] = values
+    if np.linalg.matrix_rank(count_exog.to_numpy()) != count_exog.shape[1] or np.linalg.matrix_rank(hurdle_exog.to_numpy()) != hurdle_exog.shape[1]:
+        raise AnalyticsError("Hurdle Poisson regression predictors are perfectly collinear")
+    positive_count_exog = count_exog.loc[positive]
+    if len(positive_count_exog) <= count_exog.shape[1]:
+        raise AnalyticsError("Hurdle Poisson count component requires more positive rows than fitted parameters")
+    offset = np.log(data["exposure"].to_numpy()) if exposure_column else np.zeros(len(data))
+    positive_offset = offset[positive.to_numpy()]
+    positive_counts = data.loc[positive, "outcome"].to_numpy(dtype=float)
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            hurdle_fit = sm.Logit(positive.astype(float), hurdle_exog).fit(disp=False, maxiter=100)
+        if not hurdle_fit.mle_retvals.get("converged", False) or any(
+            issubclass(item.category, ConvergenceWarning) for item in captured
+        ):
+            raise AnalyticsError("Hurdle-logit component did not converge")
+        start = sm.GLM(
+            positive_counts, positive_count_exog, family=sm.families.Poisson(), offset=positive_offset
+        ).fit().params.to_numpy()
+    except AnalyticsError:
+        raise
+    except (PerfectSeparationError, np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Hurdle Poisson regression could not fit the hurdle component") from exc
+
+    count_matrix = positive_count_exog.to_numpy()
+
+    def truncated_objective(beta: np.ndarray) -> tuple[float, np.ndarray]:
+        eta = count_matrix @ beta + positive_offset
+        mu = np.exp(np.clip(eta, -30, 30))
+        log_normalizer = np.log(-np.expm1(-mu))
+        log_likelihood = np.sum(positive_counts * eta - mu - special.gammaln(positive_counts + 1) - log_normalizer)
+        adjustment = np.zeros_like(mu)
+        manageable = mu < 50
+        adjustment[manageable] = mu[manageable] / np.expm1(mu[manageable])
+        score = positive_counts - mu - adjustment
+        return -float(log_likelihood), -(count_matrix.T @ score)
+
+    try:
+        optimized = optimize.minimize(
+            lambda beta: truncated_objective(beta)[0],
+            start,
+            jac=lambda beta: truncated_objective(beta)[1],
+            method="BFGS",
+            options={"maxiter": 200, "gtol": 1e-7},
+        )
+        objective, gradient = truncated_objective(optimized.x)
+        if not optimized.success and float(np.max(np.abs(gradient))) > 1e-5:
+            raise AnalyticsError("Zero-truncated Poisson component did not converge")
+        eta = count_matrix @ optimized.x + positive_offset
+        mu = np.exp(np.clip(eta, -30, 30))
+        derivative_adjustment = np.zeros_like(mu)
+        manageable = mu < 50
+        denominator = np.expm1(mu[manageable])
+        derivative_adjustment[manageable] = (
+            mu[manageable] * (denominator - mu[manageable] * np.exp(mu[manageable])) / denominator**2
+        )
+        information_weights = mu + derivative_adjustment
+        information = count_matrix.T @ (count_matrix * information_weights[:, None])
+        covariance = np.linalg.inv(information)
+        standard_errors = np.sqrt(np.diag(covariance))
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError, OverflowError) as exc:
+        raise AnalyticsError("Zero-truncated Poisson component could not fit this dataset") from exc
+    if not np.isfinite(optimized.x).all() or not np.isfinite(standard_errors).all() or (standard_errors <= 0).any():
+        raise AnalyticsError("Zero-truncated Poisson component produced non-finite estimates")
+    critical = float(stats.norm.ppf(1 - alpha / 2))
+    count_coefficients = []
+    for index, term in enumerate(count_exog.columns):
+        estimate, standard_error = float(optimized.x[index]), float(standard_errors[index])
+        z_value = estimate / standard_error
+        count_coefficients.append(
+            {
+                "term": term,
+                "log_rate_ratio": _round(estimate),
+                "std_error": _round(standard_error),
+                "z_value": _round(z_value),
+                "p_value": _round(2 * stats.norm.sf(abs(z_value))),
+                "rate_ratio": _exp_round(estimate),
+                "rate_ratio_ci_lower": _exp_round(estimate - critical * standard_error),
+                "rate_ratio_ci_upper": _exp_round(estimate + critical * standard_error),
+            }
+        )
+    hurdle_coefficients = []
+    for term in hurdle_exog.columns:
+        estimate, standard_error = float(hurdle_fit.params[term]), float(hurdle_fit.bse[term])
+        hurdle_coefficients.append(
+            {
+                "term": term,
+                "log_positive_count_odds": _round(estimate),
+                "std_error": _round(standard_error),
+                "z_value": _round(estimate / standard_error),
+                "p_value": _round(hurdle_fit.pvalues[term]),
+                "positive_count_odds_ratio": _exp_round(estimate),
+                "positive_count_odds_ratio_ci_lower": _exp_round(estimate - critical * standard_error),
+                "positive_count_odds_ratio_ci_upper": _exp_round(estimate + critical * standard_error),
+            }
+        )
+    log_likelihood = float(hurdle_fit.llf - objective)
+    parameter_count = len(count_exog.columns) + len(hurdle_exog.columns)
+    settings = {
+        "analysis": "hurdle_poisson_regression",
+        "outcome": outcome,
+        "predictors": predictors,
+        "exposure_column": exposure_column,
+        "hurdle_predictors": hurdle,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Hurdle Poisson regression (logit + zero-truncated Poisson)",
+        "n": int(len(data)),
+        "positive_count_n": int(positive.sum()),
+        "zero_count": int((~positive).sum()),
+        "exposure_column": exposure_column,
+        "count_coefficients": count_coefficients,
+        "hurdle_coefficients": hurdle_coefficients,
+        "log_likelihood": _round(log_likelihood),
+        "aic": _round(2 * parameter_count - 2 * log_likelihood),
+        "bic": _round(math.log(len(data)) * parameter_count - 2 * log_likelihood),
+        "warning": "The hurdle component models odds of any positive count; the count component is conditional on positive counts. Assess fit, dependence, and study design before interpretation.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
 

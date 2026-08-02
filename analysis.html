@@ -84,6 +84,8 @@
             <button id="countRegression" class="secondary">Count regression</button>
             <label for="inflationPredictors">predictorهای صفر ساختاری (اختیاری، با کاما)</label><input id="inflationPredictors" placeholder="access_barrier">
             <button id="zeroInflatedCount" class="secondary">Zero-inflated count (ZIP/ZINB)</button>
+            <label for="hurdlePredictors">predictorهای عبور از صفر (اختیاری، با کاما)</label><input id="hurdlePredictors" placeholder="access_barrier">
+            <button id="hurdlePoisson" class="secondary">Hurdle Poisson</button>
             <label for="ordinalOrder">ترتیب طبقات ordinal (با کاما)</label><input id="ordinalOrder" placeholder="low,medium,high">
             <button id="ordinalLogistic" class="secondary">Ordinal logistic (proportional odds)</button>
             <label for="multinomialReference">طبقهٔ مرجع multinomial</label><input id="multinomialReference" placeholder="control">
@@ -133,6 +135,7 @@
     const countDistribution = document.getElementById('countDistribution');
     const countExposure = document.getElementById('countExposure');
     const inflationPredictors = document.getElementById('inflationPredictors');
+    const hurdlePredictors = document.getElementById('hurdlePredictors');
     const ordinalOrder = document.getElementById('ordinalOrder');
     const multinomialReference = document.getElementById('multinomialReference');
     const mixedGroup = document.getElementById('mixedGroup');
@@ -243,6 +246,15 @@
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 distribution: countDistribution.value, exposure_column: countExposure.value.trim() || null,
                 inflation_predictors: inflationPredictors.value.split(',').map(value => value.trim()).filter(Boolean)
+            });
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('hurdlePoisson').addEventListener('click', () => {
+        try {
+            call('/analysis/hurdle-poisson', {
+                records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                exposure_column: countExposure.value.trim() || null,
+                hurdle_predictors: hurdlePredictors.value.split(',').map(value => value.trim()).filter(Boolean)
             });
         } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });

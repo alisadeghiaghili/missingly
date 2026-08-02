@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
+from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, hurdle_poisson_regression, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -101,6 +101,24 @@ def _zero_inflated_records():
     return [
         {"count": int(count), "x": float(value), "zero_driver": float(driver), "exposure": float(duration)}
         for count, value, driver, duration in zip(counts, predictor, zero_driver, exposure)
+    ]
+
+
+def _hurdle_records():
+    generator = np.random.default_rng(83)
+    predictor = generator.normal(size=400)
+    hurdle_driver = generator.normal(size=400)
+    exposure = generator.uniform(0.7, 2.0, size=400)
+    has_positive_count = generator.random(400) < (1 / (1 + np.exp(-(-0.6 + 0.6 * hurdle_driver))))
+    mean = exposure * np.exp(0.3 + 0.4 * predictor)
+    positive_counts = generator.poisson(mean)
+    while (positive_counts == 0).any():
+        mask = positive_counts == 0
+        positive_counts[mask] = generator.poisson(mean[mask])
+    counts = np.where(has_positive_count, positive_counts, 0)
+    return [
+        {"count": int(count), "x": float(value), "hurdle_driver": float(driver), "exposure": float(duration)}
+        for count, value, driver, duration in zip(counts, predictor, hurdle_driver, exposure)
     ]
 
 
@@ -341,6 +359,17 @@ def test_zero_inflated_poisson_and_zinb_separate_count_and_structural_zero_proce
     assert zinb_result["dispersion_alpha"] > 0
 
 
+def test_hurdle_poisson_models_positive_count_and_positive_size_separately():
+    hurdle = hurdle_poisson_regression(_hurdle_records(), "count", ["x"], "exposure", ["hurdle_driver"])
+    count_slope = next(item for item in hurdle["count_coefficients"] if item["term"] == "x")
+    hurdle_slope = next(item for item in hurdle["hurdle_coefficients"] if item["term"] == "hurdle_driver")
+    assert hurdle["method"].startswith("Hurdle Poisson")
+    assert hurdle["zero_count"] > 0
+    assert hurdle["positive_count_n"] > 0
+    assert count_slope["rate_ratio"] > 1
+    assert hurdle_slope["positive_count_odds_ratio"] > 1
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -511,6 +540,19 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert zero_inflated.status_code == 200
     assert zero_inflated.json()["dispersion_alpha"] > 0
+    hurdle = client.post(
+        "/analysis/hurdle-poisson",
+        headers=headers,
+        json={
+            "records": _hurdle_records(),
+            "outcome": "count",
+            "predictors": ["x"],
+            "exposure_column": "exposure",
+            "hurdle_predictors": ["hurdle_driver"],
+        },
+    )
+    assert hurdle.status_code == 200
+    assert hurdle.json()["method"].startswith("Hurdle Poisson")
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

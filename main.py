@@ -28,6 +28,7 @@ from analytics import (
     count_regression,
     cox_proportional_hazards,
     kaplan_meier_analysis,
+    hurdle_poisson_regression,
     linear_mixed_effects,
     missingness_report,
     multiple_imputation_ols,
@@ -589,6 +590,13 @@ class CountRegressionRequest(DatasetAnalysisRequest):
 
 class ZeroInflatedCountRegressionRequest(CountRegressionRequest):
     inflation_predictors: list[str] = Field(default_factory=list, max_length=30)
+
+
+class HurdlePoissonRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    exposure_column: str | None = Field(default=None, min_length=1, max_length=128)
+    hurdle_predictors: list[str] = Field(default_factory=list, max_length=30)
 
 
 class OrdinalLogisticRequest(DatasetAnalysisRequest):
@@ -3153,6 +3161,33 @@ async def analyze_zero_inflated_count_regression(
         "analysis.zero_inflated_count_regression",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors), "distribution": body.distribution},
+    )
+    return result
+
+
+@app.post("/analysis/hurdle-poisson")
+async def analyze_hurdle_poisson(
+    body: HurdlePoissonRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"hurdle-poisson:{current_user['id']}:{client_ip(request)}", 4, 60)
+    try:
+        result = hurdle_poisson_regression(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.exposure_column,
+            body.hurdle_predictors or None,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.hurdle_poisson",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors)},
     )
     return result
 
