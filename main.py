@@ -35,6 +35,7 @@ from analytics import (
     ordinal_logistic_regression,
     profile_dataset,
     records_to_csv,
+    regression_with_categorical_predictors,
     run_statistical_test,
     simple_imputation,
     weighted_ols,
@@ -534,6 +535,15 @@ class StatisticalTestRequest(DatasetAnalysisRequest):
     outcome: str = Field(min_length=1, max_length=128)
     group: str | None = Field(default=None, min_length=1, max_length=128)
     predictors: list[str] = Field(default_factory=list, max_length=30)
+
+
+class CategoricalRegressionRequest(DatasetAnalysisRequest):
+    model: Literal["linear", "logistic"]
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
+    category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
+    interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
 
 
 class ImputationRequest(DatasetAnalysisRequest):
@@ -3218,6 +3228,35 @@ async def analyze_statistical_test(
         "analysis.test_run",
         "dataset",
         metadata={"rows": len(body.records), "test": body.test},
+    )
+    return result
+
+
+@app.post("/analysis/regression")
+async def analyze_categorical_regression(
+    body: CategoricalRegressionRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"regression:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = regression_with_categorical_predictors(
+            body.records,
+            body.model,
+            body.outcome,
+            body.predictors,
+            body.categorical_predictors,
+            body.category_references,
+            body.interactions,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.categorical_regression",
+        "dataset",
+        metadata={"rows": len(body.records), "model": body.model, "predictors": len(body.predictors)},
     )
     return result
 

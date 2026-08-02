@@ -54,6 +54,11 @@
             <label for="group">group / ستون دوم</label><input id="group" value="group">
             <label for="predictors">predictors برای OLS (با کاما جدا کنید)</label><input id="predictors" value="age">
             <button id="runTest">اجرای آزمون</button>
+            <label for="regressionModel">رگرسیون با predictor دسته‌ای</label><select id="regressionModel"><option value="linear">OLS</option><option value="logistic">Binary logistic</option></select>
+            <label for="categoricalPredictors">predictorهای دسته‌ای (با کاما)</label><input id="categoricalPredictors" placeholder="group,sex">
+            <label for="categoryReferences">reference هر predictor (مثلاً group:control,sex:female)</label><input id="categoryReferences" placeholder="group:control">
+            <label for="interactions">interactionها (مثلاً age:group,sex:group)</label><input id="interactions" placeholder="age:group">
+            <button id="categoricalRegression" class="secondary">رگرسیون با categorical + interaction</button>
             <label for="imputation">جایگزینی دادهٔ گمشده</label>
             <select id="imputation"><option value="mean">mean</option><option value="median">median</option><option value="mode">mode</option><option value="constant">constant</option><option value="knn">KNN (numeric)</option><option value="iterative">iterative regression (numeric)</option></select>
             <label for="imputeColumns">ستون‌ها (اختیاری، با کاما جدا کنید)</label><input id="imputeColumns" placeholder="خالی = همه ستون‌ها">
@@ -104,6 +109,10 @@
     const outcome = document.getElementById('outcome');
     const group = document.getElementById('group');
     const predictors = document.getElementById('predictors');
+    const regressionModel = document.getElementById('regressionModel');
+    const categoricalPredictors = document.getElementById('categoricalPredictors');
+    const categoryReferences = document.getElementById('categoryReferences');
+    const interactions = document.getElementById('interactions');
     const file = document.getElementById('file');
     const imputation = document.getElementById('imputation');
     const imputeColumns = document.getElementById('imputeColumns');
@@ -157,6 +166,27 @@
     document.getElementById('runTest').addEventListener('click', () => {
         try { call('/analysis/tests', { records: records(), test: test.value, outcome: outcome.value.trim(), group: group.value.trim() || null, predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean) }); }
         catch (error) { output.textContent = error.message; }
+    });
+    document.getElementById('categoricalRegression').addEventListener('click', () => {
+        try {
+            const references = {};
+            categoryReferences.value.split(',').map(value => value.trim()).filter(Boolean).forEach(entry => {
+                const [column, ...level] = entry.split(':').map(value => value.trim());
+                if (!column || !level.join(':')) throw new Error('referenceها باید به شکل column:level باشند.');
+                references[column] = level.join(':');
+            });
+            const pairs = interactions.value.split(',').map(value => value.trim()).filter(Boolean).map(entry => {
+                const pair = entry.split(':').map(value => value.trim()).filter(Boolean);
+                if (pair.length !== 2) throw new Error('interactionها باید به شکل predictor1:predictor2 باشند.');
+                return pair;
+            });
+            call('/analysis/regression', {
+                records: records(), model: regressionModel.value, outcome: outcome.value.trim(),
+                predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                category_references: references, interactions: pairs
+            });
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });
     document.getElementById('impute').addEventListener('click', async () => {
         try {

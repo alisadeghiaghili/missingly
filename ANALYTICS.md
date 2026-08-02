@@ -43,6 +43,12 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - `/analysis/multinomial-logistic` fits baseline-category multinomial logistic regression for three to twenty unordered outcome categories and numeric predictors. The caller must choose an observed reference category explicitly.
 - It reports a coefficient set and relative-risk ratio for every non-reference category, plus likelihood-ratio inference, McFadden pseudo-R², AIC, and BIC. It rejects non-convergence and non-finite estimates rather than returning a misleading fit.
 
+## Categorical predictors and interactions
+
+- `/analysis/regression` fits OLS or binary logistic regression with numeric predictors, explicitly selected categorical predictors, explicit per-column reference levels, and selected pairwise interactions.
+- Categorical terms use treatment coding, never a hidden reference. Missing predictor values remain missing rather than being converted to a reference-level zero. The design is rejected if it is rank-deficient, exceeds 100 engineered features, or has insufficient complete rows.
+- This shared encoding layer currently powers linear and binary logistic regression. Categorical encoding for mixed, survival, count, ordinal, and multinomial models will be added only with model-specific validation.
+
 ## Supported now
 
 - Dataset profile: schema, missingness, numeric summaries, categorical frequencies, duplicate rows, and Pearson correlations.
@@ -54,6 +60,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Models: Poisson and NB2 negative-binomial count regression with an optional log-exposure offset.
 - Models: ordinal logistic (proportional-odds) regression with an explicit outcome-category order.
 - Models: baseline-category multinomial logistic regression with an explicit reference category.
+- Regression: OLS and binary logistic models with treatment-coded categorical predictors and selected pairwise interactions.
 - Reproducibility: each result has the engine version and SHA-256 fingerprint of its input plus analysis settings.
 
 ## Statistical guardrails

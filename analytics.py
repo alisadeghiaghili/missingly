@@ -1280,6 +1280,157 @@ def _numeric_column(frame: pd.DataFrame, name: str) -> pd.Series:
     return numeric[name]
 
 
+def regression_with_categorical_predictors(
+    records: list[dict[str, Any]],
+    model: str,
+    outcome: str,
+    predictors: list[str],
+    categorical_predictors: list[str] | None = None,
+    category_references: dict[str, str] | None = None,
+    interactions: list[tuple[str, str]] | None = None,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit OLS or binary logistic regression with explicit categorical encoding."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if model not in {"linear", "logistic"}:
+        raise AnalyticsError("model must be either 'linear' or 'logistic'")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    categorical = categorical_predictors or []
+    references = category_references or {}
+    if len(set(categorical)) != len(categorical) or not set(categorical).issubset(predictors):
+        raise AnalyticsError("categorical_predictors must be a unique subset of predictors")
+    if not set(references).issubset(categorical):
+        raise AnalyticsError("category_references may only name categorical_predictors")
+    normalized_interactions: list[tuple[str, str]] = []
+    for pair in interactions or []:
+        if len(pair) != 2 or pair[0] == pair[1] or pair[0] not in predictors or pair[1] not in predictors:
+            raise AnalyticsError("Each interaction must contain two distinct predictor names")
+        normalized = tuple(sorted(pair))
+        if normalized not in normalized_interactions:
+            normalized_interactions.append(normalized)
+    frame = _frame(records)
+    if outcome not in frame.columns:
+        raise AnalyticsError(f"Column '{outcome}' was not found")
+    numeric = _numeric_columns(frame)
+    if model == "linear" and outcome not in numeric:
+        raise AnalyticsError(f"Linear regression requires numeric outcome: '{outcome}'")
+    design = pd.DataFrame(index=frame.index)
+    feature_groups: dict[str, list[str]] = {}
+    encoding: list[dict[str, Any]] = []
+    for predictor in predictors:
+        if predictor not in frame.columns:
+            raise AnalyticsError(f"Column '{predictor}' was not found")
+        if predictor not in categorical:
+            if predictor not in numeric:
+                raise AnalyticsError(f"Numeric predictor '{predictor}' must contain only numeric observed values")
+            design[predictor] = numeric[predictor]
+            feature_groups[predictor] = [predictor]
+            continue
+        source = frame[predictor].astype("string")
+        levels = sorted(source.dropna().unique().tolist())
+        if not 2 <= len(levels) <= 30:
+            raise AnalyticsError(f"Categorical predictor '{predictor}' must have between two and thirty observed levels")
+        reference = references.get(predictor, levels[0])
+        if reference not in levels:
+            raise AnalyticsError(f"Reference '{reference}' was not observed in categorical predictor '{predictor}'")
+        terms = []
+        for level in levels:
+            if level == reference:
+                continue
+            term = f"{predictor}[{level}]"
+            design[term] = np.where(source.isna(), np.nan, (source == level).astype(float))
+            terms.append(term)
+        feature_groups[predictor] = terms
+        encoding.append({"predictor": predictor, "reference": reference, "levels": levels, "terms": terms})
+    for left, right in normalized_interactions:
+        for left_term in feature_groups[left]:
+            for right_term in feature_groups[right]:
+                term = f"{left_term} × {right_term}"
+                design[term] = design[left_term] * design[right_term]
+    if design.shape[1] > 100:
+        raise AnalyticsError("Categorical encoding and interactions may produce at most 100 model features")
+    if model == "linear":
+        response = numeric[outcome]
+        outcome_description = None
+    else:
+        labels = sorted(frame[outcome].dropna().astype(str).unique().tolist())
+        if len(labels) != 2:
+            raise AnalyticsError("Binary logistic regression requires exactly two observed outcome categories")
+        response = (frame[outcome].astype("string") == labels[1]).astype(float).where(frame[outcome].notna())
+        outcome_description = {"reference": labels[0], "event": labels[1]}
+    data = pd.concat([response.rename("outcome"), design], axis=1).dropna()
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for term in design.columns:
+        exog[term] = data[term].astype(float)
+    if len(data) <= exog.shape[1] or np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("Regression design is rank-deficient or has insufficient complete rows")
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            if model == "linear":
+                fitted = sm.OLS(data["outcome"].astype(float), exog).fit()
+                converged = True
+            else:
+                fitted = sm.Logit(data["outcome"].astype(float), exog).fit(disp=False, maxiter=100)
+                converged = bool(fitted.mle_retvals.get("converged", False))
+        if not converged or any(issubclass(item.category, ConvergenceWarning) for item in captured):
+            raise AnalyticsError("Regression model did not converge")
+    except (PerfectSeparationError, np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Regression model could not fit this dataset") from exc
+    if not np.isfinite(fitted.params.to_numpy()).all() or not np.isfinite(fitted.bse.to_numpy()).all():
+        raise AnalyticsError("Regression model produced non-finite estimates")
+    critical = float(stats.t.ppf(1 - alpha / 2, fitted.df_resid)) if model == "linear" else float(stats.norm.ppf(1 - alpha / 2))
+    coefficients = []
+    for term in exog.columns:
+        estimate = float(fitted.params[term])
+        standard_error = float(fitted.bse[term])
+        result = {
+            "term": term,
+            "estimate": _round(estimate),
+            "std_error": _round(standard_error),
+            "statistic": _round(fitted.tvalues[term]),
+            "p_value": _round(fitted.pvalues[term]),
+            "ci_lower": _round(estimate - critical * standard_error),
+            "ci_upper": _round(estimate + critical * standard_error),
+        }
+        if model == "logistic":
+            result.update(
+                {
+                    "odds_ratio": _exp_round(estimate),
+                    "odds_ratio_ci_lower": _exp_round(estimate - critical * standard_error),
+                    "odds_ratio_ci_upper": _exp_round(estimate + critical * standard_error),
+                }
+            )
+        coefficients.append(result)
+    settings = {
+        "analysis": "regression_with_categorical_predictors",
+        "model": model,
+        "outcome": outcome,
+        "predictors": predictors,
+        "categorical_predictors": categorical,
+        "category_references": references,
+        "interactions": normalized_interactions,
+        "alpha": alpha,
+    }
+    result = {
+        "method": "OLS regression with categorical predictors" if model == "linear" else "Binary logistic regression with categorical predictors",
+        "n": int(len(data)),
+        "categorical_encoding": encoding,
+        "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
+        "coefficients": coefficients,
+        "aic": _round(fitted.aic),
+        "bic": _round(fitted.bic),
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+    if model == "linear":
+        result.update({"r_squared": _round(fitted.rsquared), "adjusted_r_squared": _round(fitted.rsquared_adj), "residual_degrees_freedom": _round(fitted.df_resid)})
+    else:
+        result.update({"outcome": outcome_description, "mcfadden_pseudo_r_squared": _round(1 - fitted.llf / fitted.llnull)})
+    return result
+
+
 def run_statistical_test(
     records: list[dict[str, Any]],
     test: str,

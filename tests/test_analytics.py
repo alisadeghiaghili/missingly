@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
+from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -68,6 +68,25 @@ def _multinomial_records():
     category_codes = [generator.choice(3, p=probability) for probability in probabilities]
     labels = np.array(["baseline", "positive", "negative"])
     return [{"class": str(labels[code]), "x": float(value)} for code, value in zip(category_codes, predictor)]
+
+
+def _categorical_regression_records():
+    generator = np.random.default_rng(61)
+    records = []
+    for index in range(180):
+        treatment = index % 2
+        age = float(25 + (index % 40))
+        linear_score = 5 + 0.5 * age + 2 * treatment + 0.12 * age * treatment + generator.normal(0, 0.4)
+        probability = 1 / (1 + np.exp(-(-5 + 0.15 * age + 0.7 * treatment)))
+        records.append(
+            {
+                "group": "treatment" if treatment else "control",
+                "age": age,
+                "score": float(linear_score),
+                "event": "yes" if generator.random() < probability else "no",
+            }
+        )
+    return records
 
 
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
@@ -271,6 +290,27 @@ def test_multinomial_logistic_uses_explicit_reference_category():
     assert multinomial["likelihood_ratio_p_value"] < 0.001
 
 
+def test_categorical_regression_uses_explicit_reference_and_pairwise_interaction():
+    records = _categorical_regression_records()
+    linear = regression_with_categorical_predictors(
+        records, "linear", "score", ["age", "group"], ["group"], {"group": "control"}, [("age", "group")]
+    )
+    terms = {item["term"] for item in linear["coefficients"]}
+    assert linear["categorical_encoding"] == [
+        {"predictor": "group", "reference": "control", "levels": ["control", "treatment"], "terms": ["group[treatment]"]}
+    ]
+    assert "group[treatment]" in terms
+    assert "age × group[treatment]" in terms
+    assert linear["r_squared"] > 0.99
+
+    logistic = regression_with_categorical_predictors(
+        records, "logistic", "event", ["age", "group"], ["group"], {"group": "control"}
+    )
+    group_effect = next(item for item in logistic["coefficients"] if item["term"] == "group[treatment]")
+    assert logistic["outcome"] == {"reference": "no", "event": "yes"}
+    assert group_effect["odds_ratio"] > 1
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -412,6 +452,21 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert multinomial.status_code == 200
     assert multinomial.json()["reference_category"] == "baseline"
+    categorical_regression = client.post(
+        "/analysis/regression",
+        headers=headers,
+        json={
+            "records": _categorical_regression_records(),
+            "model": "linear",
+            "outcome": "score",
+            "predictors": ["age", "group"],
+            "categorical_predictors": ["group"],
+            "category_references": {"group": "control"},
+            "interactions": [["age", "group"]],
+        },
+    )
+    assert categorical_regression.status_code == 200
+    assert categorical_regression.json()["categorical_encoding"][0]["reference"] == "control"
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")
