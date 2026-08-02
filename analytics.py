@@ -35,6 +35,7 @@ __all__ = [
     "count_regression",
     "count_regression_with_categorical_predictors",
     "cox_proportional_hazards",
+    "generalized_estimating_equations",
     "hurdle_poisson_regression",
     "kaplan_meier_analysis",
     "linear_mixed_effects",
@@ -975,6 +976,197 @@ def linear_mixed_effects(
         "residual_variance": _round(residual_variance),
         "intraclass_correlation": _round(random_variance / (random_variance + residual_variance)),
         "intraclass_correlation_at_zero": _round(random_variance / (random_variance + residual_variance)),
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
+def generalized_estimating_equations(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    group_column: str,
+    family: str = "gaussian",
+    working_correlation: str = "exchangeable",
+    alpha: float = 0.05,
+    categorical_predictors: list[str] | None = None,
+    category_references: dict[str, str] | None = None,
+    interactions: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Fit a population-averaged GEE with robust sandwich standard errors.
+
+    Args:
+        records: JSON-like rows containing correlated observations.
+        outcome: Numeric Gaussian or Poisson outcome, or a two-level Binomial outcome.
+        predictors: Unique numeric or explicitly categorical fixed predictors.
+        group_column: Identifier that groups correlated observations.
+        family: One of gaussian, binomial, or poisson.
+        working_correlation: Either independence or exchangeable.
+        alpha: Confidence interval complement.
+        categorical_predictors: Predictor subset to treatment-code.
+        category_references: Optional factor-to-reference-level mapping.
+        interactions: Selected pairs of fixed predictor names to interact.
+
+    Returns:
+        Population-averaged coefficients, robust confidence intervals, working-correlation
+        metadata, categorical encoding, and a reproducibility fingerprint.
+
+    Raises:
+        AnalyticsError: If the response, cluster structure, design, or GEE fit is invalid.
+
+    Examples:
+        >>> generalized_estimating_equations([{"id": "a", "x": 0, "y": 1}, {"id": "a", "x": 1, "y": 2}, {"id": "b", "x": 0, "y": 3}, {"id": "b", "x": 1, "y": 4}, {"id": "c", "x": 0, "y": 5}, {"id": "c", "x": 1, "y": 6}], "y", ["x"], "id")["groups"]
+        3
+    """
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if family not in {"gaussian", "binomial", "poisson"}:
+        raise AnalyticsError("family must be gaussian, binomial, or poisson")
+    if working_correlation not in {"independence", "exchangeable"}:
+        raise AnalyticsError("working_correlation must be independence or exchangeable")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    if group_column in {outcome, *predictors}:
+        raise AnalyticsError("group_column must differ from outcome and predictors")
+    frame = _frame(records)
+    if group_column not in frame.columns:
+        raise AnalyticsError(f"Column '{group_column}' was not found")
+    design, encoding, normalized_interactions = _treatment_coded_design(
+        frame, predictors, categorical_predictors, category_references, interactions
+    )
+    numeric = _numeric_columns(frame)
+    event: dict[str, str] | None = None
+    if family == "binomial":
+        if outcome not in frame.columns:
+            raise AnalyticsError(f"Column '{outcome}' was not found")
+        labels = sorted(frame[outcome].dropna().astype(str).unique().tolist())
+        if len(labels) != 2:
+            raise AnalyticsError("Binomial GEE outcome must contain exactly two observed categories")
+        outcome_values = (frame[outcome].astype("string") == labels[1]).astype(float)
+        event = {"reference": labels[0], "event": labels[1]}
+        gee_family: Any = sm.families.Binomial()
+    else:
+        if outcome not in numeric:
+            raise AnalyticsError(f"{family.title()} GEE requires numeric column: '{outcome}'")
+        outcome_values = numeric[outcome]
+        if family == "poisson":
+            observed = outcome_values.dropna()
+            if (observed < 0).any() or not np.isclose(observed, np.round(observed)).all():
+                raise AnalyticsError("Poisson GEE outcome must contain non-negative integer counts")
+            gee_family = sm.families.Poisson()
+        else:
+            gee_family = sm.families.Gaussian()
+    data = pd.concat(
+        [
+            pd.DataFrame({"outcome": outcome_values, "group": frame[group_column].astype("string")}),
+            design,
+        ],
+        axis=1,
+    ).dropna()
+    group_sizes = data["group"].value_counts()
+    if len(group_sizes) < 3 or len(data) <= design.shape[1] + 2:
+        raise AnalyticsError("GEE requires at least three groups and more complete rows than fitted parameters")
+    if working_correlation == "exchangeable" and int(group_sizes.min()) < 2:
+        raise AnalyticsError("Exchangeable GEE requires at least two complete observations in every group")
+    if family == "binomial" and data["outcome"].nunique() != 2:
+        raise AnalyticsError("Binomial GEE requires both outcome categories after complete-case filtering")
+    if family == "poisson" and data["outcome"].sum() <= 0:
+        raise AnalyticsError("Poisson GEE requires at least one observed count")
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for term in design.columns:
+        exog[term] = data[term].astype(float)
+    if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("GEE predictors are perfectly collinear")
+    covariance_structure = (
+        sm.cov_struct.Independence()
+        if working_correlation == "independence"
+        else sm.cov_struct.Exchangeable()
+    )
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            fitted = sm.GEE(
+                data["outcome"].astype(float),
+                exog,
+                groups=data["group"],
+                family=gee_family,
+                cov_struct=covariance_structure,
+            ).fit()
+        if not bool(getattr(fitted, "converged", True)):
+            raise AnalyticsError("GEE did not converge")
+        if any(issubclass(item.category, ConvergenceWarning) for item in captured):
+            raise AnalyticsError("GEE did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("GEE could not fit this dataset") from exc
+    estimates = np.asarray(fitted.params, dtype=float)
+    standard_errors = np.asarray(fitted.bse, dtype=float)
+    p_values = np.asarray(fitted.pvalues, dtype=float)
+    if not np.isfinite(estimates).all() or not np.isfinite(standard_errors).all() or (standard_errors <= 0).any():
+        raise AnalyticsError("GEE produced non-finite or zero-precision estimates")
+    critical = float(stats.norm.ppf(1 - alpha / 2))
+    coefficients: list[dict[str, Any]] = []
+    for index, term in enumerate(exog.columns):
+        estimate = float(estimates[index])
+        standard_error = float(standard_errors[index])
+        lower = estimate - critical * standard_error
+        upper = estimate + critical * standard_error
+        coefficient = {
+            "term": term,
+            "estimate": _round(estimate),
+            "std_error": _round(standard_error),
+            "z_value": _round(estimate / standard_error),
+            "p_value": _round(p_values[index]),
+            "ci_lower": _round(lower),
+            "ci_upper": _round(upper),
+        }
+        if family == "binomial":
+            coefficient.update(
+                {
+                    "odds_ratio": _exp_round(estimate),
+                    "odds_ratio_ci_lower": _exp_round(lower),
+                    "odds_ratio_ci_upper": _exp_round(upper),
+                }
+            )
+        elif family == "poisson":
+            coefficient.update(
+                {
+                    "rate_ratio": _exp_round(estimate),
+                    "rate_ratio_ci_lower": _exp_round(lower),
+                    "rate_ratio_ci_upper": _exp_round(upper),
+                }
+            )
+        coefficients.append(coefficient)
+    dependence = getattr(fitted.cov_struct, "dep_params", None)
+    settings = {
+        "analysis": "generalized_estimating_equations",
+        "outcome": outcome,
+        "predictors": predictors,
+        "group_column": group_column,
+        "family": family,
+        "working_correlation": working_correlation,
+        "categorical_predictors": categorical_predictors or [],
+        "category_references": category_references or {},
+        "interactions": normalized_interactions,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Generalized estimating equations",
+        "estimand": "population-averaged",
+        "n": int(len(data)),
+        "groups": int(len(group_sizes)),
+        "minimum_group_size": int(group_sizes.min()),
+        "maximum_group_size": int(group_sizes.max()),
+        "family": family,
+        "event": event,
+        "working_correlation": working_correlation,
+        "working_correlation_estimate": _round(dependence),
+        "variance_estimator": "robust sandwich",
+        "scale": _round(fitted.scale),
+        "categorical_encoding": encoding,
+        "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
+        "coefficients": coefficients,
+        "warning": "GEE estimates population-averaged effects. The working correlation is not a proof of the true within-group covariance, and few clusters can make sandwich standard errors unreliable.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
 

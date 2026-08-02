@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, count_regression_with_categorical_predictors, cox_proportional_hazards, hurdle_poisson_regression, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
+from analytics import AnalyticsError, advanced_numeric_imputation, count_regression, count_regression_with_categorical_predictors, cox_proportional_hazards, generalized_estimating_equations, hurdle_poisson_regression, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -192,6 +192,26 @@ def _random_slope_records():
     ]
 
 
+def _gee_records():
+    generator = np.random.default_rng(131)
+    cluster_effects = generator.normal(0, 0.7, size=20)
+    records = []
+    for group in range(20):
+        for observation in range(5):
+            predictor = float(observation - 2)
+            records.append(
+                {
+                    "patient": f"patient-{group}",
+                    "x": predictor,
+                    "arm": "treatment" if group % 2 else "control",
+                    "continuous": float(4 + 1.1 * predictor + 0.8 * (group % 2) + cluster_effects[group] + generator.normal(0, 0.35)),
+                    "binary": "yes" if generator.random() < 1 / (1 + np.exp(-(-0.2 + 0.55 * predictor + 0.35 * (group % 2)))) else "no",
+                    "count": int(generator.poisson(np.exp(0.5 + 0.25 * predictor + 0.2 * (group % 2) + cluster_effects[group] * 0.1))),
+                }
+            )
+    return records
+
+
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
     profile = profile_dataset(RECORDS)
     assert profile["dataset"]["rows"] == 6
@@ -336,6 +356,40 @@ def test_random_intercept_mixed_model_and_analytic_weighted_ols_contracts():
     assert weighted["sum_weights"] == sum(row["weight"] for row in weighted_records)
     assert weighted_slope["estimate"] == pytest.approx(2.5, abs=0.15)
     assert "not a complex-survey estimator" in weighted["warning"]
+
+
+def test_generalized_estimating_equations_supports_correlated_continuous_binary_and_count_outcomes():
+    records = _gee_records()
+    gaussian = generalized_estimating_equations(
+        records,
+        "continuous",
+        ["x", "arm"],
+        "patient",
+        categorical_predictors=["arm"],
+    )
+    slope = next(item for item in gaussian["coefficients"] if item["term"] == "x")
+    assert gaussian["estimand"] == "population-averaged"
+    assert gaussian["family"] == "gaussian"
+    assert gaussian["groups"] == 20
+    assert gaussian["variance_estimator"] == "robust sandwich"
+    assert gaussian["categorical_encoding"][0]["reference"] == "control"
+    assert slope["estimate"] == pytest.approx(1.1, abs=0.15)
+
+    binary = generalized_estimating_equations(records, "binary", ["x"], "patient", family="binomial")
+    binary_slope = next(item for item in binary["coefficients"] if item["term"] == "x")
+    assert binary["event"] == {"reference": "no", "event": "yes"}
+    assert binary_slope["odds_ratio"] > 1
+
+    poisson = generalized_estimating_equations(records, "count", ["x"], "patient", family="poisson")
+    poisson_slope = next(item for item in poisson["coefficients"] if item["term"] == "x")
+    assert poisson_slope["rate_ratio"] > 1
+    with pytest.raises(AnalyticsError, match="Exchangeable GEE"):
+        generalized_estimating_equations(
+            [{"id": f"p-{index}", "x": index, "y": index + 1} for index in range(6)],
+            "y",
+            ["x"],
+            "id",
+        )
 
 
 def test_cox_proportional_hazards_supports_strata_and_clustered_standard_errors():
@@ -605,6 +659,21 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
         json={"records": clustered_records, "outcome": "y", "predictors": ["x"], "group_column": "patient"},
     )
     assert mixed.status_code == 200
+    gee = client.post(
+        "/analysis/gee",
+        headers=headers,
+        json={
+            "records": _gee_records(),
+            "outcome": "continuous",
+            "predictors": ["x", "arm"],
+            "group_column": "patient",
+            "family": "gaussian",
+            "working_correlation": "exchangeable",
+            "categorical_predictors": ["arm"],
+        },
+    )
+    assert gee.status_code == 200
+    assert gee.json()["estimand"] == "population-averaged"
     weighted = client.post(
         "/analysis/weighted-ols",
         headers=headers,

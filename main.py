@@ -28,6 +28,7 @@ from analytics import (
     count_regression,
     count_regression_with_categorical_predictors,
     cox_proportional_hazards,
+    generalized_estimating_equations,
     kaplan_meier_analysis,
     hurdle_poisson_regression,
     linear_mixed_effects,
@@ -630,6 +631,17 @@ class MixedLinearModelRequest(DatasetAnalysisRequest):
     predictors: list[str] = Field(min_length=1, max_length=30)
     group_column: str = Field(min_length=1, max_length=128)
     random_slope_column: str | None = Field(default=None, min_length=1, max_length=128)
+    categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
+    category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
+    interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
+
+
+class GeneralizedEstimatingEquationsRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    group_column: str = Field(min_length=1, max_length=128)
+    family: Literal["gaussian", "binomial", "poisson"] = "gaussian"
+    working_correlation: Literal["independence", "exchangeable"] = "exchangeable"
     categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
     category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
     interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
@@ -3105,6 +3117,42 @@ async def analyze_mixed_linear(
         "analysis.linear_mixed_effects",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors)},
+    )
+    return result
+
+
+@app.post("/analysis/gee")
+async def analyze_generalized_estimating_equations(
+    body: GeneralizedEstimatingEquationsRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"gee:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = generalized_estimating_equations(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.group_column,
+            body.family,
+            body.working_correlation,
+            body.alpha,
+            body.categorical_predictors,
+            body.category_references,
+            body.interactions,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.generalized_estimating_equations",
+        "dataset",
+        metadata={
+            "rows": len(body.records),
+            "predictors": len(body.predictors),
+            "family": body.family,
+            "working_correlation": body.working_correlation,
+        },
     )
     return result
 

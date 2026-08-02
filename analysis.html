@@ -94,11 +94,15 @@
             <label for="mixedGroup">ستون خوشه برای mixed-effects</label><input id="mixedGroup" placeholder="patient_id یا school_id">
             <label for="randomSlope">ستون random slope (اختیاری؛ باید predictor عددی باشد)</label><input id="randomSlope" placeholder="time">
             <button id="mixedLinear" class="secondary">Linear mixed-effects (random intercept/slope)</button>
+            <label for="geeGroup">ستون خوشه برای GEE</label><input id="geeGroup" placeholder="patient_id یا school_id">
+            <label for="geeFamily">خانوادهٔ GEE</label><select id="geeFamily"><option value="gaussian">Gaussian (continuous)</option><option value="binomial">Binomial (binary)</option><option value="poisson">Poisson (count)</option></select>
+            <label for="geeCorrelation">working correlation برای GEE</label><select id="geeCorrelation"><option value="exchangeable">Exchangeable</option><option value="independence">Independence</option></select>
+            <button id="gee" class="secondary">Generalized estimating equations (GEE)</button>
             <label for="weightColumn">ستون وزن تحلیلی برای Weighted OLS</label><input id="weightColumn" placeholder="weight">
             <button id="weightedOls" class="secondary">Weighted OLS</button>
             <label for="reportTitle">عنوان گزارش HTML</label><input id="reportTitle" value="Missingly statistical report">
             <button id="reportHtml" class="secondary">دانلود گزارش HTML</button>
-            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects، weighted OLS، Cox، count، ordinal و multinomial predictors عددی‌اند. Cox یک diagnostic اکتشافی residual-time می‌دهد، نه آزمون جهانی PH. ZIP/ZINB فقط برای count صحیح نامنفی و صفرهای ساختاری محتمل است.</p>
+            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects، weighted OLS، Cox، count، ordinal و multinomial predictors عددی‌اند. GEE اثر population-averaged با SE مقاوم می‌دهد و جایگزین random-effects نیست. Cox یک diagnostic اکتشافی residual-time می‌دهد، نه آزمون جهانی PH. ZIP/ZINB فقط برای count صحیح نامنفی و صفرهای ساختاری محتمل است.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
     </div>
@@ -142,6 +146,9 @@
     const multinomialReference = document.getElementById('multinomialReference');
     const mixedGroup = document.getElementById('mixedGroup');
     const randomSlope = document.getElementById('randomSlope');
+    const geeGroup = document.getElementById('geeGroup');
+    const geeFamily = document.getElementById('geeFamily');
+    const geeCorrelation = document.getElementById('geeCorrelation');
     const weightColumn = document.getElementById('weightColumn');
     const reportTitle = document.getElementById('reportTitle');
     function records() {
@@ -328,6 +335,28 @@
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 group_column: mixedGroup.value.trim(), categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 category_references: references, interactions: pairs, random_slope_column: randomSlope.value.trim() || null
+            });
+        }
+        catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('gee').addEventListener('click', () => {
+        try {
+            const references = {};
+            categoryReferences.value.split(',').map(value => value.trim()).filter(Boolean).forEach(entry => {
+                const [column, ...level] = entry.split(':').map(value => value.trim());
+                if (!column || !level.join(':')) throw new Error('referenceها باید به شکل column:level باشند.');
+                references[column] = level.join(':');
+            });
+            const pairs = interactions.value.split(',').map(value => value.trim()).filter(Boolean).map(entry => {
+                const pair = entry.split(':').map(value => value.trim()).filter(Boolean);
+                if (pair.length !== 2) throw new Error('interactionها باید به شکل predictor1:predictor2 باشند.');
+                return pair;
+            });
+            call('/analysis/gee', {
+                records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                group_column: geeGroup.value.trim(), family: geeFamily.value, working_correlation: geeCorrelation.value,
+                categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                category_references: references, interactions: pairs
             });
         }
         catch (error) { output.classList.add('error'); output.textContent = error.message; }
