@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
+from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -36,6 +36,18 @@ def _cox_records():
             "cluster": f"cluster-{index % 10}",
         }
         for index, (value, event, censor) in enumerate(zip(predictor, event_time, censor_time))
+    ]
+
+
+def _count_records():
+    generator = np.random.default_rng(23)
+    predictor = generator.normal(size=120)
+    exposure = generator.uniform(0.5, 2.5, size=120)
+    mean = exposure * np.exp(0.3 + 0.45 * predictor)
+    counts = generator.negative_binomial(4, 4 / (4 + mean))
+    return [
+        {"count": int(count), "x": float(value), "person_time": float(duration)}
+        for count, value, duration in zip(counts, predictor, exposure)
     ]
 
 
@@ -202,6 +214,22 @@ def test_cox_proportional_hazards_supports_strata_and_clustered_standard_errors(
     assert robust["coefficients"][0]["std_error"] > 0
 
 
+def test_poisson_and_negative_binomial_count_regression_with_exposure():
+    records = _count_records()
+    poisson = count_regression(records, "count", ["x"], "poisson", "person_time")
+    poisson_slope = next(item for item in poisson["coefficients"] if item["term"] == "x")
+    assert poisson["method"] == "Poisson count regression"
+    assert poisson["exposure_column"] == "person_time"
+    assert poisson_slope["rate_ratio"] > 1
+    assert poisson["overdispersion_ratio"] > 0
+
+    negative_binomial = count_regression(records, "count", ["x"], "negative_binomial", "person_time")
+    nb_slope = next(item for item in negative_binomial["coefficients"] if item["term"] == "x")
+    assert negative_binomial["method"].startswith("Negative-binomial")
+    assert negative_binomial["dispersion_alpha"] > 0
+    assert nb_slope["rate_ratio"] == pytest.approx(np.exp(0.45), rel=0.35)
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -322,6 +350,13 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert cox.status_code == 200
     assert cox.json()["method"] == "Cox proportional hazards regression"
+    count = client.post(
+        "/analysis/count-regression",
+        headers=headers,
+        json={"records": _count_records(), "outcome": "count", "predictors": ["x"], "distribution": "negative_binomial", "exposure_column": "person_time"},
+    )
+    assert count.status_code == 200
+    assert count.json()["method"].startswith("Negative-binomial")
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

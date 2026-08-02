@@ -844,6 +844,131 @@ def cox_proportional_hazards(
     }
 
 
+def count_regression(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    distribution: str = "poisson",
+    exposure_column: str | None = None,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit Poisson or NB2 count regression with an optional log-exposure offset."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if distribution not in {"poisson", "negative_binomial"}:
+        raise AnalyticsError("distribution must be either 'poisson' or 'negative_binomial'")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    if exposure_column and exposure_column in {outcome, *predictors}:
+        raise AnalyticsError("exposure_column must differ from outcome and predictors")
+    frame = _frame(records)
+    numeric = _numeric_columns(frame)
+    for column in [outcome, *predictors, *([exposure_column] if exposure_column else [])]:
+        if column not in numeric:
+            raise AnalyticsError(f"Count regression requires numeric column: '{column}'")
+    observed_outcome = numeric[outcome].dropna()
+    if (observed_outcome < 0).any() or not np.isclose(observed_outcome, np.round(observed_outcome)).all():
+        raise AnalyticsError("Count regression outcome must contain non-negative integer counts")
+    data = pd.DataFrame({"outcome": numeric[outcome]})
+    for index, column in enumerate(predictors):
+        data[f"predictor_{index}"] = numeric[column]
+    if exposure_column:
+        data["exposure"] = numeric[exposure_column]
+    data = data.dropna()
+    parameter_count = len(predictors) + 1
+    if len(data) <= parameter_count or data["outcome"].sum() <= 0:
+        raise AnalyticsError("Count regression requires enough complete rows and at least one observed count")
+    if exposure_column and (data["exposure"] <= 0).any():
+        raise AnalyticsError("exposure_column must contain strictly positive values")
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for index, column in enumerate(predictors):
+        values = data[f"predictor_{index}"].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Count predictor '{column}' must not be constant")
+        exog[column] = values
+    if np.linalg.matrix_rank(exog.to_numpy()) != parameter_count:
+        raise AnalyticsError("Count regression predictors are perfectly collinear")
+    offset = np.log(data["exposure"].to_numpy()) if exposure_column else None
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            if distribution == "poisson":
+                fitted = sm.GLM(
+                    data["outcome"].to_numpy(), exog, family=sm.families.Poisson(), offset=offset
+                ).fit()
+                converged = bool(fitted.converged)
+            else:
+                fitted = sm.NegativeBinomial(
+                    data["outcome"].to_numpy(), exog, loglike_method="nb2", offset=offset
+                ).fit(disp=False)
+                converged = bool(fitted.mle_retvals.get("converged", False))
+        if not converged or any(issubclass(item.category, ConvergenceWarning) for item in captured):
+            raise AnalyticsError("Count regression did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Count regression could not fit this dataset") from exc
+    parameter_values = np.asarray(fitted.params, dtype=float)
+    standard_errors = np.asarray(fitted.bse, dtype=float)
+    p_values = np.asarray(fitted.pvalues, dtype=float)
+    confidence_intervals = np.asarray(fitted.conf_int(alpha=alpha), dtype=float)
+    dispersion_alpha = None
+    if distribution == "negative_binomial":
+        dispersion_alpha = float(parameter_values[-1])
+        parameter_values, standard_errors, p_values = parameter_values[:-1], standard_errors[:-1], p_values[:-1]
+        confidence_intervals = confidence_intervals[:-1]
+        if not math.isfinite(dispersion_alpha) or dispersion_alpha <= 0:
+            raise AnalyticsError("Negative-binomial dispersion estimate was invalid")
+    if not np.isfinite(parameter_values).all() or not np.isfinite(standard_errors).all():
+        raise AnalyticsError("Count regression produced non-finite estimates")
+    coefficients = []
+    for index, term in enumerate(exog.columns):
+        lower, upper = confidence_intervals[index]
+        coefficients.append(
+            {
+                "term": term,
+                "log_rate_ratio": _round(parameter_values[index]),
+                "std_error": _round(standard_errors[index]),
+                "z_value": _round(parameter_values[index] / standard_errors[index]),
+                "p_value": _round(p_values[index]),
+                "rate_ratio": _exp_round(parameter_values[index]),
+                "rate_ratio_ci_lower": _exp_round(lower),
+                "rate_ratio_ci_upper": _exp_round(upper),
+            }
+        )
+    predicted = np.asarray(fitted.predict(), dtype=float)
+    variance = predicted if distribution == "poisson" else predicted + float(dispersion_alpha) * predicted**2
+    pearson_chi_square = float(np.sum((data["outcome"].to_numpy() - predicted) ** 2 / variance))
+    overdispersion_ratio = pearson_chi_square / float(fitted.df_resid)
+    settings = {
+        "analysis": "count_regression",
+        "outcome": outcome,
+        "predictors": predictors,
+        "distribution": distribution,
+        "exposure_column": exposure_column,
+        "alpha": alpha,
+    }
+    warning = (
+        "Poisson dispersion appears elevated; consider negative binomial and inspect zero inflation."
+        if distribution == "poisson" and overdispersion_ratio > 1.5
+        else "This model does not diagnose zero inflation, hurdle processes, dependence, or causal effects."
+    )
+    return {
+        "method": "Poisson count regression" if distribution == "poisson" else "Negative-binomial (NB2) count regression",
+        "n": int(len(data)),
+        "total_count": int(data["outcome"].sum()),
+        "exposure_column": exposure_column,
+        "coefficients": coefficients,
+        "aic": _round(fitted.aic),
+        "residual_degrees_freedom": _round(fitted.df_resid),
+        "pearson_chi_square": _round(pearson_chi_square),
+        "overdispersion_ratio": _round(overdispersion_ratio),
+        "dispersion_alpha": _round(dispersion_alpha),
+        "warning": warning,
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
 def weighted_ols(
     records: list[dict[str, Any]],
     outcome: str,

@@ -25,6 +25,7 @@ import uvicorn
 from analytics import (
     AnalyticsError,
     advanced_numeric_imputation,
+    count_regression,
     cox_proportional_hazards,
     kaplan_meier_analysis,
     linear_mixed_effects,
@@ -564,6 +565,13 @@ class CoxProportionalHazardsRequest(DatasetAnalysisRequest):
     strata_column: str | None = Field(default=None, min_length=1, max_length=128)
     cluster_column: str | None = Field(default=None, min_length=1, max_length=128)
     ties: Literal["breslow", "efron"] = "efron"
+
+
+class CountRegressionRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    distribution: Literal["poisson", "negative_binomial"] = "poisson"
+    exposure_column: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class MixedLinearModelRequest(DatasetAnalysisRequest):
@@ -3061,6 +3069,33 @@ async def analyze_cox_proportional_hazards(
         "analysis.cox_proportional_hazards",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors), "stratified": bool(body.strata_column)},
+    )
+    return result
+
+
+@app.post("/analysis/count-regression")
+async def analyze_count_regression(
+    body: CountRegressionRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"count-regression:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = count_regression(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.distribution,
+            body.exposure_column,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.count_regression",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors), "distribution": body.distribution},
     )
     return result
 

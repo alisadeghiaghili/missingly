@@ -27,6 +27,12 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - `/analysis/mixed-linear` fits a Gaussian linear mixed-effects model with one random intercept grouping column and fixed numeric predictors, using REML. It reports fixed-effect z inference, variance components, and the intraclass correlation. Random slopes, crossed effects, generalized mixed models, and repeated-measures covariance structures are not yet supported.
 - `/analysis/weighted-ols` fits weighted least squares with strictly positive numeric analytic weights. It reports coefficient t inference and weighted R-squared. It is not a complex-survey estimator: strata, primary sampling units, finite-population corrections, calibration, and design-based standard errors are intentionally out of scope.
 
+## Count outcomes
+
+- `/analysis/count-regression` fits Poisson or NB2 negative-binomial regression for non-negative integer outcomes and numeric predictors. A strictly positive exposure column becomes a log offset, so the model estimates rates when an exposure is supplied.
+- It returns log rate ratios, rate ratios with confidence intervals, AIC, Pearson chi-square, and an overdispersion ratio. Poisson responses flag substantial overdispersion so the user can compare NB2 instead of silently treating counts as continuous.
+- Zero-inflated, hurdle, multinomial, repeated-count, and complex-survey count models are not yet supported; the output explicitly does not diagnose zero inflation or dependence.
+
 ## Supported now
 
 - Dataset profile: schema, missingness, numeric summaries, categorical frequencies, duplicate rows, and Pearson correlations.
@@ -35,6 +41,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Models: binary logistic regression (maximum likelihood) with event/reference coding, log-odds, odds ratios, confidence intervals, AIC/BIC, McFadden pseudo-R², and convergence/separation rejection.
 - Models: Gaussian random-intercept linear mixed-effects models and analytic-weighted OLS for continuous outcomes.
 - Models: Cox proportional-hazards regression with Efron/Breslow ties, optional strata, and optional cluster-robust standard errors.
+- Models: Poisson and NB2 negative-binomial count regression with an optional log-exposure offset.
 - Reproducibility: each result has the engine version and SHA-256 fingerprint of its input plus analysis settings.
 
 ## Statistical guardrails
@@ -42,6 +49,6 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Numeric methods reject columns with mixed observed numeric/non-numeric values rather than silently coercing them.
 - Pearson requires at least three non-constant paired values; Welch requires two observations per group; OLS rejects perfect collinearity and insufficient degrees of freedom.
 - Chi-square reports a warning when an expected cell count is below five.
-- This phase does not claim support for Little's MCAR test, full complex-survey estimation, random-slope or generalized mixed models, proportional-hazards diagnostics, time-varying Cox effects, or causal inference. Those require separate validated implementations.
+- This phase does not claim support for Little's MCAR test, full complex-survey estimation, zero-inflated or hurdle models, random-slope or generalized mixed models, proportional-hazards diagnostics, time-varying Cox effects, or causal inference. Those require separate validated implementations.
 
 The contracts in `tests/test_analytics.py` are the initial numerical benchmark suite. Any new method must add known-result tests and document assumptions before it is exposed in the API.
