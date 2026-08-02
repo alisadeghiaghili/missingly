@@ -10,9 +10,10 @@ Before exposing this project to the public internet:
 6. Keep Uvicorn bound to `127.0.0.1` behind a reverse proxy.
 7. Set `TRUST_PROXY_HEADERS=true` only when the reverse proxy is trusted and configured correctly.
 8. Set `ZARINPAL_SANDBOX=false` only after real gateway credentials are configured.
-9. Move from local SQLite to PostgreSQL before public production traffic.
-10. Keep `.env`, `users.db`, logs, API keys, payment authorities, and reset tokens out of git, zip artifacts, and static paths.
-11. Set `SESSION_TTL_DAYS` to the shortest practical duration for your product and periodically revoke inactive sessions.
+9. Set `DATABASE_URL` to a managed PostgreSQL database; the app creates its schema at startup.
+10. Set `REDIS_URL` to a managed Redis instance. Production deliberately refuses to start without it so rate limits cannot be bypassed by scaling workers.
+11. Keep `.env`, `users.db`, logs, API keys, payment authorities, and reset tokens out of git, zip artifacts, and static paths.
+12. Set `SESSION_TTL_DAYS` to the shortest practical duration for your product and periodically revoke inactive sessions.
 
 Current hardening already applied:
 
@@ -20,7 +21,7 @@ Current hardening already applied:
 - Bearer sessions and password-reset tokens are stored only as SHA-256 hashes; reset also revokes all active sessions.
 - Admin rendering escapes server-provided values before inserting them into HTML.
 - Admin bootstrap supports `ADMIN_PASSWORD_HASH`.
-- Auth, password reset, admin APIs, payment tools, and code generation have in-memory rate limits.
+- Auth, password reset, admin APIs, payment tools, and code generation use Redis rate limits when `REDIS_URL` is configured; local development has an in-memory fallback.
 - Generated preview HTML is sandboxed in an iframe.
 - Basic security headers are added to every response.
 - Zarinpal callback is idempotent for already verified payments.
@@ -30,8 +31,8 @@ Current hardening already applied:
 
 Recommended next hardening:
 
-- Add persistent/distributed rate limiting such as Redis before running multiple app instances.
+- CI installs pinned dependencies, runs tests, and produces a release ZIP that excludes local secrets, databases, logs, and virtual environments.
+- Audit events are retained for admin changes, provider selection, projects, and successful payment verification.
 - Replace the remaining inline-script CSP allowance with hashed external assets before a high-security deployment.
-- Add audit logging for every admin plan edit and payment action.
 - Add a generated-HTML sanitizer/CSP allowlist if public users can publish generated pages.
 - Migrate database access to PostgreSQL with a migration tool such as Alembic before production traffic.

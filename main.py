@@ -26,6 +26,14 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
+
+try:
+    import redis
+except ImportError:  # pragma: no cover - requirements pin redis for deployed installs
+    redis = None
 
 try:
     from zarinpal import ZarinPal
@@ -63,6 +71,7 @@ GALLERY_SITES_ROOT = ROOT / "gallery" / "sites"
 GALLERY_ASSETS_ROOT = ROOT / "gallery" / "assets"
 DATABASE_NAME = os.getenv("DATABASE_NAME", str(ROOT / "users.db"))
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
 
 APP_ENV = os.getenv("APP_ENV", "local").strip().lower()
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
@@ -345,12 +354,36 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("deepintelligence")
 
 
+def normalize_database_url(url: str) -> str:
+    """Return a SQLAlchemy PostgreSQL URL while accepting common provider URLs."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    return url
+
+
+POSTGRES_URL = normalize_database_url(DATABASE_URL)
+DATABASE_ENGINE: Engine | None = (
+    create_engine(POSTGRES_URL, pool_pre_ping=True, pool_recycle=1800) if DATABASE_URL else None
+)
+REDIS_CLIENT: Any | None = (
+    redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=0.25, socket_timeout=0.25)
+    if REDIS_URL and redis is not None
+    else None
+)
+
+
 def validate_runtime_security() -> None:
     if APP_ENV in {"production", "prod"}:
         if not SECRET_KEY or len(SECRET_KEY) < 32:
             raise RuntimeError("SECRET_KEY must be set to at least 32 characters in production.")
         if not DATABASE_URL:
             raise RuntimeError("DATABASE_URL must be set in production. Do not use local SQLite on the public internet.")
+        if not DATABASE_URL.startswith(("postgres://", "postgresql://")):
+            raise RuntimeError("DATABASE_URL must use PostgreSQL in production.")
+        if not REDIS_URL:
+            raise RuntimeError("REDIS_URL must be set in production for distributed rate limiting.")
         if ADMIN_PASSWORD:
             raise RuntimeError("Use ADMIN_PASSWORD_HASH instead of ADMIN_PASSWORD in production.")
         if "*" in ALLOWED_ORIGINS:
@@ -373,7 +406,12 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or secrets.token_hex(12)
+    started_at = time.perf_counter()
     response = await call_next(request)
+    elapsed_ms = round((time.perf_counter() - started_at) * 1000, 1)
+    logger.info("request_id=%s method=%s path=%s status=%s duration_ms=%s", request_id, request.method, request.url.path, response.status_code, elapsed_ms)
+    response.headers.setdefault("X-Request-ID", request_id)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -476,7 +514,80 @@ class AdminUserUpdate(BaseModel):
     is_admin: bool | None = None
 
 
-def db_connection() -> sqlite3.Connection:
+def qmark_to_named(query: str, params: tuple[Any, ...]) -> tuple[str, dict[str, Any]]:
+    """Translate this app's positional SQL safely for SQLAlchemy/PostgreSQL."""
+    if not params:
+        return query, {}
+    parts: list[str] = []
+    parameter_index = 0
+    in_single_quote = False
+    index = 0
+    while index < len(query):
+        character = query[index]
+        if character == "'":
+            parts.append(character)
+            if in_single_quote and index + 1 < len(query) and query[index + 1] == "'":
+                parts.append("'")
+                index += 2
+                continue
+            in_single_quote = not in_single_quote
+        elif character == "?" and not in_single_quote:
+            if parameter_index >= len(params):
+                raise ValueError("SQL query has more placeholders than parameters")
+            parts.append(f":p{parameter_index}")
+            parameter_index += 1
+        else:
+            parts.append(character)
+        index += 1
+    if parameter_index != len(params):
+        raise ValueError("SQL query has fewer placeholders than parameters")
+    return "".join(parts), {f"p{i}": value for i, value in enumerate(params)}
+
+
+class PostgreSQLResult:
+    def __init__(self, result: Any):
+        self._result = result
+        self.rowcount = result.rowcount
+
+    def fetchone(self) -> Any | None:
+        return self._result.mappings().first()
+
+    def fetchall(self) -> list[Any]:
+        return list(self._result.mappings().all())
+
+
+class PostgreSQLConnection:
+    """Small compatibility layer so the audited SQLite queries also run on PostgreSQL."""
+    def __init__(self, engine: Engine):
+        self._connection = engine.connect()
+
+    def execute(self, query: str, params: tuple[Any, ...] = ()) -> PostgreSQLResult:
+        statement, bindings = qmark_to_named(query, params)
+        return PostgreSQLResult(self._connection.execute(text(statement), bindings))
+
+    def commit(self) -> None:
+        self._connection.commit()
+
+    def rollback(self) -> None:
+        self._connection.rollback()
+
+    def close(self) -> None:
+        self._connection.close()
+
+    def __enter__(self) -> "PostgreSQLConnection":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+
+def db_connection() -> sqlite3.Connection | PostgreSQLConnection:
+    if DATABASE_ENGINE is not None:
+        return PostgreSQLConnection(DATABASE_ENGINE)
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -499,7 +610,136 @@ def fetch_all(query: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
         return conn.execute(query, params).fetchall()
 
 
+def record_audit_event(
+    actor_user_id: int | None,
+    action: str,
+    target_type: str,
+    target_id: str | int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Persist security-relevant changes without recording credentials or prompt content."""
+    execute(
+        """
+        INSERT INTO audit_events (actor_user_id, action, target_type, target_id, metadata, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            actor_user_id,
+            action,
+            target_type,
+            str(target_id) if target_id is not None else None,
+            json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True),
+            dt.datetime.utcnow().isoformat(),
+        ),
+    )
+
+
+def create_postgres_tables() -> None:
+    """Create the PostgreSQL schema. Existing SQLite databases remain supported locally."""
+    statements = (
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password TEXT NOT NULL,
+            plan TEXT NOT NULL DEFAULT 'free', is_admin INTEGER NOT NULL DEFAULT 0,
+            request_count INTEGER NOT NULL DEFAULT 0, request_balance INTEGER NOT NULL DEFAULT 2,
+            successful_payment_count INTEGER NOT NULL DEFAULT 0, token_usage BIGINT NOT NULL DEFAULT 0,
+            session_token TEXT, reset_token TEXT, reset_token_hash TEXT,
+            reset_token_expires TIMESTAMP, last_request_timestamp TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(id), email TEXT NOT NULL, plan TEXT NOT NULL,
+            amount BIGINT NOT NULL, authority TEXT UNIQUE, ref_id TEXT, card_pan TEXT,
+            status TEXT NOT NULL DEFAULT 'pending', raw_response TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, verified_at TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS usage_events (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(id), model TEXT, plan TEXT NOT NULL,
+            request_type TEXT NOT NULL, prompt_tokens BIGINT NOT NULL DEFAULT 0,
+            completion_tokens BIGINT NOT NULL DEFAULT 0, total_tokens BIGINT NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'completed', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS usage_totals (
+            user_id BIGINT PRIMARY KEY REFERENCES users(id), prompt_tokens BIGINT NOT NULL DEFAULT 0,
+            completion_tokens BIGINT NOT NULL DEFAULT 0, total_tokens BIGINT NOT NULL DEFAULT 0,
+            events BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL UNIQUE, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL, revoked_at TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS projects (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+            current_code TEXT NOT NULL DEFAULT '', latest_prompt TEXT NOT NULL DEFAULT '',
+            current_revision INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS project_revisions (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            revision_number INTEGER NOT NULL, code TEXT NOT NULL, prompt TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(project_id, revision_number)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY, value TEXT NOT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS audit_events (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            actor_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+            action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT,
+            metadata TEXT NOT NULL DEFAULT '{}', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions(token_hash, expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_projects_user_updated ON projects(user_id, updated_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_project_revisions_project ON project_revisions(project_id, revision_number DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC)",
+    )
+    with db_connection() as conn:
+        for statement in statements:
+            conn.execute(statement)
+        conn.execute(
+            """
+            INSERT INTO schema_migrations (version)
+            VALUES ('0001_production_foundation')
+            ON CONFLICT(version) DO NOTHING
+            """
+        )
+
+
 def create_tables() -> None:
+    if DATABASE_ENGINE is not None:
+        create_postgres_tables()
+        return
     with db_connection() as conn:
         conn.execute(
             """
@@ -516,6 +756,7 @@ def create_tables() -> None:
                 token_usage INTEGER NOT NULL DEFAULT 0,
                 session_token TEXT,
                 reset_token TEXT,
+                reset_token_hash TEXT,
                 reset_token_expires TIMESTAMP,
                 last_request_timestamp TIMESTAMP
             );
@@ -633,6 +874,29 @@ def create_tables() -> None:
             );
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor_user_id INTEGER,
+                action TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+            );
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC)")
         existing_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(users);").fetchall()
         }
@@ -674,6 +938,9 @@ def create_tables() -> None:
                 )
                 """
             )
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version) VALUES ('0001_production_foundation')"
+        )
         conn.commit()
 
 
@@ -874,6 +1141,30 @@ def enforce_rate_limit(scope: str, identifier: str, limit: int | None = None, wi
     default_limit, default_window = RATE_LIMITS.get(scope, (60, 60))
     max_requests = limit or default_limit
     window = window_seconds or default_window
+    if REDIS_CLIENT is not None:
+        key = f"missingly:rate-limit:{scope}:{hashlib.sha256(identifier.encode('utf-8')).hexdigest()}"
+        try:
+            request_count = int(REDIS_CLIENT.incr(key))
+            if request_count == 1:
+                REDIS_CLIENT.expire(key, window)
+            if request_count > max_requests:
+                retry_after = max(1, int(REDIS_CLIENT.ttl(key) or window))
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "rate_limited",
+                        "message": "Too many requests. Please wait and try again.",
+                        "retry_after": retry_after,
+                    },
+                    headers={"Retry-After": str(retry_after)},
+                )
+            return
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Redis rate limiter unavailable for %s: %s", scope, type(exc).__name__)
+            if APP_ENV in {"production", "prod"}:
+                raise HTTPException(status_code=503, detail="Rate limiter is temporarily unavailable.") from exc
     now = time.monotonic()
     key = f"{scope}:{identifier}"
     bucket = RATE_BUCKETS[key]
@@ -1544,13 +1835,53 @@ def update_usage(user_id: int, tokens: int = 0) -> None:
     execute(
         """
         UPDATE users
-        SET request_count = request_count + 1,
-            request_balance = MAX(request_balance - 1, 0),
-            token_usage = token_usage + ?,
+        SET token_usage = token_usage + ?,
             last_request_timestamp = ?
         WHERE id = ?
         """,
         (tokens, dt.datetime.utcnow().isoformat(), user_id),
+    )
+
+
+def reserve_request_quota(user_id: int) -> None:
+    """Atomically spend one request credit before contacting an upstream model."""
+    with db_connection() as conn:
+        result = conn.execute(
+            """
+            UPDATE users
+            SET request_count = request_count + 1,
+                request_balance = request_balance - 1,
+                last_request_timestamp = ?
+            WHERE id = ? AND request_balance > 0
+            """,
+            (dt.datetime.utcnow().isoformat(), user_id),
+        )
+    if result.rowcount != 1:
+        row = fetch_one("SELECT request_count, request_balance FROM users WHERE id = ?", (user_id,))
+        remaining = max(int(row["request_balance"] or 0), 0) if row else 0
+        used = int(row["request_count"] or 0) if row else 0
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "limit_reached",
+                "message": "تعداد درخواست‌های پلن شما تمام شده است. برای ادامه یکی از پلن‌ها را انتخاب کنید.",
+                "redirect_to": "/pricing",
+                "remaining": remaining,
+                "used": used,
+            },
+        )
+
+
+def refund_request_quota(user_id: int) -> None:
+    """Return a reserved credit only when no usable model response was produced."""
+    execute(
+        """
+        UPDATE users
+        SET request_count = CASE WHEN request_count > 0 THEN request_count - 1 ELSE 0 END,
+            request_balance = request_balance + 1
+        WHERE id = ?
+        """,
+        (user_id,),
     )
 
 
@@ -1625,10 +1956,16 @@ def ensure_usage_totals(user_id: int) -> sqlite3.Row:
     )
     execute(
         """
-        INSERT OR REPLACE INTO usage_totals (
+        INSERT INTO usage_totals (
             user_id, prompt_tokens, completion_tokens, total_tokens, events, updated_at
         )
         VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            prompt_tokens = excluded.prompt_tokens,
+            completion_tokens = excluded.completion_tokens,
+            total_tokens = excluded.total_tokens,
+            events = excluded.events,
+            updated_at = excluded.updated_at
         """,
         (
             user_id,
@@ -2314,9 +2651,16 @@ async def reset_password_form(token: str):
 
 @app.get("/health")
 async def health():
+    try:
+        fetch_one("SELECT 1 AS database_ok")
+    except (sqlite3.Error, SQLAlchemyError) as exc:
+        logger.error("Health check database failure: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Database is unavailable.") from exc
     active_provider = active_ai_provider_id()
     return {
         "status": "ok",
+        "database": "postgresql" if DATABASE_ENGINE is not None else "sqlite",
+        "rate_limiter": "redis" if REDIS_CLIENT is not None else "in_memory",
         "active_ai_provider": active_provider,
         "gapgpt_configured": bool(GAPGPT_API_KEY),
         "avalai_configured": bool(AVALAI_API_KEY),
@@ -2405,7 +2749,7 @@ async def list_projects(current_user: dict[str, Any] = Depends(get_current_user)
         SELECT id, name, current_revision, created_at, updated_at
         FROM projects
         WHERE user_id = ?
-        ORDER BY datetime(updated_at) DESC, id DESC
+        ORDER BY updated_at DESC, id DESC
         """,
         (current_user["id"],),
     )
@@ -2426,10 +2770,11 @@ async def create_project(
                 user_id, name, current_code, latest_prompt, current_revision, created_at, updated_at
             )
             VALUES (?, ?, ?, ?, 1, ?, ?)
+            RETURNING id
             """,
             (current_user["id"], name, body.current_code, body.prompt, now, now),
         )
-        project_id = int(created.lastrowid)
+        project_id = int(created.fetchone()["id"])
         conn.execute(
             """
             INSERT INTO project_revisions (project_id, revision_number, code, prompt, created_at)
@@ -2438,12 +2783,20 @@ async def create_project(
             (project_id, body.current_code, body.prompt, now),
         )
         project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    record_audit_event(current_user["id"], "project.created", "project", project_id, {"revision": 1})
     return {"project": {**project_summary(project), "current_code": body.current_code, "prompt": body.prompt}}
 
 
 @app.get("/projects/{project_id}")
 async def get_project(project_id: int, current_user: dict[str, Any] = Depends(get_current_user)):
     project = get_owned_project(project_id, current_user["id"])
+    record_audit_event(
+        current_user["id"],
+        "project.updated",
+        "project",
+        project_id,
+        {"revision": revision, "content_changed": code_changed},
+    )
     return {
         "project": {
             **project_summary(project),
@@ -2584,7 +2937,7 @@ async def usage_summary(current_user: dict[str, Any] = Depends(get_current_user)
                total_tokens, status, created_at
         FROM usage_events
         WHERE user_id = ?
-        ORDER BY datetime(created_at) DESC
+        ORDER BY created_at DESC
         LIMIT 20
         """,
         (user_id,),
@@ -2720,6 +3073,13 @@ async def admin_update_ai_provider(
             detail=f"{config['label']} API key is not configured on the server.",
         )
     set_app_setting("ai_provider", provider)
+    record_audit_event(
+        current_admin["id"],
+        "ai_provider.changed",
+        "app_setting",
+        "ai_provider",
+        {"provider": provider},
+    )
     logger.info("AI provider changed to %s by admin user %s", provider, current_admin["id"])
     return {
         "message": f"Active AI provider changed to {config['label']}.",
@@ -2784,7 +3144,7 @@ async def admin_user_details(
         SELECT plan, amount, authority, ref_id, status, created_at, verified_at
         FROM payments
         WHERE user_id = ?
-        ORDER BY datetime(created_at) DESC
+        ORDER BY created_at DESC
         LIMIT 25
         """,
         (user_id,),
@@ -2795,7 +3155,7 @@ async def admin_user_details(
                total_tokens, status, created_at
         FROM usage_events
         WHERE user_id = ?
-        ORDER BY datetime(created_at) DESC
+        ORDER BY created_at DESC
         LIMIT 25
         """,
         (user_id,),
@@ -2844,6 +3204,43 @@ async def admin_user_details(
     }
 
 
+@app.get("/admin/audit-events")
+async def admin_audit_events(
+    request: Request,
+    limit: int = 50,
+    current_admin: dict[str, Any] = Depends(get_current_admin),
+):
+    enforce_rate_limit("admin", f"audit:{current_admin['id']}:{client_ip(request)}")
+    safe_limit = min(max(limit, 1), 200)
+    rows = fetch_all(
+        """
+        SELECT id, actor_user_id, action, target_type, target_id, metadata, created_at
+        FROM audit_events
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+        """,
+        (safe_limit,),
+    )
+    events = []
+    for row in rows:
+        try:
+            metadata = json.loads(row["metadata"] or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        events.append(
+            {
+                "id": int(row["id"]),
+                "actor_user_id": row["actor_user_id"],
+                "action": row["action"],
+                "target_type": row["target_type"],
+                "target_id": row["target_id"],
+                "metadata": metadata,
+                "created_at": row["created_at"],
+            }
+        )
+    return {"events": events}
+
+
 @app.patch("/admin/users/{user_id}")
 async def admin_update_user(
     user_id: int,
@@ -2884,6 +3281,14 @@ async def admin_update_user(
     params.append(user_id)
     execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
     updated = fetch_one("SELECT * FROM users WHERE id = ?", (user_id,))
+    changed_fields = [field.split(" =", 1)[0] for field in updates]
+    record_audit_event(
+        current_admin["id"],
+        "user.updated",
+        "user",
+        user_id,
+        {"fields": changed_fields},
+    )
     return {"message": "User updated", "user": row_to_user(updated)}
 
 
@@ -2991,36 +3396,42 @@ async def generate_code(
 ):
     enforce_rate_limit("code", f"user:{current_user['id']}:{client_ip(request)}")
     enforce_prompt_safety(request_data)
-    enforce_request_limit(current_user)
-
     provider_id = active_ai_provider_id()
-    data = await call_ai_provider(
-        build_codegen_messages(request_data),
-        temperature=0.4,
-        model=request_data.model,
-        plan=current_user.get("plan", "free"),
-        provider=provider_id,
-    )
-    result = extract_chat_completion_content(data)
     selected_model = resolve_ai_model(request_data.model, current_user.get("plan", "free"), provider_id)
-    prompt_tokens = int(data.get("usage", {}).get("prompt_tokens") or 0)
-    completion_tokens = int(data.get("usage", {}).get("completion_tokens") or 0)
-    if not prompt_tokens:
-        prompt_tokens = count_message_tokens(build_codegen_messages(request_data), selected_model)
-    if not completion_tokens:
-        completion_tokens = count_text_tokens(result, selected_model)
-    tokens = int(data.get("usage", {}).get("total_tokens") or prompt_tokens + completion_tokens)
-    update_usage(current_user["id"], tokens)
-    record_usage_event(
-        current_user["id"],
-        selected_model,
-        current_user.get("plan", "free"),
-        request_data.type,
-        prompt_tokens,
-        completion_tokens,
-        tokens,
-    )
-    return {"response": result, "tokens_used": tokens, "provider": provider_id}
+    messages = build_codegen_messages(request_data)
+    reserve_request_quota(current_user["id"])
+    try:
+        data = await call_ai_provider(
+            messages,
+            temperature=0.4,
+            model=request_data.model,
+            plan=current_user.get("plan", "free"),
+            provider=provider_id,
+        )
+        result = extract_chat_completion_content(data)
+        if not result.strip():
+            raise HTTPException(status_code=502, detail="The model returned an empty response.")
+        prompt_tokens = int(data.get("usage", {}).get("prompt_tokens") or 0)
+        completion_tokens = int(data.get("usage", {}).get("completion_tokens") or 0)
+        if not prompt_tokens:
+            prompt_tokens = count_message_tokens(messages, selected_model)
+        if not completion_tokens:
+            completion_tokens = count_text_tokens(result, selected_model)
+        tokens = int(data.get("usage", {}).get("total_tokens") or prompt_tokens + completion_tokens)
+        update_usage(current_user["id"], tokens)
+        record_usage_event(
+            current_user["id"],
+            selected_model,
+            current_user.get("plan", "free"),
+            request_data.type,
+            prompt_tokens,
+            completion_tokens,
+            tokens,
+        )
+        return {"response": result, "tokens_used": tokens, "provider": provider_id}
+    except Exception:
+        refund_request_quota(current_user["id"])
+        raise
 
 
 @app.post("/generate-code/stream")
@@ -3031,7 +3442,6 @@ async def generate_code_stream(
 ):
     enforce_rate_limit("code", f"user:{current_user['id']}:{client_ip(request)}")
     enforce_prompt_safety(request_data)
-    enforce_request_limit(current_user)
     messages = build_codegen_messages(request_data)
     user_plan = current_user.get("plan", "free")
     user_id = current_user["id"]
@@ -3039,6 +3449,7 @@ async def generate_code_stream(
     provider_config = ai_provider_config(provider_id)
     selected_model = resolve_ai_model(request_data.model, user_plan, provider_id)
     prompt_tokens = count_message_tokens(messages, selected_model)
+    reserve_request_quota(user_id)
 
     def sse_event(event: str, payload: dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -3046,6 +3457,8 @@ async def generate_code_stream(
     async def event_stream():
         tokens = 0
         completed = False
+        response_started = False
+        quota_finalized = False
         response_parts: list[str] = []
         try:
             yield sse_event("status", {"message": f"Connecting to {provider_config['label']}..."})
@@ -3062,6 +3475,7 @@ async def generate_code_stream(
                         chunk_type = chunk.get("type")
                         if chunk_type == "delta":
                             content = chunk.get("content", "")
+                            response_started = response_started or bool(content)
                             response_parts.append(content)
                             yield sse_event("delta", {"content": content})
                         elif chunk_type == "usage":
@@ -3112,6 +3526,7 @@ async def generate_code_stream(
                 tokens,
                 "completed" if completed else "stream_closed",
             )
+            quota_finalized = True
             yield sse_event(
                 "done",
                 {"tokens_used": tokens, "completed": completed, "provider": provider_id},
@@ -3121,6 +3536,9 @@ async def generate_code_stream(
         except Exception as exc:
             logger.exception("Code generation stream failed")
             yield sse_event("error", {"status": 500, "detail": str(exc)})
+        finally:
+            if not quota_finalized and not response_started:
+                refund_request_quota(user_id)
 
     return StreamingResponse(
         event_stream(),
@@ -3306,6 +3724,14 @@ async def payment_callback(Status: str | None = None, Authority: str | None = No
                     """,
                     (target_plan, purchased_quota, payment["user_id"]),
                 )
+        if updated_payment.rowcount:
+            record_audit_event(
+                payment["user_id"],
+                "payment.verified",
+                "payment",
+                payment["id"],
+                {"plan": purchased_plan, "authority": Authority[-6:]},
+            )
         return RedirectResponse("/app?payment_status=success")
 
     execute(
