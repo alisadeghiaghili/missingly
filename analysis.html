@@ -77,13 +77,15 @@
             <label for="countDistribution">مدل شمارشی</label><select id="countDistribution"><option value="poisson">Poisson</option><option value="negative_binomial">Negative Binomial (NB2)</option></select>
             <label for="countExposure">ستون exposure برای نرخ (اختیاری)</label><input id="countExposure" placeholder="person_time">
             <button id="countRegression" class="secondary">Count regression</button>
+            <label for="ordinalOrder">ترتیب طبقات ordinal (با کاما)</label><input id="ordinalOrder" placeholder="low,medium,high">
+            <button id="ordinalLogistic" class="secondary">Ordinal logistic (proportional odds)</button>
             <label for="mixedGroup">ستون خوشه برای mixed-effects</label><input id="mixedGroup" placeholder="patient_id یا school_id">
             <button id="mixedLinear" class="secondary">Linear mixed-effects (random intercept)</button>
             <label for="weightColumn">ستون وزن تحلیلی برای Weighted OLS</label><input id="weightColumn" placeholder="weight">
             <button id="weightedOls" class="secondary">Weighted OLS</button>
             <label for="reportTitle">عنوان گزارش HTML</label><input id="reportTitle" value="Missingly statistical report">
             <button id="reportHtml" class="secondary">دانلود گزارش HTML</button>
-            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects، weighted OLS، Cox و count regression، outcome/predictors عددی‌اند. Cox فرض proportional hazards را خودکار آزمون نمی‌کند. مدل شمارشی فقط برای count صحیح نامنفی است؛ Poisson با dispersion بالا را با NB2 مقایسه کنید.</p>
+            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects، weighted OLS، Cox، count و ordinal regression predictors عددی‌اند. ترتیب طبقات ordinal باید صریح و کامل باشد؛ فرض proportional odds خودکار آزمون نمی‌شود.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
     </div>
@@ -117,6 +119,7 @@
     const coxCluster = document.getElementById('coxCluster');
     const countDistribution = document.getElementById('countDistribution');
     const countExposure = document.getElementById('countExposure');
+    const ordinalOrder = document.getElementById('ordinalOrder');
     const mixedGroup = document.getElementById('mixedGroup');
     const weightColumn = document.getElementById('weightColumn');
     const reportTitle = document.getElementById('reportTitle');
@@ -195,6 +198,14 @@
             call('/analysis/count-regression', {
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 distribution: countDistribution.value, exposure_column: countExposure.value.trim() || null
+            });
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('ordinalLogistic').addEventListener('click', () => {
+        try {
+            call('/analysis/ordinal-logistic', {
+                records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                category_order: ordinalOrder.value.split(',').map(value => value.trim()).filter(Boolean)
             });
         } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });

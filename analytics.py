@@ -19,6 +19,7 @@ from scipy import stats
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer, KNNImputer
 import statsmodels.api as sm
+from statsmodels.miscmodels.ordinal_model import OrderedModel
 from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparationError
 
 
@@ -965,6 +966,107 @@ def count_regression(
         "overdispersion_ratio": _round(overdispersion_ratio),
         "dispersion_alpha": _round(dispersion_alpha),
         "warning": warning,
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
+def ordinal_logistic_regression(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    category_order: list[str],
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit a proportional-odds ordinal logistic model with explicit category order."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    if len(category_order) < 3 or len(category_order) > 20 or len(set(category_order)) != len(category_order):
+        raise AnalyticsError("category_order must contain between three and twenty unique ordered labels")
+    frame = _frame(records)
+    if outcome not in frame.columns:
+        raise AnalyticsError(f"Column '{outcome}' was not found")
+    numeric = _numeric_columns(frame)
+    for column in predictors:
+        if column not in numeric:
+            raise AnalyticsError(f"Ordinal logistic regression requires numeric predictor: '{column}'")
+    data = pd.DataFrame({"outcome": frame[outcome].astype("string")})
+    for index, column in enumerate(predictors):
+        data[f"predictor_{index}"] = numeric[column]
+    data = data.dropna()
+    observed_labels = set(data["outcome"].unique().tolist())
+    requested_labels = set(category_order)
+    if observed_labels != requested_labels:
+        raise AnalyticsError("category_order must contain each observed outcome label exactly once")
+    if len(data) <= len(predictors) + len(category_order):
+        raise AnalyticsError("Ordinal logistic regression requires more complete rows than model parameters")
+    exog = pd.DataFrame(index=data.index)
+    for index, column in enumerate(predictors):
+        values = data[f"predictor_{index}"].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Ordinal logistic predictor '{column}' must not be constant")
+        exog[column] = values
+    if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("Ordinal logistic predictors are perfectly collinear")
+    ordered_outcome = pd.Series(
+        pd.Categorical(data["outcome"], categories=category_order, ordered=True), index=data.index
+    )
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            fitted = OrderedModel(ordered_outcome, exog, distr="logit").fit(method="bfgs", disp=False)
+        if not fitted.mle_retvals.get("converged", False) or any(
+            issubclass(item.category, ConvergenceWarning) for item in captured
+        ):
+            raise AnalyticsError("Ordinal logistic regression did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Ordinal logistic regression could not fit this dataset") from exc
+    parameters = fitted.params
+    standard_errors = fitted.bse
+    p_values = fitted.pvalues
+    confidence_intervals = fitted.conf_int(alpha=alpha)
+    if not np.isfinite(parameters.loc[predictors].to_numpy()).all() or not np.isfinite(standard_errors.loc[predictors].to_numpy()).all():
+        raise AnalyticsError("Ordinal logistic regression produced non-finite estimates")
+    coefficients = []
+    for column in predictors:
+        estimate = float(parameters[column])
+        lower, upper = confidence_intervals.loc[column]
+        coefficients.append(
+            {
+                "term": column,
+                "log_cumulative_odds_ratio": _round(estimate),
+                "std_error": _round(standard_errors[column]),
+                "z_value": _round(estimate / standard_errors[column]),
+                "p_value": _round(p_values[column]),
+                "cumulative_odds_ratio": _exp_round(estimate),
+                "cumulative_odds_ratio_ci_lower": _exp_round(lower),
+                "cumulative_odds_ratio_ci_upper": _exp_round(upper),
+            }
+        )
+    transformed_thresholds = fitted.model.transform_threshold_params(parameters.to_numpy())[1:-1]
+    settings = {
+        "analysis": "ordinal_logistic_regression",
+        "outcome": outcome,
+        "predictors": predictors,
+        "category_order": category_order,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Ordinal logistic regression (proportional odds)",
+        "n": int(len(data)),
+        "categories": category_order,
+        "coefficients": coefficients,
+        "thresholds": [
+            {"lower_category": category_order[index], "upper_category": category_order[index + 1], "cutpoint": _round(value)}
+            for index, value in enumerate(transformed_thresholds)
+        ],
+        "log_likelihood": _round(fitted.llf),
+        "aic": _round(fitted.aic),
+        "bic": _round(fitted.bic),
+        "warning": "The proportional-odds assumption is not tested automatically; assess it before interpreting one common odds ratio across thresholds.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
 

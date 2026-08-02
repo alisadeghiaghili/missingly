@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
+from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, ordinal_logistic_regression, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -49,6 +49,14 @@ def _count_records():
         {"count": int(count), "x": float(value), "person_time": float(duration)}
         for count, value, duration in zip(counts, predictor, exposure)
     ]
+
+
+def _ordinal_records():
+    generator = np.random.default_rng(29)
+    predictor = generator.normal(size=120)
+    latent = 0.9 * predictor + generator.logistic(size=120)
+    outcomes = np.where(latent < -0.7, "low", np.where(latent < 0.8, "medium", "high"))
+    return [{"severity": str(outcome), "x": float(value)} for outcome, value in zip(outcomes, predictor)]
 
 
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
@@ -230,6 +238,16 @@ def test_poisson_and_negative_binomial_count_regression_with_exposure():
     assert nb_slope["rate_ratio"] == pytest.approx(np.exp(0.45), rel=0.35)
 
 
+def test_ordinal_logistic_requires_explicit_category_order_and_reports_common_odds():
+    ordinal = ordinal_logistic_regression(_ordinal_records(), "severity", ["x"], ["low", "medium", "high"])
+    coefficient = ordinal["coefficients"][0]
+    assert ordinal["method"].startswith("Ordinal logistic")
+    assert ordinal["categories"] == ["low", "medium", "high"]
+    assert coefficient["cumulative_odds_ratio"] > 1
+    assert len(ordinal["thresholds"]) == 2
+    assert "proportional-odds assumption" in ordinal["warning"]
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -357,6 +375,13 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert count.status_code == 200
     assert count.json()["method"].startswith("Negative-binomial")
+    ordinal = client.post(
+        "/analysis/ordinal-logistic",
+        headers=headers,
+        json={"records": _ordinal_records(), "outcome": "severity", "predictors": ["x"], "category_order": ["low", "medium", "high"]},
+    )
+    assert ordinal.status_code == 200
+    assert ordinal.json()["categories"] == ["low", "medium", "high"]
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

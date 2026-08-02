@@ -31,6 +31,7 @@ from analytics import (
     linear_mixed_effects,
     missingness_report,
     multiple_imputation_ols,
+    ordinal_logistic_regression,
     profile_dataset,
     records_to_csv,
     run_statistical_test,
@@ -572,6 +573,12 @@ class CountRegressionRequest(DatasetAnalysisRequest):
     predictors: list[str] = Field(min_length=1, max_length=30)
     distribution: Literal["poisson", "negative_binomial"] = "poisson"
     exposure_column: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class OrdinalLogisticRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    category_order: list[str] = Field(min_length=3, max_length=20)
 
 
 class MixedLinearModelRequest(DatasetAnalysisRequest):
@@ -3096,6 +3103,26 @@ async def analyze_count_regression(
         "analysis.count_regression",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors), "distribution": body.distribution},
+    )
+    return result
+
+
+@app.post("/analysis/ordinal-logistic")
+async def analyze_ordinal_logistic(
+    body: OrdinalLogisticRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"ordinal-logistic:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = ordinal_logistic_regression(body.records, body.outcome, body.predictors, body.category_order, body.alpha)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.ordinal_logistic",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors), "categories": len(body.category_order)},
     )
     return result
 
