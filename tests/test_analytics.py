@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import missingness_report, profile_dataset, run_statistical_test, simple_imputation
+from analytics import advanced_numeric_imputation, missingness_report, profile_dataset, records_to_csv, run_statistical_test, simple_imputation
 from ingestion import import_tabular_bytes
 
 
@@ -73,6 +73,23 @@ def test_tabular_import_and_simple_imputation_contracts():
     assert categorical["records"][1]["label"] == "yes"
 
 
+def test_advanced_numeric_imputation_is_reproducible_and_preserves_observed_values():
+    records = [
+        {"x": 1.0, "y": 2.0},
+        {"x": 2.0, "y": 4.1},
+        {"x": 3.0, "y": None},
+        {"x": 4.0, "y": 8.1},
+        {"x": None, "y": 10.0},
+    ]
+    knn = advanced_numeric_imputation(records, "knn", ["x", "y"], n_neighbors=2)
+    assert knn["records"][0] == records[0]
+    assert all(item["x"] is not None and item["y"] is not None for item in knn["records"])
+    first_iterative = advanced_numeric_imputation(records, "iterative", ["x", "y"], max_iter=20, random_state=19)
+    second_iterative = advanced_numeric_imputation(records, "iterative", ["x", "y"], max_iter=20, random_state=19)
+    assert first_iterative["records"] == second_iterative["records"]
+    assert records_to_csv(first_iterative["records"]).startswith("x,y\n")
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -121,3 +138,8 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert imputed.status_code == 200
     assert imputed.json()["records"][1]["score"] == 10.0
+
+    exported = client.post("/analysis/export.csv", headers=headers, json={"records": imputed.json()["records"]})
+    assert exported.status_code == 200
+    assert exported.headers["content-disposition"].startswith("attachment;")
+    assert "group,score" in exported.text

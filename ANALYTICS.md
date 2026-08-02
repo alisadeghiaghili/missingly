@@ -8,6 +8,8 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 - The authenticated import endpoint accepts `.csv`, `.json` (array of records), `.xlsx`, `.sav` (SPSS), `.dta` (Stata), `.xpt`, and `.sas7bdat` (SAS). The upload has a separate `MAX_ANALYSIS_UPLOAD_BYTES` cap and is parsed in memory.
 - Simple imputation supports `mean`, `median`, `mode`, or an explicit `constant`; each response reports the exact filled columns, values, and cell counts. It does not silently choose an algorithm.
+- Advanced numeric single imputation supports `knn` and deterministic `iterative` regression. Both require at least two numeric, non-all-missing selected columns and return the seed/settings in the fingerprint. They are not Rubin-pooled multiple imputation.
+- The authenticated CSV export endpoint returns the validated current records without retaining the dataset server-side.
 - Multiple imputation, KNN, random forest imputation, and mechanism-specific modeling are deliberately not presented as supported until they have validation benchmarks.
 
 ## Supported now

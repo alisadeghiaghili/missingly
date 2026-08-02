@@ -54,10 +54,13 @@
             <label for="predictors">predictors برای OLS (با کاما جدا کنید)</label><input id="predictors" value="age">
             <button id="runTest">اجرای آزمون</button>
             <label for="imputation">جایگزینی دادهٔ گمشده</label>
-            <select id="imputation"><option value="mean">mean</option><option value="median">median</option><option value="mode">mode</option><option value="constant">constant</option></select>
+            <select id="imputation"><option value="mean">mean</option><option value="median">median</option><option value="mode">mode</option><option value="constant">constant</option><option value="knn">KNN (numeric)</option><option value="iterative">iterative regression (numeric)</option></select>
             <label for="imputeColumns">ستون‌ها (اختیاری، با کاما جدا کنید)</label><input id="imputeColumns" placeholder="خالی = همه ستون‌ها">
             <label for="constant">مقدار ثابت (فقط constant)</label><input id="constant" placeholder="مثلاً 0 یا unknown">
+            <label for="neighbors">تعداد همسایه برای KNN</label><input id="neighbors" type="number" value="5" min="1" max="100">
+            <label for="maxIter">تکرار iterative regression</label><input id="maxIter" type="number" value="10" min="1" max="100">
             <button id="impute" class="secondary">اجرای imputation</button>
+            <button id="exportCsv" class="secondary">دانلود CSV</button>
             <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
@@ -79,6 +82,8 @@
     const imputation = document.getElementById('imputation');
     const imputeColumns = document.getElementById('imputeColumns');
     const constant = document.getElementById('constant');
+    const neighbors = document.getElementById('neighbors');
+    const maxIter = document.getElementById('maxIter');
     function records() {
         const parsed = JSON.parse(recordsInput.value);
         if (!Array.isArray(parsed)) throw new Error('داده باید آرایهٔ JSON باشد.');
@@ -114,11 +119,18 @@
     document.getElementById('impute').addEventListener('click', async () => {
         try {
             const suppliedConstant = constant.value.trim();
-            const payload = { records: records(), method: imputation.value, columns: imputeColumns.value.split(',').map(value => value.trim()).filter(Boolean) };
+            const payload = { records: records(), method: imputation.value, columns: imputeColumns.value.split(',').map(value => value.trim()).filter(Boolean), n_neighbors: Number(neighbors.value), max_iter: Number(maxIter.value) };
             if (imputation.value === 'constant') payload.constant = suppliedConstant || null;
             await call('/analysis/impute', payload);
             const parsed = JSON.parse(output.textContent);
             if (parsed.records) recordsInput.value = JSON.stringify(parsed.records, null, 2);
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('exportCsv').addEventListener('click', async () => {
+        try {
+            const response = await fetch('/analysis/export.csv', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ records: records() }) });
+            if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.detail || 'خروجی CSV انجام نشد.'); }
+            const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = 'missingly-analysis.csv'; link.click(); URL.revokeObjectURL(link.href);
         } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });
     document.getElementById('goApp').addEventListener('click', () => { window.location.href = '/app'; });

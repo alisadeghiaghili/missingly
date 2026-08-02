@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy import stats
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+from sklearn.impute import IterativeImputer, KNNImputer
 
 
 MAX_ROWS = 10_000
@@ -275,6 +277,90 @@ def simple_imputation(
             "input_sha256": _fingerprint(records, {"analysis": "simple_imputation", "method": method, "columns": selected, "constant": constant}),
         },
     }
+
+
+def advanced_numeric_imputation(
+    records: list[dict[str, Any]],
+    method: str,
+    columns: list[str] | None = None,
+    n_neighbors: int = 5,
+    max_iter: int = 10,
+    random_state: int = 2026,
+) -> dict[str, Any]:
+    """Impute numeric columns with KNN or deterministic chained regression.
+
+    This is single imputation. It intentionally does not represent Rubin-pooled
+    multiple imputation or attach inferential certainty to imputed values.
+    """
+    frame = _frame(records)
+    method = method.strip().lower()
+    if method not in {"knn", "iterative"}:
+        raise AnalyticsError("Unsupported advanced method. Use knn or iterative")
+    numeric = _numeric_columns(frame)
+    selected = columns or list(numeric)
+    if len(set(selected)) != len(selected):
+        raise AnalyticsError("Imputation columns must not contain duplicates")
+    if len(selected) < 2:
+        raise AnalyticsError("KNN and iterative imputation require at least two numeric columns")
+    for column in selected:
+        if column not in numeric:
+            raise AnalyticsError(f"Advanced imputation requires a numeric column: '{column}'")
+        if numeric[column].dropna().empty:
+            raise AnalyticsError(f"Cannot impute an all-missing column: '{column}'")
+    data = pd.DataFrame({column: numeric[column] for column in selected})
+    missing_counts = {column: int(data[column].isna().sum()) for column in selected}
+    if not any(missing_counts.values()):
+        return {
+            "records": _frame_to_records(frame),
+            "imputations": [],
+            "reproducibility": {
+                "engine": ENGINE_VERSION,
+                "input_sha256": _fingerprint(records, {"analysis": "advanced_imputation", "method": method, "columns": selected}),
+            },
+        }
+    if method == "knn":
+        if not 1 <= n_neighbors <= 100:
+            raise AnalyticsError("n_neighbors must be between 1 and 100")
+        imputer = KNNImputer(n_neighbors=n_neighbors)
+    else:
+        if not 1 <= max_iter <= 100:
+            raise AnalyticsError("max_iter must be between 1 and 100")
+        imputer = IterativeImputer(max_iter=max_iter, random_state=random_state, sample_posterior=False, initial_strategy="median")
+    try:
+        imputed = imputer.fit_transform(data)
+    except Exception as exc:
+        raise AnalyticsError(f"{method} imputation could not fit this numeric dataset") from exc
+    if imputed.shape[1] != len(selected) or not np.isfinite(imputed).all():
+        raise AnalyticsError(f"{method} imputation did not produce a complete finite numeric result")
+    imputed_frame = pd.DataFrame(imputed, columns=selected, index=frame.index)
+    for column in selected:
+        missing_mask = frame[column].isna()
+        frame.loc[missing_mask, column] = imputed_frame.loc[missing_mask, column]
+    changes = [
+        {
+            "column": column,
+            "method": method,
+            "imputed_cells": missing_counts[column],
+            "imputed_min": _round(imputed_frame.loc[data[column].isna(), column].min()) if missing_counts[column] else None,
+            "imputed_max": _round(imputed_frame.loc[data[column].isna(), column].max()) if missing_counts[column] else None,
+        }
+        for column in selected
+        if missing_counts[column]
+    ]
+    settings = {
+        "analysis": "advanced_imputation",
+        "method": method,
+        "columns": selected,
+        "n_neighbors": n_neighbors if method == "knn" else None,
+        "max_iter": max_iter if method == "iterative" else None,
+        "random_state": random_state if method == "iterative" else None,
+    }
+    return {"records": _frame_to_records(frame), "imputations": changes, "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)}}
+
+
+def records_to_csv(records: list[dict[str, Any]]) -> str:
+    """Export validated records with predictable LF line endings for reproducible sharing."""
+    return _frame(records).to_csv(index=False, lineterminator="\n")
 
 
 def _json_value(value: Any) -> Any:

@@ -22,7 +22,15 @@ from urllib.parse import quote
 
 import httpx
 import uvicorn
-from analytics import AnalyticsError, missingness_report, profile_dataset, run_statistical_test, simple_imputation
+from analytics import (
+    AnalyticsError,
+    advanced_numeric_imputation,
+    missingness_report,
+    profile_dataset,
+    records_to_csv,
+    run_statistical_test,
+    simple_imputation,
+)
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -520,9 +528,12 @@ class StatisticalTestRequest(DatasetAnalysisRequest):
 
 
 class ImputationRequest(DatasetAnalysisRequest):
-    method: Literal["mean", "median", "mode", "constant"]
+    method: Literal["mean", "median", "mode", "constant", "knn", "iterative"]
     columns: list[str] = Field(default_factory=list, max_length=100)
     constant: Any | None = None
+    n_neighbors: int = Field(default=5, ge=1, le=100)
+    max_iter: int = Field(default=10, ge=1, le=100)
+    random_state: int = Field(default=2026, ge=0, le=2_147_483_647)
 
 
 class CodeGenRequest(BaseModel):
@@ -2869,7 +2880,17 @@ async def impute_analysis_data(
 ):
     enforce_rate_limit("analysis", f"impute:{current_user['id']}:{client_ip(request)}")
     try:
-        result = simple_imputation(body.records, body.method, body.columns or None, body.constant)
+        if body.method in {"knn", "iterative"}:
+            result = advanced_numeric_imputation(
+                body.records,
+                body.method,
+                body.columns or None,
+                body.n_neighbors,
+                body.max_iter,
+                body.random_state,
+            )
+        else:
+            result = simple_imputation(body.records, body.method, body.columns or None, body.constant)
     except AnalyticsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     record_audit_event(
@@ -2879,6 +2900,25 @@ async def impute_analysis_data(
         metadata={"rows": len(body.records), "method": body.method, "columns": len(result["imputations"])},
     )
     return result
+
+
+@app.post("/analysis/export.csv")
+async def export_analysis_csv(
+    body: DatasetAnalysisRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"export:{current_user['id']}:{client_ip(request)}")
+    try:
+        content = records_to_csv(body.records)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(current_user["id"], "analysis.csv_exported", "dataset", metadata={"rows": len(body.records)})
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="missingly-analysis.csv"'},
+    )
 
 
 @app.post("/analysis/tests")
