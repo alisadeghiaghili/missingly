@@ -629,6 +629,9 @@ class MixedLinearModelRequest(DatasetAnalysisRequest):
     outcome: str = Field(min_length=1, max_length=128)
     predictors: list[str] = Field(min_length=1, max_length=30)
     group_column: str = Field(min_length=1, max_length=128)
+    categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
+    category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
+    interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
 
 
 class WeightedOLSRequest(DatasetAnalysisRequest):
@@ -3083,7 +3086,16 @@ async def analyze_mixed_linear(
 ):
     enforce_rate_limit("analysis", f"mixed-linear:{current_user['id']}:{client_ip(request)}", 6, 60)
     try:
-        result = linear_mixed_effects(body.records, body.outcome, body.predictors, body.group_column, body.alpha)
+        result = linear_mixed_effects(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.group_column,
+            body.alpha,
+            body.categorical_predictors,
+            body.category_references,
+            body.interactions,
+        )
     except AnalyticsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     record_audit_event(

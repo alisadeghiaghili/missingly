@@ -152,6 +152,31 @@ def _categorical_cox_records():
     ]
 
 
+def _categorical_mixed_records():
+    generator = np.random.default_rng(113)
+    random_intercepts = generator.normal(0, 1.5, size=12)
+    records = []
+    for group in range(12):
+        treatment = group % 2
+        for observation in range(6):
+            records.append(
+                {
+                    "patient": f"patient-{group}",
+                    "x": float(observation),
+                    "arm": "treatment" if treatment else "control",
+                    "y": float(
+                        10
+                        + 1.2 * observation
+                        + 2 * treatment
+                        + 0.2 * observation * treatment
+                        + random_intercepts[group]
+                        + generator.normal(0, 0.12)
+                    ),
+                }
+            )
+    return records
+
+
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
     profile = profile_dataset(RECORDS)
     assert profile["dataset"]["rows"] == 6
@@ -439,6 +464,22 @@ def test_cox_regression_supports_categorical_predictors_and_interactions():
     assert diagnostics["group[treatment] × x"]["bonferroni_p_value"] is not None
 
 
+def test_mixed_effects_supports_categorical_fixed_effects_and_interactions():
+    mixed = linear_mixed_effects(
+        _categorical_mixed_records(),
+        "y",
+        ["x", "arm"],
+        "patient",
+        categorical_predictors=["arm"],
+        category_references={"arm": "control"},
+        interactions=[("x", "arm")],
+    )
+    terms = {item["term"]: item for item in mixed["coefficients"]}
+    assert mixed["categorical_encoding"][0]["reference"] == "control"
+    assert terms["arm[treatment] × x"]["estimate"] == pytest.approx(0.2, abs=0.06)
+    assert mixed["random_intercept_variance"] > 0
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -654,6 +695,21 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     assert categorical_cox.status_code == 200
     assert categorical_cox.json()["categorical_encoding"][0]["reference"] == "control"
     assert categorical_cox.json()["proportional_hazards_diagnostic"]["event_residuals"] > 0
+    categorical_mixed = client.post(
+        "/analysis/mixed-linear",
+        headers=headers,
+        json={
+            "records": _categorical_mixed_records(),
+            "outcome": "y",
+            "predictors": ["x", "arm"],
+            "group_column": "patient",
+            "categorical_predictors": ["arm"],
+            "category_references": {"arm": "control"},
+            "interactions": [["x", "arm"]],
+        },
+    )
+    assert categorical_mixed.status_code == 200
+    assert categorical_mixed.json()["categorical_encoding"][0]["reference"] == "control"
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

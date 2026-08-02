@@ -25,7 +25,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 ## Clustered and weighted continuous outcomes
 
-- `/analysis/mixed-linear` fits a Gaussian linear mixed-effects model with one random intercept grouping column and fixed numeric predictors, using REML. It reports fixed-effect z inference, variance components, and the intraclass correlation. Random slopes, crossed effects, generalized mixed models, and repeated-measures covariance structures are not yet supported.
+- `/analysis/mixed-linear` fits a Gaussian linear mixed-effects model with one random intercept grouping column and numeric or explicitly treatment-coded categorical fixed predictors, using REML. Selected pairwise fixed-effect interactions are supported. It reports fixed-effect z inference, variance components, and the intraclass correlation. Random slopes, crossed effects, generalized mixed models, and repeated-measures covariance structures are not yet supported.
 - `/analysis/weighted-ols` fits weighted least squares with strictly positive numeric analytic weights. It reports coefficient t inference and weighted R-squared. It is not a complex-survey estimator: strata, primary sampling units, finite-population corrections, calibration, and design-based standard errors are intentionally out of scope.
 
 ## Count outcomes
@@ -51,7 +51,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 - `/analysis/regression` fits OLS or binary logistic regression with numeric predictors, explicitly selected categorical predictors, explicit per-column reference levels, and selected pairwise interactions.
 - Categorical terms use treatment coding, never a hidden reference. Missing predictor values remain missing rather than being converted to a reference-level zero. The design is rejected if it is rank-deficient, exceeds 100 engineered features, or has insufficient complete rows.
-- The same bounded treatment-coding contract now also powers Poisson/NB2 count regression and Cox survival regression, including selected pairwise interactions. Categorical encoding for mixed, zero-inflated, hurdle, ordinal, and multinomial models will be added only with model-specific validation.
+- The same bounded treatment-coding contract now also powers Poisson/NB2 count regression, Cox survival regression, and random-intercept linear mixed-effects regression, including selected pairwise interactions. Categorical encoding for zero-inflated, hurdle, ordinal, and multinomial models will be added only with model-specific validation.
 
 ## Supported now
 

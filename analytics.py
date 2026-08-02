@@ -688,6 +688,9 @@ def linear_mixed_effects(
     predictors: list[str],
     group_column: str,
     alpha: float = 0.05,
+    categorical_predictors: list[str] | None = None,
+    category_references: dict[str, str] | None = None,
+    interactions: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Fit a Gaussian random-intercept model for clustered continuous outcomes."""
     if not 0 < alpha < 1:
@@ -700,21 +703,23 @@ def linear_mixed_effects(
     if group_column not in frame.columns:
         raise AnalyticsError(f"Column '{group_column}' was not found")
     numeric = _numeric_columns(frame)
-    for column in [outcome, *predictors]:
-        if column not in numeric:
-            raise AnalyticsError(f"Linear mixed-effects requires numeric column: '{column}'")
-    data = pd.DataFrame({"outcome": numeric[outcome], "group": frame[group_column].astype("string")})
-    for index, column in enumerate(predictors):
-        data[f"predictor_{index}"] = numeric[column]
+    if outcome not in numeric:
+        raise AnalyticsError(f"Linear mixed-effects requires numeric column: '{outcome}'")
+    design, encoding, normalized_interactions = _treatment_coded_design(
+        frame, predictors, categorical_predictors, category_references, interactions
+    )
+    data = pd.concat(
+        [pd.DataFrame({"outcome": numeric[outcome], "group": frame[group_column].astype("string")}), design], axis=1
+    )
     data = data.dropna()
     group_sizes = data["group"].value_counts()
-    if len(data) <= len(predictors) + 2 or len(group_sizes) < 2:
+    if len(data) <= design.shape[1] + 2 or len(group_sizes) < 2:
         raise AnalyticsError("Linear mixed-effects requires more complete rows and at least two groups")
     if int(group_sizes.min()) < 2:
         raise AnalyticsError("Each observed group must contain at least two complete rows")
     exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
-    for index, column in enumerate(predictors):
-        exog[column] = data[f"predictor_{index}"].astype(float)
+    for term in design.columns:
+        exog[term] = data[term].astype(float)
     if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
         raise AnalyticsError("Linear mixed-effects predictors are perfectly collinear")
     try:
@@ -756,6 +761,9 @@ def linear_mixed_effects(
         "outcome": outcome,
         "predictors": predictors,
         "group_column": group_column,
+        "categorical_predictors": categorical_predictors or [],
+        "category_references": category_references or {},
+        "interactions": normalized_interactions,
         "alpha": alpha,
     }
     return {
@@ -764,6 +772,8 @@ def linear_mixed_effects(
         "groups": int(len(group_sizes)),
         "minimum_group_size": int(group_sizes.min()),
         "estimation": "REML",
+        "categorical_encoding": encoding,
+        "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
         "coefficients": coefficients,
         "random_intercept_variance": _round(random_variance),
         "residual_variance": _round(residual_variance),
