@@ -37,6 +37,10 @@ def build_descriptive_report(records: list[dict[str, Any]], title: str) -> str:
         for column in profile["columns"]
     ]
     correlation_rows = [[item["left"], item["right"], item["n"], item["pearson_r"], item["p_value"]] for item in profile["correlations"]]
+    missingness_rows = [
+        [", ".join(item["missing_columns"]) if item["missing_columns"] else "Complete row", item["rows"], item["row_rate"]]
+        for item in missingness["patterns"]
+    ]
     warnings = "".join(f"<li>{_cell(warning)}</li>" for warning in missingness["warnings"])
     fingerprint = profile["reproducibility"]["input_sha256"]
     safe_title = html.escape(title.strip() or "Missingly statistical report")
@@ -51,6 +55,7 @@ th,td{{border:1px solid #c8d4df;padding:8px;text-align:left}}th{{background:#e9f
 <h2>Dataset overview</h2>{_table(["Rows", "Columns", "Complete rows", "Duplicate rows", "Missing cells", "Missing-cell rate"], [[dataset['rows'], dataset['columns'], dataset['complete_rows'], dataset['duplicate_rows'], dataset['missing_cells'], dataset['missing_cell_rate']]])}
 <h2>Variable profile</h2>{_table(["Column", "Kind", "Observed", "Missing", "Missing rate", "Mean", "Median", "SD", "Distinct"], profile_rows)}
 <h2>Missing-data notes</h2><div class="note"><ul>{warnings}</ul></div>
+<h2>Missing-data patterns</h2>{_table(["Missing columns", "Rows", "Row rate"], missingness_rows) if missingness_rows else '<p>No missing-data patterns were observed.</p>'}
 <h2>Pearson correlations</h2>{_table(["Left", "Right", "n", "r", "p-value"], correlation_rows) if correlation_rows else '<p>No eligible numeric correlation pairs.</p>'}
-<p class="meta">This descriptive report does not establish causality or the missing-data mechanism. Review assumptions and study design before inference.</p>
+<h2>Interpretation boundary</h2><div class="note">This report is descriptive. It does not establish causality, the missing-data mechanism, model fit, proportional hazards, or a complex-survey design. Review assumptions, measurement quality, and study design before inference.</div>
 </body></html>"""

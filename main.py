@@ -25,6 +25,7 @@ import uvicorn
 from analytics import (
     AnalyticsError,
     advanced_numeric_imputation,
+    cox_proportional_hazards,
     kaplan_meier_analysis,
     linear_mixed_effects,
     missingness_report,
@@ -554,6 +555,15 @@ class SurvivalRequest(DatasetAnalysisRequest):
     time_column: str = Field(min_length=1, max_length=128)
     event_column: str = Field(min_length=1, max_length=128)
     group_column: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class CoxProportionalHazardsRequest(DatasetAnalysisRequest):
+    time_column: str = Field(min_length=1, max_length=128)
+    event_column: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    strata_column: str | None = Field(default=None, min_length=1, max_length=128)
+    cluster_column: str | None = Field(default=None, min_length=1, max_length=128)
+    ties: Literal["breslow", "efron"] = "efron"
 
 
 class MixedLinearModelRequest(DatasetAnalysisRequest):
@@ -3022,6 +3032,35 @@ async def analyze_mixed_linear(
         "analysis.linear_mixed_effects",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors)},
+    )
+    return result
+
+
+@app.post("/analysis/cox")
+async def analyze_cox_proportional_hazards(
+    body: CoxProportionalHazardsRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"cox:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = cox_proportional_hazards(
+            body.records,
+            body.time_column,
+            body.event_column,
+            body.predictors,
+            body.strata_column,
+            body.cluster_column,
+            body.ties,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.cox_proportional_hazards",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors), "stratified": bool(body.strata_column)},
     )
     return result
 

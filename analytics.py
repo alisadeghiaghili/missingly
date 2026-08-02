@@ -19,7 +19,7 @@ from scipy import stats
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer, KNNImputer
 import statsmodels.api as sm
-from statsmodels.tools.sm_exceptions import PerfectSeparationError
+from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparationError
 
 
 MAX_ROWS = 10_000
@@ -709,6 +709,137 @@ def linear_mixed_effects(
         "random_intercept_variance": _round(random_variance),
         "residual_variance": _round(residual_variance),
         "intraclass_correlation": _round(random_variance / (random_variance + residual_variance)),
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
+def cox_proportional_hazards(
+    records: list[dict[str, Any]],
+    time_column: str,
+    event_column: str,
+    predictors: list[str],
+    strata_column: str | None = None,
+    cluster_column: str | None = None,
+    ties: str = "efron",
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit a Cox proportional-hazards model with optional strata and clustered SEs."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if ties not in {"breslow", "efron"}:
+        raise AnalyticsError("ties must be either 'breslow' or 'efron'")
+    if not predictors or len(set(predictors)) != len(predictors) or time_column in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain time_column")
+    reserved = {time_column, event_column, *predictors}
+    if strata_column and strata_column in reserved:
+        raise AnalyticsError("strata_column must differ from time, event, and predictor columns")
+    if cluster_column and (cluster_column in reserved or cluster_column == strata_column):
+        raise AnalyticsError("cluster_column must differ from time, event, strata, and predictor columns")
+    if strata_column and cluster_column:
+        raise AnalyticsError("Cox regression currently supports either strata or clustered standard errors, not both together")
+    frame = _frame(records)
+    if event_column not in frame.columns:
+        raise AnalyticsError(f"Column '{event_column}' was not found")
+    numeric = _numeric_columns(frame)
+    for column in [time_column, *predictors]:
+        if column not in numeric:
+            raise AnalyticsError(f"Cox regression requires numeric column: '{column}'")
+    if strata_column and strata_column not in frame.columns:
+        raise AnalyticsError(f"Column '{strata_column}' was not found")
+    if cluster_column and cluster_column not in frame.columns:
+        raise AnalyticsError(f"Column '{cluster_column}' was not found")
+    data = pd.DataFrame({"time": numeric[time_column], "event": frame[event_column].astype("string")})
+    for index, column in enumerate(predictors):
+        data[f"predictor_{index}"] = numeric[column]
+    if strata_column:
+        data["strata"] = frame[strata_column].astype("string")
+    if cluster_column:
+        data["cluster"] = frame[cluster_column].astype("string")
+    data = data.dropna()
+    if data.empty or (data["time"] <= 0).any():
+        raise AnalyticsError("Cox regression requires strictly positive complete follow-up times")
+    event_labels = sorted(data["event"].unique().tolist())
+    if len(event_labels) != 2:
+        raise AnalyticsError("event_column must contain exactly two observed categories")
+    data["event_binary"] = (data["event"] == event_labels[1]).astype(int)
+    event_count = int(data["event_binary"].sum())
+    if event_count <= len(predictors):
+        raise AnalyticsError("Cox regression requires more observed events than fitted predictors")
+    if strata_column:
+        strata_events = data.groupby("strata", observed=True)["event_binary"].sum()
+        if (strata_events == 0).any():
+            raise AnalyticsError("Each observed stratum must contain at least one event")
+    if cluster_column and data["cluster"].nunique() < 2:
+        raise AnalyticsError("Robust clustered standard errors require at least two clusters")
+    exog = pd.DataFrame(index=data.index)
+    for index, column in enumerate(predictors):
+        values = data[f"predictor_{index}"].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Cox predictor '{column}' must not be constant")
+        exog[column] = values
+    if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("Cox regression predictors are perfectly collinear")
+    model_kwargs: dict[str, Any] = {"status": data["event_binary"].to_numpy(), "ties": ties}
+    if strata_column:
+        model_kwargs["strata"] = data["strata"].to_numpy()
+    groups = data["cluster"].to_numpy() if cluster_column else None
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            fitted = sm.duration.PHReg(data["time"].to_numpy(), exog.to_numpy(), **model_kwargs).fit(groups=groups)
+        if any(issubclass(item.category, ConvergenceWarning) for item in captured):
+            raise AnalyticsError("Cox regression did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Cox regression could not fit this dataset") from exc
+    if not np.isfinite(fitted.params).all() or not np.isfinite(fitted.bse).all():
+        raise AnalyticsError("Cox regression produced non-finite estimates")
+    try:
+        null_model = sm.duration.PHReg(data["time"].to_numpy(), np.empty((len(data), 0)), **model_kwargs).fit()
+        likelihood_ratio = max(0.0, 2 * (float(fitted.llf) - float(null_model.llf)))
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Cox regression could not calculate the null-model comparison") from exc
+    confidence_intervals = fitted.conf_int(alpha=alpha)
+    coefficients = []
+    for index, column in enumerate(predictors):
+        lower, upper = confidence_intervals[index]
+        coefficients.append(
+            {
+                "term": column,
+                "log_hazard_ratio": _round(fitted.params[index]),
+                "std_error": _round(fitted.bse[index]),
+                "z_value": _round(fitted.params[index] / fitted.bse[index]),
+                "p_value": _round(fitted.pvalues[index]),
+                "hazard_ratio": _exp_round(fitted.params[index]),
+                "hazard_ratio_ci_lower": _exp_round(lower),
+                "hazard_ratio_ci_upper": _exp_round(upper),
+            }
+        )
+    settings = {
+        "analysis": "cox_proportional_hazards",
+        "time_column": time_column,
+        "event_column": event_column,
+        "predictors": predictors,
+        "strata_column": strata_column,
+        "cluster_column": cluster_column,
+        "ties": ties,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Cox proportional hazards regression",
+        "n": int(len(data)),
+        "events": event_count,
+        "outcome": {"censor_or_reference": event_labels[0], "event": event_labels[1]},
+        "ties": ties,
+        "strata": int(data["strata"].nunique()) if strata_column else None,
+        "variance_estimator": "cluster-robust" if cluster_column else "model-based",
+        "partial_log_likelihood": _round(fitted.llf),
+        "likelihood_ratio_chi_square": _round(likelihood_ratio),
+        "likelihood_ratio_degrees_freedom": len(predictors),
+        "likelihood_ratio_p_value": _round(stats.chi2.sf(likelihood_ratio, len(predictors))),
+        "coefficients": coefficients,
+        "warning": "This model does not test the proportional-hazards assumption; assess it with study-specific diagnostics before interpretation.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
 

@@ -18,7 +18,8 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 ## Survival and reporting
 
 - Kaplan–Meier accepts non-negative numeric time and a two-category event column. It reports at-risk counts, events, Greenwood log-log confidence intervals, and a log-rank test only for exactly two groups.
-- The HTML report is self-contained and escapes all user-provided titles and values. It includes dataset profile, missing-data notes, correlations, and the reproducibility fingerprint; it is a descriptive report, not a claim of causal or mechanism-specific inference.
+- `/analysis/cox` fits a Cox proportional-hazards model for strictly positive follow-up time, a two-category event column, and numeric predictors. It returns log hazard ratios, hazard ratios with confidence intervals, a partial-likelihood ratio test, Efron or Breslow tie handling, optional strata, or optional cluster-robust standard errors (one at a time). It does not test the proportional-hazards assumption or support time-varying coefficients.
+- The HTML report is self-contained and escapes all user-provided titles and values. It includes dataset profile, missing-data notes and patterns, correlations, interpretation boundaries, and the reproducibility fingerprint; it is a descriptive report, not a claim of causal or mechanism-specific inference.
 - Random-forest imputation and mechanism-specific missing-data modeling are deliberately not presented as supported until they have validation benchmarks.
 
 ## Clustered and weighted continuous outcomes
@@ -33,6 +34,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Statistical tests: Pearson correlation, two-sided Welch two-sample t-test, Pearson chi-square independence test, and OLS regression with coefficient confidence intervals.
 - Models: binary logistic regression (maximum likelihood) with event/reference coding, log-odds, odds ratios, confidence intervals, AIC/BIC, McFadden pseudo-R², and convergence/separation rejection.
 - Models: Gaussian random-intercept linear mixed-effects models and analytic-weighted OLS for continuous outcomes.
+- Models: Cox proportional-hazards regression with Efron/Breslow ties, optional strata, and optional cluster-robust standard errors.
 - Reproducibility: each result has the engine version and SHA-256 fingerprint of its input plus analysis settings.
 
 ## Statistical guardrails
@@ -40,6 +42,6 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Numeric methods reject columns with mixed observed numeric/non-numeric values rather than silently coercing them.
 - Pearson requires at least three non-constant paired values; Welch requires two observations per group; OLS rejects perfect collinearity and insufficient degrees of freedom.
 - Chi-square reports a warning when an expected cell count is below five.
-- This phase does not claim support for Little's MCAR test, full complex-survey estimation, random-slope or generalized mixed models, Cox regression, or causal inference. Those require separate validated implementations.
+- This phase does not claim support for Little's MCAR test, full complex-survey estimation, random-slope or generalized mixed models, proportional-hazards diagnostics, time-varying Cox effects, or causal inference. Those require separate validated implementations.
 
 The contracts in `tests/test_analytics.py` are the initial numerical benchmark suite. Any new method must add known-result tests and document assumptions before it is exposed in the API.

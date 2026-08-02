@@ -2,11 +2,12 @@ import importlib
 import io
 import sys
 
+import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
+from analytics import advanced_numeric_imputation, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -19,6 +20,23 @@ RECORDS = [
     {"group": "treatment", "score": 22, "age": 31, "outcome": "yes"},
     {"group": "treatment", "score": None, "age": 32, "outcome": "yes"},
 ]
+
+
+def _cox_records():
+    generator = np.random.default_rng(19)
+    predictor = generator.normal(size=80)
+    event_time = generator.exponential(scale=np.exp(-0.65 * predictor))
+    censor_time = generator.exponential(scale=1.4, size=80)
+    return [
+        {
+            "time": float(min(event, censor)),
+            "event": "event" if event <= censor else "censor",
+            "x": float(value),
+            "site": f"site-{index % 4}",
+            "cluster": f"cluster-{index % 10}",
+        }
+        for index, (value, event, censor) in enumerate(zip(predictor, event_time, censor_time))
+    ]
 
 
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
@@ -134,6 +152,7 @@ def test_kaplan_meier_log_rank_and_escaped_html_report():
     assert "<img src=x" not in report
     assert "&lt;img src=x" in report
     assert "Input SHA-256" in report
+    assert "Missing-data patterns" in report
 
 
 def test_random_intercept_mixed_model_and_analytic_weighted_ols_contracts():
@@ -164,6 +183,23 @@ def test_random_intercept_mixed_model_and_analytic_weighted_ols_contracts():
     assert weighted["sum_weights"] == sum(row["weight"] for row in weighted_records)
     assert weighted_slope["estimate"] == pytest.approx(2.5, abs=0.15)
     assert "not a complex-survey estimator" in weighted["warning"]
+
+
+def test_cox_proportional_hazards_supports_strata_and_clustered_standard_errors():
+    records = _cox_records()
+    stratified = cox_proportional_hazards(records, "time", "event", ["x"], strata_column="site")
+    coefficient = stratified["coefficients"][0]
+    assert stratified["method"] == "Cox proportional hazards regression"
+    assert stratified["events"] == 48
+    assert stratified["strata"] == 4
+    assert stratified["variance_estimator"] == "model-based"
+    assert coefficient["hazard_ratio"] > 1
+    assert stratified["likelihood_ratio_p_value"] < 0.05
+
+    robust = cox_proportional_hazards(records, "time", "event", ["x"], cluster_column="cluster", ties="breslow")
+    assert robust["ties"] == "breslow"
+    assert robust["variance_estimator"] == "cluster-robust"
+    assert robust["coefficients"][0]["std_error"] > 0
 
 
 @pytest.fixture
@@ -279,6 +315,13 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
         },
     )
     assert weighted.status_code == 200
+    cox = client.post(
+        "/analysis/cox",
+        headers=headers,
+        json={"records": _cox_records(), "time_column": "time", "event_column": "event", "predictors": ["x"], "strata_column": "site"},
+    )
+    assert cox.status_code == 200
+    assert cox.json()["method"] == "Cox proportional hazards regression"
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")
