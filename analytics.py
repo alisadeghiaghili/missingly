@@ -970,6 +970,153 @@ def count_regression(
     }
 
 
+def zero_inflated_count_regression(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    distribution: str = "poisson",
+    exposure_column: str | None = None,
+    inflation_predictors: list[str] | None = None,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit ZIP or ZINB2 regression with a separately modeled structural-zero process."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if distribution not in {"poisson", "negative_binomial"}:
+        raise AnalyticsError("distribution must be either 'poisson' or 'negative_binomial'")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    inflation = inflation_predictors or []
+    if len(set(inflation)) != len(inflation) or outcome in inflation:
+        raise AnalyticsError("inflation_predictors must be unique and must not contain outcome")
+    if exposure_column and exposure_column in {outcome, *predictors, *inflation}:
+        raise AnalyticsError("exposure_column must differ from outcome and predictor columns")
+    frame = _frame(records)
+    numeric = _numeric_columns(frame)
+    required = [outcome, *predictors, *inflation, *([exposure_column] if exposure_column else [])]
+    for column in required:
+        if column not in numeric:
+            raise AnalyticsError(f"Zero-inflated count regression requires numeric column: '{column}'")
+    observed_outcome = numeric[outcome].dropna()
+    if (observed_outcome < 0).any() or not np.isclose(observed_outcome, np.round(observed_outcome)).all():
+        raise AnalyticsError("Zero-inflated count regression outcome must contain non-negative integer counts")
+    data = pd.DataFrame({"outcome": numeric[outcome]})
+    for column in set([*predictors, *inflation]):
+        data[column] = numeric[column]
+    if exposure_column:
+        data["exposure"] = numeric[exposure_column]
+    data = data.dropna()
+    if len(data) <= len(predictors) + len(inflation) + 2 or data["outcome"].sum() <= 0:
+        raise AnalyticsError("Zero-inflated count regression requires enough complete rows and at least one observed count")
+    if exposure_column and (data["exposure"] <= 0).any():
+        raise AnalyticsError("exposure_column must contain strictly positive values")
+    count_exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for column in predictors:
+        values = data[column].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Count predictor '{column}' must not be constant")
+        count_exog[column] = values
+    inflation_exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for column in inflation:
+        values = data[column].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Inflation predictor '{column}' must not be constant")
+        inflation_exog[column] = values
+    if np.linalg.matrix_rank(count_exog.to_numpy()) != count_exog.shape[1] or np.linalg.matrix_rank(inflation_exog.to_numpy()) != inflation_exog.shape[1]:
+        raise AnalyticsError("Zero-inflated count regression predictors are perfectly collinear")
+    offset = np.log(data["exposure"].to_numpy()) if exposure_column else None
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            model_class = sm.ZeroInflatedPoisson if distribution == "poisson" else sm.ZeroInflatedNegativeBinomialP
+            fitted = model_class(
+                data["outcome"].to_numpy(),
+                count_exog,
+                exog_infl=inflation_exog,
+                offset=offset,
+                inflation="logit",
+            ).fit(disp=False, maxiter=100)
+        if not fitted.mle_retvals.get("converged", False) or any(
+            issubclass(item.category, ConvergenceWarning) for item in captured
+        ):
+            raise AnalyticsError("Zero-inflated count regression did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Zero-inflated count regression could not fit this dataset") from exc
+    parameters = fitted.params
+    standard_errors = fitted.bse
+    p_values = fitted.pvalues
+    if not np.isfinite(parameters.to_numpy()).all() or not np.isfinite(standard_errors.to_numpy()).all():
+        raise AnalyticsError("Zero-inflated count regression produced non-finite estimates")
+    critical = float(stats.norm.ppf(1 - alpha / 2))
+
+    def coefficient(term: str, prefix: str = "") -> dict[str, Any]:
+        name = f"{prefix}{term}"
+        estimate = float(parameters[name])
+        standard_error = float(standard_errors[name])
+        return {
+            "term": term,
+            "estimate": _round(estimate),
+            "std_error": _round(standard_error),
+            "z_value": _round(estimate / standard_error),
+            "p_value": _round(p_values[name]),
+            "ci_lower": _round(estimate - critical * standard_error),
+            "ci_upper": _round(estimate + critical * standard_error),
+        }
+
+    count_coefficients = []
+    for term in count_exog.columns:
+        item = coefficient(term)
+        item.update(
+            {
+                "rate_ratio": _exp_round(item["estimate"]),
+                "rate_ratio_ci_lower": _exp_round(item["ci_lower"]),
+                "rate_ratio_ci_upper": _exp_round(item["ci_upper"]),
+            }
+        )
+        count_coefficients.append(item)
+    inflation_coefficients = []
+    for term in inflation_exog.columns:
+        item = coefficient(term, "inflate_")
+        item.update(
+            {
+                "structural_zero_odds_ratio": _exp_round(item["estimate"]),
+                "structural_zero_odds_ratio_ci_lower": _exp_round(item["ci_lower"]),
+                "structural_zero_odds_ratio_ci_upper": _exp_round(item["ci_upper"]),
+            }
+        )
+        inflation_coefficients.append(item)
+    dispersion_alpha = _round(parameters["alpha"]) if distribution == "negative_binomial" else None
+    if dispersion_alpha is not None and dispersion_alpha <= 0:
+        raise AnalyticsError("Zero-inflated negative-binomial dispersion estimate was invalid")
+    settings = {
+        "analysis": "zero_inflated_count_regression",
+        "outcome": outcome,
+        "predictors": predictors,
+        "distribution": distribution,
+        "exposure_column": exposure_column,
+        "inflation_predictors": inflation,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Zero-inflated Poisson regression" if distribution == "poisson" else "Zero-inflated negative-binomial (ZINB2) regression",
+        "n": int(len(data)),
+        "total_count": int(data["outcome"].sum()),
+        "zero_count": int((data["outcome"] == 0).sum()),
+        "zero_rate": _round(float((data["outcome"] == 0).mean())),
+        "exposure_column": exposure_column,
+        "count_coefficients": count_coefficients,
+        "inflation_coefficients": inflation_coefficients,
+        "dispersion_alpha": dispersion_alpha,
+        "log_likelihood": _round(fitted.llf),
+        "aic": _round(fitted.aic),
+        "bic": _round(fitted.bic),
+        "warning": "The inflation component models structural-zero odds. Assess fit, sparse covariate patterns, dependence, and study design before treating observed zeros as structural.",
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
 def ordinal_logistic_regression(
     records: list[dict[str, Any]],
     outcome: str,

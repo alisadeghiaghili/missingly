@@ -82,6 +82,8 @@
             <label for="countDistribution">مدل شمارشی</label><select id="countDistribution"><option value="poisson">Poisson</option><option value="negative_binomial">Negative Binomial (NB2)</option></select>
             <label for="countExposure">ستون exposure برای نرخ (اختیاری)</label><input id="countExposure" placeholder="person_time">
             <button id="countRegression" class="secondary">Count regression</button>
+            <label for="inflationPredictors">predictorهای صفر ساختاری (اختیاری، با کاما)</label><input id="inflationPredictors" placeholder="access_barrier">
+            <button id="zeroInflatedCount" class="secondary">Zero-inflated count (ZIP/ZINB)</button>
             <label for="ordinalOrder">ترتیب طبقات ordinal (با کاما)</label><input id="ordinalOrder" placeholder="low,medium,high">
             <button id="ordinalLogistic" class="secondary">Ordinal logistic (proportional odds)</button>
             <label for="multinomialReference">طبقهٔ مرجع multinomial</label><input id="multinomialReference" placeholder="control">
@@ -92,7 +94,7 @@
             <button id="weightedOls" class="secondary">Weighted OLS</button>
             <label for="reportTitle">عنوان گزارش HTML</label><input id="reportTitle" value="Missingly statistical report">
             <button id="reportHtml" class="secondary">دانلود گزارش HTML</button>
-            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects، weighted OLS، Cox، count، ordinal و multinomial predictors عددی‌اند. برای ordinal ترتیب طبقات صریح است؛ برای multinomial یک طبقهٔ مرجع صریح انتخاب کنید.</p>
+            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects، weighted OLS، Cox، count، ordinal و multinomial predictors عددی‌اند. ZIP/ZINB فقط برای count صحیح نامنفی و صفرهای ساختاری محتمل است؛ پیش از تفسیر، fit و منطق مطالعه را بررسی کنید.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
     </div>
@@ -130,6 +132,7 @@
     const coxCluster = document.getElementById('coxCluster');
     const countDistribution = document.getElementById('countDistribution');
     const countExposure = document.getElementById('countExposure');
+    const inflationPredictors = document.getElementById('inflationPredictors');
     const ordinalOrder = document.getElementById('ordinalOrder');
     const multinomialReference = document.getElementById('multinomialReference');
     const mixedGroup = document.getElementById('mixedGroup');
@@ -231,6 +234,15 @@
             call('/analysis/count-regression', {
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 distribution: countDistribution.value, exposure_column: countExposure.value.trim() || null
+            });
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('zeroInflatedCount').addEventListener('click', () => {
+        try {
+            call('/analysis/zero-inflated-count', {
+                records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                distribution: countDistribution.value, exposure_column: countExposure.value.trim() || null,
+                inflation_predictors: inflationPredictors.value.split(',').map(value => value.trim()).filter(Boolean)
             });
         } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });

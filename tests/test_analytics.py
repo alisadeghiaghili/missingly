@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols
+from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -87,6 +87,21 @@ def _categorical_regression_records():
             }
         )
     return records
+
+
+def _zero_inflated_records():
+    generator = np.random.default_rng(72)
+    predictor = generator.normal(size=500)
+    zero_driver = generator.normal(size=500)
+    exposure = generator.uniform(0.7, 2.0, size=500)
+    structural_zero = generator.random(500) < (1 / (1 + np.exp(-(-1.5 + 0.4 * zero_driver))))
+    mean = exposure * np.exp(0.3 + 0.35 * predictor)
+    counts = generator.negative_binomial(1.5, 1.5 / (1.5 + mean))
+    counts[structural_zero] = 0
+    return [
+        {"count": int(count), "x": float(value), "zero_driver": float(driver), "exposure": float(duration)}
+        for count, value, driver, duration in zip(counts, predictor, zero_driver, exposure)
+    ]
 
 
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
@@ -311,6 +326,21 @@ def test_categorical_regression_uses_explicit_reference_and_pairwise_interaction
     assert group_effect["odds_ratio"] > 1
 
 
+def test_zero_inflated_poisson_and_zinb_separate_count_and_structural_zero_processes():
+    records = _zero_inflated_records()
+    zip_result = zero_inflated_count_regression(records, "count", ["x"], "poisson", "exposure", ["zero_driver"])
+    zip_count_slope = next(item for item in zip_result["count_coefficients"] if item["term"] == "x")
+    zip_inflation_slope = next(item for item in zip_result["inflation_coefficients"] if item["term"] == "zero_driver")
+    assert zip_result["method"] == "Zero-inflated Poisson regression"
+    assert zip_result["zero_rate"] > 0.3
+    assert zip_count_slope["rate_ratio"] > 1
+    assert zip_inflation_slope["structural_zero_odds_ratio"] > 1
+
+    zinb_result = zero_inflated_count_regression(records, "count", ["x"], "negative_binomial", "exposure", ["zero_driver"])
+    assert zinb_result["method"].startswith("Zero-inflated negative-binomial")
+    assert zinb_result["dispersion_alpha"] > 0
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -467,6 +497,20 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert categorical_regression.status_code == 200
     assert categorical_regression.json()["categorical_encoding"][0]["reference"] == "control"
+    zero_inflated = client.post(
+        "/analysis/zero-inflated-count",
+        headers=headers,
+        json={
+            "records": _zero_inflated_records(),
+            "outcome": "count",
+            "predictors": ["x"],
+            "distribution": "negative_binomial",
+            "exposure_column": "exposure",
+            "inflation_predictors": ["zero_driver"],
+        },
+    )
+    assert zero_inflated.status_code == 200
+    assert zero_inflated.json()["dispersion_alpha"] > 0
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

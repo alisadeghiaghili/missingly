@@ -39,6 +39,7 @@ from analytics import (
     run_statistical_test,
     simple_imputation,
     weighted_ols,
+    zero_inflated_count_regression,
 )
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
@@ -584,6 +585,10 @@ class CountRegressionRequest(DatasetAnalysisRequest):
     predictors: list[str] = Field(min_length=1, max_length=30)
     distribution: Literal["poisson", "negative_binomial"] = "poisson"
     exposure_column: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class ZeroInflatedCountRegressionRequest(CountRegressionRequest):
+    inflation_predictors: list[str] = Field(default_factory=list, max_length=30)
 
 
 class OrdinalLogisticRequest(DatasetAnalysisRequest):
@@ -3118,6 +3123,34 @@ async def analyze_count_regression(
     record_audit_event(
         current_user["id"],
         "analysis.count_regression",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors), "distribution": body.distribution},
+    )
+    return result
+
+
+@app.post("/analysis/zero-inflated-count")
+async def analyze_zero_inflated_count_regression(
+    body: ZeroInflatedCountRegressionRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"zero-inflated-count:{current_user['id']}:{client_ip(request)}", 4, 60)
+    try:
+        result = zero_inflated_count_regression(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.distribution,
+            body.exposure_column,
+            body.inflation_predictors,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.zero_inflated_count_regression",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors), "distribution": body.distribution},
     )
