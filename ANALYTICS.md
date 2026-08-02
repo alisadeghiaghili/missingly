@@ -4,6 +4,12 @@ Missingly Analytics is an authenticated, in-memory analysis service: raw input r
 
 Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and the configured `MAX_ANALYSIS_BODY_BYTES` (5 MB by default).
 
+## Ingestion and preprocessing
+
+- The authenticated import endpoint accepts `.csv`, `.json` (array of records), `.xlsx`, `.sav` (SPSS), `.dta` (Stata), `.xpt`, and `.sas7bdat` (SAS). The upload has a separate `MAX_ANALYSIS_UPLOAD_BYTES` cap and is parsed in memory.
+- Simple imputation supports `mean`, `median`, `mode`, or an explicit `constant`; each response reports the exact filled columns, values, and cell counts. It does not silently choose an algorithm.
+- Multiple imputation, KNN, random forest imputation, and mechanism-specific modeling are deliberately not presented as supported until they have validation benchmarks.
+
 ## Supported now
 
 - Dataset profile: schema, missingness, numeric summaries, categorical frequencies, duplicate rows, and Pearson correlations.

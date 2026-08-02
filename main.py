@@ -22,12 +22,13 @@ from urllib.parse import quote
 
 import httpx
 import uvicorn
-from analytics import AnalyticsError, missingness_report, profile_dataset, run_statistical_test
+from analytics import AnalyticsError, missingness_report, profile_dataset, run_statistical_test, simple_imputation
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
+from ingestion import IngestionError, import_tabular_bytes
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError, SQLAlchemyError
@@ -342,6 +343,7 @@ AVALAI_MAX_OUTPUT_TOKENS = int(os.getenv("AVALAI_MAX_OUTPUT_TOKENS", str(GAPGPT_
 MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "12000"))
 MAX_CURRENT_CODE_CHARS = int(os.getenv("MAX_CURRENT_CODE_CHARS", "250000"))
 MAX_ANALYSIS_BODY_BYTES = int(os.getenv("MAX_ANALYSIS_BODY_BYTES", "5000000"))
+MAX_ANALYSIS_UPLOAD_BYTES = int(os.getenv("MAX_ANALYSIS_UPLOAD_BYTES", str(MAX_ANALYSIS_BODY_BYTES)))
 DEFAULT_SEARCH_START = "<<<<<<< SEARCH"
 DEFAULT_DIVIDER = "======="
 DEFAULT_REPLACE_END = ">>>>>>> REPLACE"
@@ -515,6 +517,12 @@ class StatisticalTestRequest(DatasetAnalysisRequest):
     outcome: str = Field(min_length=1, max_length=128)
     group: str | None = Field(default=None, min_length=1, max_length=128)
     predictors: list[str] = Field(default_factory=list, max_length=30)
+
+
+class ImputationRequest(DatasetAnalysisRequest):
+    method: Literal["mean", "median", "mode", "constant"]
+    columns: list[str] = Field(default_factory=list, max_length=100)
+    constant: Any | None = None
 
 
 class CodeGenRequest(BaseModel):
@@ -2811,6 +2819,33 @@ async def analyze_profile(
     return report
 
 
+@app.post("/analysis/import")
+async def import_analysis_file(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"import:{current_user['id']}:{client_ip(request)}", 6, 60)
+    if not file.filename:
+        raise HTTPException(status_code=422, detail="A filename is required")
+    try:
+        content = await file.read(MAX_ANALYSIS_UPLOAD_BYTES + 1)
+        if len(content) > MAX_ANALYSIS_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Analysis upload is too large")
+        result = import_tabular_bytes(file.filename, content)
+    except IngestionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        await file.close()
+    record_audit_event(
+        current_user["id"],
+        "analysis.file_imported",
+        "dataset",
+        metadata={"rows": result["rows"], "format": result["format"]},
+    )
+    return result
+
+
 @app.post("/analysis/missingness")
 async def analyze_missingness(
     body: DatasetAnalysisRequest,
@@ -2824,6 +2859,26 @@ async def analyze_missingness(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     record_audit_event(current_user["id"], "analysis.missingness_profiled", "dataset", metadata={"rows": len(body.records)})
     return report
+
+
+@app.post("/analysis/impute")
+async def impute_analysis_data(
+    body: ImputationRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"impute:{current_user['id']}:{client_ip(request)}")
+    try:
+        result = simple_imputation(body.records, body.method, body.columns or None, body.constant)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.imputed",
+        "dataset",
+        metadata={"rows": len(body.records), "method": body.method, "columns": len(result["imputations"])},
+    )
+    return result
 
 
 @app.post("/analysis/tests")

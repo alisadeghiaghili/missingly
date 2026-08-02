@@ -35,6 +35,9 @@
   {"group":"treatment","score":20,"age":36,"outcome":"yes"},
   {"group":"treatment","score":null,"age":38,"outcome":"yes"}
 ]</textarea>
+            <label for="file">یا ورود فایل (CSV, Excel, SPSS, Stata, SAS, JSON)</label>
+            <input id="file" type="file" accept=".csv,.json,.xlsx,.sav,.dta,.xpt,.sas7bdat">
+            <button id="importFile" class="secondary">ورود فایل</button>
             <button id="profile">پروفایل داده</button>
             <button id="missingness" class="secondary">گزارش دادهٔ گمشده</button>
         </section>
@@ -50,6 +53,11 @@
             <label for="group">group / ستون دوم</label><input id="group" value="group">
             <label for="predictors">predictors برای OLS (با کاما جدا کنید)</label><input id="predictors" value="age">
             <button id="runTest">اجرای آزمون</button>
+            <label for="imputation">جایگزینی دادهٔ گمشده</label>
+            <select id="imputation"><option value="mean">mean</option><option value="median">median</option><option value="mode">mode</option><option value="constant">constant</option></select>
+            <label for="imputeColumns">ستون‌ها (اختیاری، با کاما جدا کنید)</label><input id="imputeColumns" placeholder="خالی = همه ستون‌ها">
+            <label for="constant">مقدار ثابت (فقط constant)</label><input id="constant" placeholder="مثلاً 0 یا unknown">
+            <button id="impute" class="secondary">اجرای imputation</button>
             <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
@@ -67,6 +75,10 @@
     const outcome = document.getElementById('outcome');
     const group = document.getElementById('group');
     const predictors = document.getElementById('predictors');
+    const file = document.getElementById('file');
+    const imputation = document.getElementById('imputation');
+    const imputeColumns = document.getElementById('imputeColumns');
+    const constant = document.getElementById('constant');
     function records() {
         const parsed = JSON.parse(recordsInput.value);
         if (!Array.isArray(parsed)) throw new Error('داده باید آرایهٔ JSON باشد.');
@@ -83,9 +95,31 @@
     }
     document.getElementById('profile').addEventListener('click', () => { try { call('/analysis/profile', { records: records() }); } catch (error) { output.textContent = error.message; } });
     document.getElementById('missingness').addEventListener('click', () => { try { call('/analysis/missingness', { records: records() }); } catch (error) { output.textContent = error.message; } });
+    document.getElementById('importFile').addEventListener('click', async () => {
+        if (!file.files.length) { output.textContent = 'یک فایل انتخاب کنید.'; return; }
+        output.classList.remove('error'); output.textContent = 'در حال ورود فایل…';
+        try {
+            const form = new FormData(); form.append('file', file.files[0]);
+            const response = await fetch('/analysis/import', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || 'ورود فایل انجام نشد.');
+            recordsInput.value = JSON.stringify(data.records, null, 2);
+            output.textContent = JSON.stringify({ format: data.format, rows: data.rows, columns: data.columns, message: 'داده برای تحلیل آماده است.' }, null, 2);
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
     document.getElementById('runTest').addEventListener('click', () => {
         try { call('/analysis/tests', { records: records(), test: test.value, outcome: outcome.value.trim(), group: group.value.trim() || null, predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean) }); }
         catch (error) { output.textContent = error.message; }
+    });
+    document.getElementById('impute').addEventListener('click', async () => {
+        try {
+            const suppliedConstant = constant.value.trim();
+            const payload = { records: records(), method: imputation.value, columns: imputeColumns.value.split(',').map(value => value.trim()).filter(Boolean) };
+            if (imputation.value === 'constant') payload.constant = suppliedConstant || null;
+            await call('/analysis/impute', payload);
+            const parsed = JSON.parse(output.textContent);
+            if (parsed.records) recordsInput.value = JSON.stringify(parsed.records, null, 2);
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });
     document.getElementById('goApp').addEventListener('click', () => { window.location.href = '/app'; });
 })();

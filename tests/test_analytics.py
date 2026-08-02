@@ -1,10 +1,13 @@
 import importlib
+import io
 import sys
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import missingness_report, profile_dataset, run_statistical_test
+from analytics import missingness_report, profile_dataset, run_statistical_test, simple_imputation
+from ingestion import import_tabular_bytes
 
 
 RECORDS = [
@@ -52,6 +55,24 @@ def test_statistical_test_contracts_match_known_direction():
     assert regression["r_squared"] > 0.99
 
 
+def test_tabular_import_and_simple_imputation_contracts():
+    csv_result = import_tabular_bytes("study.csv", b"group,score\ncontrol,10\ntreatment,\n")
+    assert csv_result["format"] == "csv"
+    assert csv_result["rows"] == 2
+    assert csv_result["records"][1]["score"] is None
+
+    spreadsheet = io.BytesIO()
+    pd.DataFrame([{"group": "control", "score": 10}, {"group": "treatment", "score": 20}]).to_excel(spreadsheet, index=False)
+    xlsx_result = import_tabular_bytes("study.xlsx", spreadsheet.getvalue())
+    assert xlsx_result["columns"] == ["group", "score"]
+
+    imputed = simple_imputation(csv_result["records"], "mean", ["score"])
+    assert imputed["imputations"] == [{"column": "score", "method": "mean", "imputed_cells": 1, "fill_value": 10.0}]
+    assert imputed["records"][1]["score"] == 10.0
+    categorical = simple_imputation([{"label": "yes"}, {"label": None}, {"label": "yes"}], "mode")
+    assert categorical["records"][1]["label"] == "yes"
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -82,3 +103,21 @@ def test_analysis_endpoints_require_auth_and_return_results(analytics_client):
         json={"records": RECORDS, "test": "ols_regression", "outcome": "score", "predictors": []},
     )
     assert invalid.status_code == 422
+
+
+def test_analysis_file_import_and_imputation_endpoints(analytics_client):
+    client, headers = analytics_client
+    imported = client.post(
+        "/analysis/import",
+        headers=headers,
+        files={"file": ("scores.csv", b"group,score\ncontrol,10\ntreatment,\n", "text/csv")},
+    )
+    assert imported.status_code == 200
+    assert imported.json()["format"] == "csv"
+    imputed = client.post(
+        "/analysis/impute",
+        headers=headers,
+        json={"records": imported.json()["records"], "method": "mean", "columns": ["score"]},
+    )
+    assert imputed.status_code == 200
+    assert imputed.json()["records"][1]["score"] == 10.0

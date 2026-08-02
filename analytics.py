@@ -226,6 +226,81 @@ def missingness_report(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def simple_imputation(
+    records: list[dict[str, Any]],
+    method: str,
+    columns: list[str] | None = None,
+    constant: Any | None = None,
+) -> dict[str, Any]:
+    """Apply a transparent single-value imputation method and report each fill."""
+    frame = _frame(records)
+    method = method.strip().lower()
+    if method not in {"mean", "median", "mode", "constant"}:
+        raise AnalyticsError("Unsupported imputation method. Use mean, median, mode, or constant")
+    selected = columns or [str(column) for column in frame.columns]
+    if len(set(selected)) != len(selected):
+        raise AnalyticsError("Imputation columns must not contain duplicates")
+    numeric = _numeric_columns(frame)
+    changes: list[dict[str, Any]] = []
+    for column in selected:
+        if column not in frame.columns:
+            raise AnalyticsError(f"Column '{column}' was not found")
+        missing = int(frame[column].isna().sum())
+        if not missing:
+            continue
+        if method in {"mean", "median"}:
+            if column not in numeric:
+                raise AnalyticsError(f"{method} imputation requires a numeric column: '{column}'")
+            observed = numeric[column].dropna()
+            if observed.empty:
+                raise AnalyticsError(f"Cannot calculate {method} for an all-missing column: '{column}'")
+            fill_value: Any = observed.mean() if method == "mean" else observed.median()
+        elif method == "mode":
+            observed = frame[column].dropna()
+            if observed.empty:
+                raise AnalyticsError(f"Cannot calculate mode for an all-missing column: '{column}'")
+            modes = observed.mode(dropna=True)
+            fill_value = modes.iloc[0]
+        else:
+            if constant is None:
+                raise AnalyticsError("constant imputation requires a non-null constant value")
+            fill_value = constant
+        frame[column] = frame[column].fillna(fill_value)
+        changes.append({"column": column, "method": method, "imputed_cells": missing, "fill_value": _json_value(fill_value)})
+    return {
+        "records": _frame_to_records(frame),
+        "imputations": changes,
+        "reproducibility": {
+            "engine": ENGINE_VERSION,
+            "input_sha256": _fingerprint(records, {"analysis": "simple_imputation", "method": method, "columns": selected, "constant": constant}),
+        },
+    }
+
+
+def _json_value(value: Any) -> Any:
+    if value is None or value is pd.NA:
+        return None
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        return pd.Timestamp(value).isoformat()
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def _frame_to_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for raw_record in frame.to_dict(orient="records"):
+        records.append({str(key): _json_value(value) for key, value in raw_record.items()})
+    return records
+
+
 def _numeric_column(frame: pd.DataFrame, name: str) -> pd.Series:
     if name not in frame.columns:
         raise AnalyticsError(f"Column '{name}' was not found")
