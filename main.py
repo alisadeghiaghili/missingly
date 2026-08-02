@@ -34,7 +34,11 @@ except ImportError:
 
 try:
     from litellm import token_counter
-except ImportError:
+except Exception:
+    # LiteLLM may initialize a tokenizer whose vocabulary is unavailable in an
+    # offline or firewalled deployment. Token accounting can safely fall back
+    # to the built-in estimator instead of preventing the entire API from
+    # starting.
     token_counter = None
 
 try:
@@ -65,6 +69,7 @@ APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", "8090"))
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", f"http://localhost:{APP_PORT}").rstrip("/")
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+SESSION_TTL_DAYS = max(1, int(os.getenv("SESSION_TTL_DAYS", "14")))
 TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in {"1", "true", "yes", "on"}
 ALLOWED_ORIGINS = [
     origin.strip().rstrip("/")
@@ -373,6 +378,18 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; "
+        "frame-ancestors 'self'; form-action 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://www.googletagmanager.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; "
+        "connect-src 'self' https://www.google-analytics.com https://www.googletagmanager.com; "
+        "frame-src 'self' data: https://www.googletagmanager.com",
+    )
+    if request.url.path in {"/app", "/admin", "/dashboard"} or request.url.path.startswith("/admin/"):
+        response.headers.setdefault("Cache-Control", "no-store, max-age=0")
     if APP_ENV in {"production", "prod"}:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
@@ -450,6 +467,7 @@ class AdminUserUpdate(BaseModel):
 def db_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -542,6 +560,23 @@ def create_tables() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                revoked_at TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active "
+            "ON auth_sessions(token_hash, expires_at)"
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
@@ -561,6 +596,7 @@ def create_tables() -> None:
             "token_usage": "ALTER TABLE users ADD COLUMN token_usage INTEGER NOT NULL DEFAULT 0",
             "session_token": "ALTER TABLE users ADD COLUMN session_token TEXT",
             "reset_token": "ALTER TABLE users ADD COLUMN reset_token TEXT",
+            "reset_token_hash": "ALTER TABLE users ADD COLUMN reset_token_hash TEXT",
             "reset_token_expires": "ALTER TABLE users ADD COLUMN reset_token_expires TIMESTAMP",
             "last_request_timestamp": "ALTER TABLE users ADD COLUMN last_request_timestamp TIMESTAMP",
         }
@@ -612,6 +648,47 @@ def verify_password(plain: str, hashed: str) -> bool:
         return secrets.compare_digest(digest, expected)
     except (ValueError, TypeError):
         return False
+
+
+def hash_auth_token(token: str) -> str:
+    """Hash bearer and reset tokens so the database never stores usable credentials."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_auth_session(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    expires_at = dt.datetime.utcnow() + dt.timedelta(days=SESSION_TTL_DAYS)
+    with db_connection() as conn:
+        conn.execute(
+            "DELETE FROM auth_sessions WHERE revoked_at IS NOT NULL OR expires_at <= ?",
+            (dt.datetime.utcnow().isoformat(),),
+        )
+        conn.execute(
+            """
+            INSERT INTO auth_sessions (user_id, token_hash, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, hash_auth_token(token), expires_at.isoformat()),
+        )
+    return token
+
+
+def revoke_auth_session(token: str, user_id: int) -> None:
+    execute(
+        """
+        UPDATE auth_sessions
+        SET revoked_at = ?
+        WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL
+        """,
+        (dt.datetime.utcnow().isoformat(), hash_auth_token(token), user_id),
+    )
+
+
+def revoke_all_auth_sessions(user_id: int) -> None:
+    execute(
+        "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+        (dt.datetime.utcnow().isoformat(), user_id),
+    )
 
 
 def ensure_admin_user() -> None:
@@ -671,7 +748,17 @@ def set_app_setting(key: str, value: str) -> None:
 
 
 def get_user_by_token(token: str) -> dict[str, Any] | None:
-    row = fetch_one("SELECT * FROM users WHERE session_token = ?", (token,))
+    row = fetch_one(
+        """
+        SELECT users.*, auth_sessions.id AS active_session_id
+        FROM auth_sessions
+        JOIN users ON users.id = auth_sessions.user_id
+        WHERE auth_sessions.token_hash = ?
+          AND auth_sessions.revoked_at IS NULL
+          AND auth_sessions.expires_at > ?
+        """,
+        (hash_auth_token(token), dt.datetime.utcnow().isoformat()),
+    )
     return dict(row) if row else None
 
 
@@ -768,13 +855,18 @@ def prompt_injection_guardrail() -> str:
     )
 
 
-async def get_current_user(request: Request) -> dict[str, Any]:
+def bearer_token_from_request(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     parts = auth_header.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(status_code=401, detail="Invalid or missing token")
+    return parts[1]
 
-    user = get_user_by_token(parts[1])
+
+async def get_current_user(request: Request) -> dict[str, Any]:
+    token = bearer_token_from_request(request)
+
+    user = get_user_by_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
     return user
@@ -2219,10 +2311,15 @@ async def login(user: UserLogin, request: Request):
     if not record or not verify_password(user.password, record["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = secrets.token_urlsafe(32)
-    execute("UPDATE users SET session_token = ? WHERE id = ?", (token, record["id"]))
+    token = create_auth_session(record["id"])
     updated = fetch_one("SELECT * FROM users WHERE id = ?", (record["id"],))
     return {"token": token, "user": row_to_user(updated)}
+
+
+@app.post("/logout")
+async def logout(request: Request, current_user: dict[str, Any] = Depends(get_current_user)):
+    revoke_auth_session(bearer_token_from_request(request), current_user["id"])
+    return {"message": "Logged out"}
 
 
 @app.get("/user/status")
@@ -2576,17 +2673,21 @@ async def forgot_password(body: EmailSchema, request: Request):
         execute(
             """
             UPDATE users
-            SET reset_token = ?, reset_token_expires = ?
+            SET reset_token = NULL, reset_token_hash = ?, reset_token_expires = ?
             WHERE id = ?
             """,
-            (token, expires.isoformat(), user["id"]),
+            (hash_auth_token(token), expires.isoformat(), user["id"]),
         )
         reset_link = f"{PUBLIC_BASE_URL}/reset-password-form/{token}"
         try:
             await asyncio.to_thread(send_password_reset_email, body.email.lower(), reset_link)
         except Exception:
             execute(
-                "UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = ?",
+                """
+                UPDATE users
+                SET reset_token = NULL, reset_token_hash = NULL, reset_token_expires = NULL
+                WHERE id = ?
+                """,
                 (user["id"],),
             )
             logger.exception("Could not send password reset email")
@@ -2631,7 +2732,10 @@ async def submit_contact_message(body: ContactMessage, request: Request):
 @app.post("/reset-password")
 async def reset_password(body: PasswordReset, request: Request):
     enforce_rate_limit("password_reset", client_ip(request))
-    row = fetch_one("SELECT * FROM users WHERE reset_token = ?", (body.token,))
+    row = fetch_one(
+        "SELECT * FROM users WHERE reset_token_hash = ?",
+        (hash_auth_token(body.token),),
+    )
     if not row or not row["reset_token_expires"]:
         raise HTTPException(status_code=400, detail="Invalid reset token")
 
@@ -2642,11 +2746,12 @@ async def reset_password(body: PasswordReset, request: Request):
     execute(
         """
         UPDATE users
-        SET password = ?, reset_token = NULL, reset_token_expires = NULL
+        SET password = ?, reset_token = NULL, reset_token_hash = NULL, reset_token_expires = NULL
         WHERE id = ?
         """,
         (hash_password(body.new_password), row["id"]),
     )
+    revoke_all_auth_sessions(row["id"])
     return {"message": "Password updated"}
 
 

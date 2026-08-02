@@ -317,6 +317,16 @@
             document.getElementById('statusLine').textContent = message;
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[char]);
+        }
+
         function showLogin() {
             document.getElementById('loginPanel').classList.remove('hidden');
             document.getElementById('adminContent').classList.add('hidden');
@@ -449,8 +459,8 @@
                 row.innerHTML = `
                     <td>${user.id}</td>
                     <td>
-                        <div class="font-semibold text-white">${user.name}</div>
-                        <div class="text-xs text-slate-400">${user.email}</div>
+                        <div class="font-semibold text-white">${escapeHtml(user.name)}</div>
+                        <div class="text-xs text-slate-400">${escapeHtml(user.email)}</div>
                     </td>
                     <td>
                         <select data-field="plan" data-user-id="${user.id}" class="min-w-32">${planOptions(user.plan)}</select>
@@ -511,11 +521,11 @@
                 detail.usage.forEach(item => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>${item.model}</td>
-                        <td>${item.request_type}</td>
+                        <td>${escapeHtml(item.model)}</td>
+                        <td>${escapeHtml(item.request_type)}</td>
                         <td>${fmt.format(item.total_tokens)}</td>
-                        <td>${item.status}</td>
-                        <td>${shortDate(item.created_at)}</td>
+                        <td>${escapeHtml(item.status)}</td>
+                        <td>${escapeHtml(shortDate(item.created_at))}</td>
                     `;
                     usageRows.appendChild(row);
                 });
@@ -529,11 +539,11 @@
                 detail.payments.forEach(item => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>${item.plan}</td>
+                        <td>${escapeHtml(item.plan)}</td>
                         <td>${fmt.format(item.amount)}</td>
-                        <td>${item.status}</td>
-                        <td>${item.ref_id || item.authority || '-'}</td>
-                        <td>${shortDate(item.verified_at || item.created_at)}</td>
+                        <td>${escapeHtml(item.status)}</td>
+                        <td>${escapeHtml(item.ref_id || item.authority || '-')}</td>
+                        <td>${escapeHtml(shortDate(item.verified_at || item.created_at))}</td>
                     `;
                     paymentRows.appendChild(row);
                 });
