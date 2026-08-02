@@ -54,6 +54,16 @@ def test_statistical_test_contracts_match_known_direction():
     assert slope["estimate"] == pytest.approx(3, abs=0.1)
     assert regression["r_squared"] > 0.99
 
+    logistic_rows = []
+    for x in range(6):
+        logistic_rows.extend({"x": float(x), "event": "yes"} for _ in range(x + 1))
+        logistic_rows.extend({"x": float(x), "event": "no"} for _ in range(6 - (x + 1)))
+    logistic = run_statistical_test(logistic_rows, "logistic_regression", "event", predictors=["x"])
+    slope = next(item for item in logistic["coefficients"] if item["term"] == "x")
+    assert logistic["outcome"] == {"reference": "no", "event": "yes"}
+    assert slope["odds_ratio"] > 1
+    assert logistic["n"] == len(logistic_rows)
+
 
 def test_tabular_import_and_simple_imputation_contracts():
     csv_result = import_tabular_bytes("study.csv", b"group,score\ncontrol,10\ntreatment,\n")
@@ -171,3 +181,16 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert pooled.status_code == 200
     assert pooled.json()["m"] == 3
+
+    logistic_rows = [
+        {"x": float(x), "event": "yes" if (index + x) % 3 else "no"}
+        for x in range(1, 8)
+        for index in range(5)
+    ]
+    logistic = client.post(
+        "/analysis/tests",
+        headers=headers,
+        json={"records": logistic_rows, "test": "logistic_regression", "outcome": "event", "predictors": ["x"]},
+    )
+    assert logistic.status_code == 200
+    assert logistic.json()["method"].startswith("Binary logistic")

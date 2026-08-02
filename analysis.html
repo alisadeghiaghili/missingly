@@ -48,6 +48,7 @@
                 <option value="welch_t_test">Welch t-test دو گروهی</option>
                 <option value="chi_square">χ² استقلال</option>
                 <option value="ols_regression">رگرسیون OLS</option>
+                <option value="logistic_regression">رگرسیون logistic دودویی</option>
             </select>
             <label for="outcome">outcome / ستون اول</label><input id="outcome" value="score">
             <label for="group">group / ستون دوم</label><input id="group" value="group">
@@ -64,7 +65,7 @@
             <label for="miColumns">ستون‌های imputation برای OLS (اختیاری)</label><input id="miColumns" placeholder="خالی = همه ستون‌های عددی">
             <label for="miDraws">تعداد imputation برای Rubin pooling</label><input id="miDraws" type="number" value="5" min="2" max="50">
             <button id="multipleImputationOls" class="secondary">Multiple imputation + OLS</button>
-            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند.</p>
+            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند. برای logistic، outcome دقیقاً دو گروه و predictors عددی‌اند.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
     </div>

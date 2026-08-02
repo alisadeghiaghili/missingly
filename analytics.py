@@ -11,12 +11,15 @@ import itertools
 import json
 import math
 from typing import Any
+import warnings
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer, KNNImputer
+import statsmodels.api as sm
+from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 
 MAX_ROWS = 10_000
@@ -40,6 +43,13 @@ def _finite_number(value: Any) -> float | None:
 def _round(value: Any, digits: int = 8) -> float | None:
     finite = _finite_number(value)
     return round(finite, digits) if finite is not None else None
+
+
+def _exp_round(value: Any) -> float | None:
+    finite = _finite_number(value)
+    if finite is None or finite > 700:
+        return None
+    return _round(math.exp(finite))
 
 
 def _fingerprint(records: list[dict[str, Any]], settings: dict[str, Any]) -> str:
@@ -651,8 +661,65 @@ def run_statistical_test(
                 for name, coefficient, error, t_value, p_value in zip(names, coefficients, standard_errors, t_values, p_values)
             ],
         }
+    elif test == "logistic_regression":
+        predictor_names = predictors or []
+        if not predictor_names:
+            raise AnalyticsError("predictors must include one or more numeric columns for logistic_regression")
+        if outcome not in frame.columns:
+            raise AnalyticsError(f"Column '{outcome}' was not found")
+        if len(set(predictor_names)) != len(predictor_names) or outcome in predictor_names:
+            raise AnalyticsError("logistic regression predictors must be unique and cannot include outcome")
+        predictor_series = [_numeric_column(frame, name) for name in predictor_names]
+        data = pd.concat([frame[outcome], *predictor_series], axis=1).dropna()
+        labels = sorted(data.iloc[:, 0].astype(str).unique().tolist())
+        if len(labels) != 2:
+            raise AnalyticsError("Logistic regression requires exactly two observed outcome categories")
+        parameter_count = len(predictor_names) + 1
+        if len(data) <= parameter_count:
+            raise AnalyticsError("Logistic regression needs more complete rows than fitted parameters")
+        y = (data.iloc[:, 0].astype(str) == labels[1]).astype(int).to_numpy()
+        matrix = sm.add_constant(data.iloc[:, 1:].astype(float).to_numpy(), has_constant="add")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                fitted = sm.Logit(y, matrix).fit(disp=False, maxiter=100)
+        except (PerfectSeparationError, np.linalg.LinAlgError, Warning) as exc:
+            raise AnalyticsError("Logistic regression could not converge; check predictors for complete or quasi-complete separation") from exc
+        converged = bool(fitted.mle_retvals.get("converged", False))
+        if not converged or np.any(np.abs(fitted.params) > 25) or not np.all(np.isfinite(fitted.bse)):
+            raise AnalyticsError("Logistic regression did not converge reliably; check for complete or quasi-complete separation")
+        confidence = fitted.conf_int(alpha=alpha)
+        names = ["intercept", *predictor_names]
+        coefficients = []
+        for index, name in enumerate(names):
+            estimate = float(fitted.params[index])
+            lower, upper = float(confidence[index, 0]), float(confidence[index, 1])
+            coefficients.append(
+                {
+                    "term": name,
+                    "estimate_log_odds": _round(estimate),
+                    "std_error": _round(fitted.bse[index]),
+                    "z": _round(fitted.tvalues[index]),
+                    "p_value": _round(fitted.pvalues[index]),
+                    "ci_lower_log_odds": _round(lower),
+                    "ci_upper_log_odds": _round(upper),
+                    "odds_ratio": _exp_round(estimate),
+                    "odds_ratio_ci_lower": _exp_round(lower),
+                    "odds_ratio_ci_upper": _exp_round(upper),
+                }
+            )
+        result = {
+            "method": "Binary logistic regression (maximum likelihood)",
+            "n": int(len(data)),
+            "outcome": {"reference": labels[0], "event": labels[1]},
+            "log_likelihood": _round(fitted.llf),
+            "aic": _round(fitted.aic),
+            "bic": _round(fitted.bic),
+            "mcfadden_pseudo_r_squared": _round(fitted.prsquared),
+            "coefficients": coefficients,
+        }
     else:
-        raise AnalyticsError("Unsupported test. Use pearson_correlation, welch_t_test, chi_square, or ols_regression")
+        raise AnalyticsError("Unsupported test. Use pearson_correlation, welch_t_test, chi_square, ols_regression, or logistic_regression")
     result.update(
         {
             "alpha": alpha,

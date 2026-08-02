@@ -522,7 +522,7 @@ class DatasetAnalysisRequest(BaseModel):
 
 
 class StatisticalTestRequest(DatasetAnalysisRequest):
-    test: Literal["pearson_correlation", "welch_t_test", "chi_square", "ols_regression"]
+    test: Literal["pearson_correlation", "welch_t_test", "chi_square", "ols_regression", "logistic_regression"]
     outcome: str = Field(min_length=1, max_length=128)
     group: str | None = Field(default=None, min_length=1, max_length=128)
     predictors: list[str] = Field(default_factory=list, max_length=30)
