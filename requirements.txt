@@ -9,3 +9,6 @@ a2wsgi==1.10.10
 SQLAlchemy==2.0.46
 psycopg[binary]==3.3.3
 redis==7.1.0
+numpy==2.5.1
+pandas==3.0.5
+scipy==1.18.0

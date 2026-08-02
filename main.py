@@ -17,11 +17,12 @@ from collections import defaultdict, deque
 from email.message import EmailMessage
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 import httpx
 import uvicorn
+from analytics import AnalyticsError, missingness_report, profile_dataset, run_statistical_test
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -340,6 +341,7 @@ GAPGPT_MAX_OUTPUT_TOKENS = int(os.getenv("GAPGPT_MAX_OUTPUT_TOKENS", "12000"))
 AVALAI_MAX_OUTPUT_TOKENS = int(os.getenv("AVALAI_MAX_OUTPUT_TOKENS", str(GAPGPT_MAX_OUTPUT_TOKENS)))
 MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "12000"))
 MAX_CURRENT_CODE_CHARS = int(os.getenv("MAX_CURRENT_CODE_CHARS", "250000"))
+MAX_ANALYSIS_BODY_BYTES = int(os.getenv("MAX_ANALYSIS_BODY_BYTES", "5000000"))
 DEFAULT_SEARCH_START = "<<<<<<< SEARCH"
 DEFAULT_DIVIDER = "======="
 DEFAULT_REPLACE_END = ">>>>>>> REPLACE"
@@ -409,7 +411,22 @@ app.add_middleware(
 async def add_security_headers(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or secrets.token_hex(12)
     started_at = time.perf_counter()
-    response = await call_next(request)
+    content_length = request.headers.get("content-length")
+    if request.url.path.startswith("/analysis/") and content_length:
+        try:
+            request_too_large = int(content_length) > MAX_ANALYSIS_BODY_BYTES
+        except ValueError:
+            request_too_large = True
+        if request_too_large:
+            response = Response(
+                content=json.dumps({"detail": "Analysis request body is too large"}),
+                status_code=413,
+                media_type="application/json",
+            )
+        else:
+            response = await call_next(request)
+    else:
+        response = await call_next(request)
     elapsed_ms = round((time.perf_counter() - started_at) * 1000, 1)
     logger.info("request_id=%s method=%s path=%s status=%s duration_ms=%s", request_id, request.method, request.url.path, response.status_code, elapsed_ms)
     response.headers.setdefault("X-Request-ID", request_id)
@@ -486,6 +503,18 @@ class ProjectMemberUpdate(BaseModel):
 class ProjectPublishRequest(BaseModel):
     revision_number: int | None = Field(default=None, ge=1)
     slug: str | None = Field(default=None, min_length=3, max_length=80)
+
+
+class DatasetAnalysisRequest(BaseModel):
+    records: list[dict[str, Any]] = Field(min_length=1, max_length=10_000)
+    alpha: float = Field(default=0.05, gt=0, lt=1)
+
+
+class StatisticalTestRequest(DatasetAnalysisRequest):
+    test: Literal["pearson_correlation", "welch_t_test", "chi_square", "ols_regression"]
+    outcome: str = Field(min_length=1, max_length=128)
+    group: str | None = Field(default=None, min_length=1, max_length=128)
+    predictors: list[str] = Field(default_factory=list, max_length=30)
 
 
 class CodeGenRequest(BaseModel):
@@ -1223,6 +1252,7 @@ RATE_LIMITS = {
     "password_reset": (3, 3600),
     "contact": (5, 3600),
     "code": (6, 60),
+    "analysis": (20, 60),
     "admin": (90, 60),
 }
 SAFE_PAYMENT_TOKEN_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
@@ -2759,6 +2789,68 @@ async def get_irsans_bold_font():
 @app.get("/reset-password-form/{token}", response_class=HTMLResponse)
 async def reset_password_form(token: str):
     return html_page("auth.html")
+
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def analysis_page():
+    return html_page("analysis.html")
+
+
+@app.post("/analysis/profile")
+async def analyze_profile(
+    body: DatasetAnalysisRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"profile:{current_user['id']}:{client_ip(request)}")
+    try:
+        report = profile_dataset(body.records, body.alpha)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(current_user["id"], "analysis.profiled", "dataset", metadata={"rows": len(body.records)})
+    return report
+
+
+@app.post("/analysis/missingness")
+async def analyze_missingness(
+    body: DatasetAnalysisRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"missingness:{current_user['id']}:{client_ip(request)}")
+    try:
+        report = missingness_report(body.records)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(current_user["id"], "analysis.missingness_profiled", "dataset", metadata={"rows": len(body.records)})
+    return report
+
+
+@app.post("/analysis/tests")
+async def analyze_statistical_test(
+    body: StatisticalTestRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"test:{current_user['id']}:{client_ip(request)}")
+    try:
+        result = run_statistical_test(
+            body.records,
+            body.test,
+            body.outcome,
+            body.group,
+            body.predictors,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.test_run",
+        "dataset",
+        metadata={"rows": len(body.records), "test": body.test},
+    )
+    return result
 
 
 @app.get("/health")

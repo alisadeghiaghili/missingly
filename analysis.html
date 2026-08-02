@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Missingly Analytics</title>
+    <style>
+        :root { color-scheme: dark; font-family: IRANSans, Tahoma, sans-serif; }
+        body { margin: 0; min-height: 100vh; background: #07111f; color: #e5eefb; }
+        main { max-width: 1120px; margin: auto; padding: 32px 20px 64px; }
+        h1 { margin: 0; font-size: 28px; } p { color: #a8bad4; line-height: 1.8; }
+        .grid { display: grid; grid-template-columns: 1.35fr .65fr; gap: 18px; } @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+        section { background: #0c1b2e; border: 1px solid #23415f; border-radius: 14px; padding: 18px; }
+        label { display: block; margin: 12px 0 6px; color: #c7d6ea; font-size: 14px; }
+        textarea, input, select { box-sizing: border-box; width: 100%; border: 1px solid #345a7d; border-radius: 8px; background: #07111f; color: #eff7ff; padding: 10px; font: inherit; }
+        textarea { min-height: 390px; direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 13px; }
+        button { border: 0; border-radius: 8px; padding: 10px 14px; background: #20bda8; color: #031513; font: inherit; font-weight: 700; cursor: pointer; margin: 8px 6px 0 0; }
+        button.secondary { background: #213c59; color: #dbeafe; } button:hover { filter: brightness(1.08); }
+        pre { white-space: pre-wrap; word-break: break-word; direction: ltr; text-align: left; background: #04101d; border: 1px solid #23415f; border-radius: 10px; padding: 14px; min-height: 180px; overflow: auto; }
+        .notice { font-size: 13px; color: #9dd7cf; } .error { color: #ffb4b4; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>آزمایشگاه تحلیل آماری Missingly</h1>
+    <p>داده فقط برای همین درخواست در حافظه تحلیل می‌شود و ذخیره نمی‌گردد. خروجی شامل شناسهٔ SHA-256 برای بازتولید تحلیل است.</p>
+    <div class="grid">
+        <section>
+            <label for="records">داده به‌صورت آرایهٔ JSON از رکوردها</label>
+            <textarea id="records">[
+  {"group":"control","score":12,"age":29,"outcome":"no"},
+  {"group":"control","score":13,"age":31,"outcome":"no"},
+  {"group":"treatment","score":18,"age":35,"outcome":"yes"},
+  {"group":"treatment","score":20,"age":36,"outcome":"yes"},
+  {"group":"treatment","score":null,"age":38,"outcome":"yes"}
+]</textarea>
+            <button id="profile">پروفایل داده</button>
+            <button id="missingness" class="secondary">گزارش دادهٔ گمشده</button>
+        </section>
+        <section>
+            <label for="test">آزمون آماری</label>
+            <select id="test">
+                <option value="pearson_correlation">همبستگی Pearson</option>
+                <option value="welch_t_test">Welch t-test دو گروهی</option>
+                <option value="chi_square">χ² استقلال</option>
+                <option value="ols_regression">رگرسیون OLS</option>
+            </select>
+            <label for="outcome">outcome / ستون اول</label><input id="outcome" value="score">
+            <label for="group">group / ستون دوم</label><input id="group" value="group">
+            <label for="predictors">predictors برای OLS (با کاما جدا کنید)</label><input id="predictors" value="age">
+            <button id="runTest">اجرای آزمون</button>
+            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند.</p>
+            <button id="goApp" class="secondary">بازگشت به سازنده</button>
+        </section>
+    </div>
+    <h2>نتیجه</h2>
+    <pre id="result">یک تحلیل انتخاب کنید.</pre>
+</main>
+<script>
+(() => {
+    const token = sessionStorage.getItem('deepintelligence_token');
+    if (!token) { window.location.replace('/'); return; }
+    const recordsInput = document.getElementById('records');
+    const output = document.getElementById('result');
+    const test = document.getElementById('test');
+    const outcome = document.getElementById('outcome');
+    const group = document.getElementById('group');
+    const predictors = document.getElementById('predictors');
+    function records() {
+        const parsed = JSON.parse(recordsInput.value);
+        if (!Array.isArray(parsed)) throw new Error('داده باید آرایهٔ JSON باشد.');
+        return parsed;
+    }
+    async function call(path, payload) {
+        output.classList.remove('error'); output.textContent = 'در حال تحلیل…';
+        try {
+            const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || 'تحلیل انجام نشد.');
+            output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    }
+    document.getElementById('profile').addEventListener('click', () => { try { call('/analysis/profile', { records: records() }); } catch (error) { output.textContent = error.message; } });
+    document.getElementById('missingness').addEventListener('click', () => { try { call('/analysis/missingness', { records: records() }); } catch (error) { output.textContent = error.message; } });
+    document.getElementById('runTest').addEventListener('click', () => {
+        try { call('/analysis/tests', { records: records(), test: test.value, outcome: outcome.value.trim(), group: group.value.trim() || null, predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean) }); }
+        catch (error) { output.textContent = error.message; }
+    });
+    document.getElementById('goApp').addEventListener('click', () => { window.location.href = '/app'; });
+})();
+</script>
+</body>
+</html>

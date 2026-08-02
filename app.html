@@ -621,6 +621,7 @@
                 <summary class="menu-trigger" title="گزینه‌های بیشتر">⋯</summary>
                 <div class="menu-panel">
                     <button id="dashboardBtn">داشبورد مصرف</button>
+                    <button id="analysisBtn">آزمایشگاه تحلیل آماری</button>
                     <button id="adminBtn" class="hidden">مدیریت</button>
                     <button id="plansBtn">مشاهده پلن‌ها</button>
                     <button id="saveProjectBtn">ذخیره پروژه</button>
@@ -792,6 +793,7 @@
         const previewBtn = document.getElementById('previewBtn');
         const startBtn = document.getElementById('startBtn');
         const dashboardBtn = document.getElementById('dashboardBtn');
+        const analysisBtn = document.getElementById('analysisBtn');
         const adminBtn = document.getElementById('adminBtn');
         const plansBtn = document.getElementById('plansBtn');
         const saveProjectBtn = document.getElementById('saveProjectBtn');
@@ -1649,6 +1651,9 @@
         });
         dashboardBtn.addEventListener('click', () => {
             window.location.href = '/dashboard';
+        });
+        analysisBtn.addEventListener('click', () => {
+            window.location.href = '/analysis';
         });
         adminBtn.addEventListener('click', () => {
             window.location.href = '/admin';
