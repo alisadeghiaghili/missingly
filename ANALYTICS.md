@@ -18,7 +18,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 ## Survival and reporting
 
 - Kaplan–Meier accepts non-negative numeric time and a two-category event column. It reports at-risk counts, events, Greenwood log-log confidence intervals, and a log-rank test only for exactly two groups.
-- `/analysis/cox` fits a Cox proportional-hazards model for strictly positive follow-up time, a two-category event column, and numeric predictors. It returns log hazard ratios, hazard ratios with confidence intervals, a partial-likelihood ratio test, Efron or Breslow tie handling, optional strata, or optional cluster-robust standard errors (one at a time). It does not test the proportional-hazards assumption or support time-varying coefficients.
+- `/analysis/cox` fits a Cox proportional-hazards model for strictly positive follow-up time, a two-category event column, numeric or explicitly treatment-coded categorical predictors, and selected pairwise interactions. It returns log hazard ratios, hazard ratios with confidence intervals, a partial-likelihood ratio test, Efron or Breslow tie handling, optional strata, or optional cluster-robust standard errors (one at a time). It does not test the proportional-hazards assumption or support time-varying coefficients.
 - The HTML report is self-contained and escapes all user-provided titles and values. It includes dataset profile, missing-data notes and patterns, correlations, interpretation boundaries, and the reproducibility fingerprint; it is a descriptive report, not a claim of causal or mechanism-specific inference.
 - Random-forest imputation and mechanism-specific missing-data modeling are deliberately not presented as supported until they have validation benchmarks.
 
@@ -50,7 +50,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 - `/analysis/regression` fits OLS or binary logistic regression with numeric predictors, explicitly selected categorical predictors, explicit per-column reference levels, and selected pairwise interactions.
 - Categorical terms use treatment coding, never a hidden reference. Missing predictor values remain missing rather than being converted to a reference-level zero. The design is rejected if it is rank-deficient, exceeds 100 engineered features, or has insufficient complete rows.
-- The same bounded treatment-coding contract now also powers Poisson and NB2 count regression, including log-exposure offsets. Categorical encoding for mixed, survival, zero-inflated, hurdle, ordinal, and multinomial models will be added only with model-specific validation.
+- The same bounded treatment-coding contract now also powers Poisson/NB2 count regression and Cox survival regression, including selected pairwise interactions. Categorical encoding for mixed, zero-inflated, hurdle, ordinal, and multinomial models will be added only with model-specific validation.
 
 ## Supported now
 

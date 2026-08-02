@@ -723,6 +723,9 @@ def cox_proportional_hazards(
     cluster_column: str | None = None,
     ties: str = "efron",
     alpha: float = 0.05,
+    categorical_predictors: list[str] | None = None,
+    category_references: dict[str, str] | None = None,
+    interactions: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Fit a Cox proportional-hazards model with optional strata and clustered SEs."""
     if not 0 < alpha < 1:
@@ -742,16 +745,18 @@ def cox_proportional_hazards(
     if event_column not in frame.columns:
         raise AnalyticsError(f"Column '{event_column}' was not found")
     numeric = _numeric_columns(frame)
-    for column in [time_column, *predictors]:
-        if column not in numeric:
-            raise AnalyticsError(f"Cox regression requires numeric column: '{column}'")
+    if time_column not in numeric:
+        raise AnalyticsError(f"Cox regression requires numeric column: '{time_column}'")
     if strata_column and strata_column not in frame.columns:
         raise AnalyticsError(f"Column '{strata_column}' was not found")
     if cluster_column and cluster_column not in frame.columns:
         raise AnalyticsError(f"Column '{cluster_column}' was not found")
-    data = pd.DataFrame({"time": numeric[time_column], "event": frame[event_column].astype("string")})
-    for index, column in enumerate(predictors):
-        data[f"predictor_{index}"] = numeric[column]
+    design, encoding, normalized_interactions = _treatment_coded_design(
+        frame, predictors, categorical_predictors, category_references, interactions
+    )
+    data = pd.concat(
+        [pd.DataFrame({"time": numeric[time_column], "event": frame[event_column].astype("string")}), design], axis=1
+    )
     if strata_column:
         data["strata"] = frame[strata_column].astype("string")
     if cluster_column:
@@ -764,7 +769,7 @@ def cox_proportional_hazards(
         raise AnalyticsError("event_column must contain exactly two observed categories")
     data["event_binary"] = (data["event"] == event_labels[1]).astype(int)
     event_count = int(data["event_binary"].sum())
-    if event_count <= len(predictors):
+    if event_count <= design.shape[1]:
         raise AnalyticsError("Cox regression requires more observed events than fitted predictors")
     if strata_column:
         strata_events = data.groupby("strata", observed=True)["event_binary"].sum()
@@ -772,12 +777,7 @@ def cox_proportional_hazards(
             raise AnalyticsError("Each observed stratum must contain at least one event")
     if cluster_column and data["cluster"].nunique() < 2:
         raise AnalyticsError("Robust clustered standard errors require at least two clusters")
-    exog = pd.DataFrame(index=data.index)
-    for index, column in enumerate(predictors):
-        values = data[f"predictor_{index}"].astype(float)
-        if values.nunique() < 2:
-            raise AnalyticsError(f"Cox predictor '{column}' must not be constant")
-        exog[column] = values
+    exog = data.loc[:, design.columns].astype(float)
     if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
         raise AnalyticsError("Cox regression predictors are perfectly collinear")
     model_kwargs: dict[str, Any] = {"status": data["event_binary"].to_numpy(), "ties": ties}
@@ -803,7 +803,7 @@ def cox_proportional_hazards(
         raise AnalyticsError("Cox regression could not calculate the null-model comparison") from exc
     confidence_intervals = fitted.conf_int(alpha=alpha)
     coefficients = []
-    for index, column in enumerate(predictors):
+    for index, column in enumerate(exog.columns):
         lower, upper = confidence_intervals[index]
         coefficients.append(
             {
@@ -822,6 +822,9 @@ def cox_proportional_hazards(
         "time_column": time_column,
         "event_column": event_column,
         "predictors": predictors,
+        "categorical_predictors": categorical_predictors or [],
+        "category_references": category_references or {},
+        "interactions": normalized_interactions,
         "strata_column": strata_column,
         "cluster_column": cluster_column,
         "ties": ties,
@@ -837,8 +840,10 @@ def cox_proportional_hazards(
         "variance_estimator": "cluster-robust" if cluster_column else "model-based",
         "partial_log_likelihood": _round(fitted.llf),
         "likelihood_ratio_chi_square": _round(likelihood_ratio),
-        "likelihood_ratio_degrees_freedom": len(predictors),
-        "likelihood_ratio_p_value": _round(stats.chi2.sf(likelihood_ratio, len(predictors))),
+        "likelihood_ratio_degrees_freedom": exog.shape[1],
+        "likelihood_ratio_p_value": _round(stats.chi2.sf(likelihood_ratio, exog.shape[1])),
+        "categorical_encoding": encoding,
+        "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
         "coefficients": coefficients,
         "warning": "This model does not test the proportional-hazards assumption; assess it with study-specific diagnostics before interpretation.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},

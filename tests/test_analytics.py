@@ -135,6 +135,23 @@ def _categorical_count_records():
     ]
 
 
+def _categorical_cox_records():
+    generator = np.random.default_rng(101)
+    predictor = generator.normal(size=300)
+    treatment = np.arange(300) % 2
+    event_time = generator.exponential(scale=np.exp(-(0.4 * predictor + 0.5 * treatment)))
+    censor_time = generator.exponential(scale=1.6, size=300)
+    return [
+        {
+            "time": float(min(event, censor)),
+            "event": "event" if event <= censor else "censor",
+            "x": float(value),
+            "group": "treatment" if group else "control",
+        }
+        for value, group, event, censor in zip(predictor, treatment, event_time, censor_time)
+    ]
+
+
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
     profile = profile_dataset(RECORDS)
     assert profile["dataset"]["rows"] == 6
@@ -401,6 +418,22 @@ def test_count_regression_supports_categorical_predictors_and_interactions():
     assert group_effect["rate_ratio"] > 1
 
 
+def test_cox_regression_supports_categorical_predictors_and_interactions():
+    cox = cox_proportional_hazards(
+        _categorical_cox_records(),
+        "time",
+        "event",
+        ["x", "group"],
+        categorical_predictors=["group"],
+        category_references={"group": "control"},
+        interactions=[("x", "group")],
+    )
+    terms = {item["term"]: item for item in cox["coefficients"]}
+    assert cox["categorical_encoding"][0]["reference"] == "control"
+    assert terms["group[treatment]"]["hazard_ratio"] > 1
+    assert "group[treatment] × x" in terms
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -600,6 +633,21 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert categorical_count.status_code == 200
     assert categorical_count.json()["categorical_encoding"][0]["reference"] == "control"
+    categorical_cox = client.post(
+        "/analysis/cox",
+        headers=headers,
+        json={
+            "records": _categorical_cox_records(),
+            "time_column": "time",
+            "event_column": "event",
+            "predictors": ["x", "group"],
+            "categorical_predictors": ["group"],
+            "category_references": {"group": "control"},
+            "interactions": [["x", "group"]],
+        },
+    )
+    assert categorical_cox.status_code == 200
+    assert categorical_cox.json()["categorical_encoding"][0]["reference"] == "control"
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

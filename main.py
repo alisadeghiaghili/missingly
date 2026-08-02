@@ -590,6 +590,9 @@ class CoxProportionalHazardsRequest(DatasetAnalysisRequest):
     strata_column: str | None = Field(default=None, min_length=1, max_length=128)
     cluster_column: str | None = Field(default=None, min_length=1, max_length=128)
     ties: Literal["breslow", "efron"] = "efron"
+    categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
+    category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
+    interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
 
 
 class CountRegressionRequest(DatasetAnalysisRequest):
@@ -3109,6 +3112,9 @@ async def analyze_cox_proportional_hazards(
             body.cluster_column,
             body.ties,
             body.alpha,
+            body.categorical_predictors,
+            body.category_references,
+            body.interactions,
         )
     except AnalyticsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
