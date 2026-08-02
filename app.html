@@ -625,6 +625,9 @@
                     <button id="plansBtn">مشاهده پلن‌ها</button>
                     <button id="saveProjectBtn">ذخیره پروژه</button>
                     <button id="loadProjectBtn">باز کردن پروژه</button>
+                    <button id="shareProjectBtn">همکار پروژه</button>
+                    <button id="publishProjectBtn">انتشار امن</button>
+                    <button id="exportProjectBtn">خروجی نسخه ذخیره‌شده</button>
                     <button id="downloadBtn">دانلود خروجی</button>
                     <button id="galleryBtn">گالری</button>
                     <button id="blogBtn">بلاگ</button>
@@ -793,6 +796,9 @@
         const plansBtn = document.getElementById('plansBtn');
         const saveProjectBtn = document.getElementById('saveProjectBtn');
         const loadProjectBtn = document.getElementById('loadProjectBtn');
+        const shareProjectBtn = document.getElementById('shareProjectBtn');
+        const publishProjectBtn = document.getElementById('publishProjectBtn');
+        const exportProjectBtn = document.getElementById('exportProjectBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const galleryBtn = document.getElementById('galleryBtn');
         const blogBtn = document.getElementById('blogBtn');
@@ -805,6 +811,7 @@
         const backendBaseUrl = window.location.origin;
         let lastRenderablePreviewHtml = DEFAULT_EDITOR_CONTENT;
         let activeProjectId = null;
+        let activeProjectRole = null;
         let workspaceState = 'empty';
         const PLAN_RANK = { free: 0, basic: 1, standard: 2, deluxe: 3 };
         const PLAN_ALIASES = { premium: 'deluxe', pro: 'deluxe', 'پریمیوم': 'deluxe' };
@@ -874,6 +881,7 @@
                         body: JSON.stringify({ current_code: currentCode, prompt })
                     });
                     project = data.project;
+                    activeProjectRole = project.role || activeProjectRole;
                 } else {
                     const name = window.prompt('نام پروژه را وارد کنید:', 'پروژه بدون نام');
                     if (name === null) return;
@@ -883,6 +891,7 @@
                     });
                     project = data.project;
                     activeProjectId = project.id;
+                    activeProjectRole = project.role || 'owner';
                 }
                 setWorkStatus(`پروژه «${project.name}» در نسخه ${project.current_revision} ذخیره شد`);
                 closeDisclosureMenus();
@@ -911,6 +920,7 @@
                 const projectData = await projectFetch(`/projects/${projectId}`);
                 const project = projectData.project;
                 activeProjectId = project.id;
+                activeProjectRole = project.role || 'owner';
                 codeEditor.value = project.current_code || DEFAULT_EDITOR_CONTENT;
                 promptInput.value = project.prompt || '';
                 updatePreview(codeEditor.value);
@@ -919,6 +929,81 @@
                 closeDisclosureMenus();
             } catch (error) {
                 displayMessageBox(error.message || 'باز کردن پروژه انجام نشد.');
+            }
+        }
+
+        async function shareCurrentProject() {
+            if (!activeProjectId) {
+                displayMessageBox('ابتدا پروژه را ذخیره و باز کنید.');
+                return;
+            }
+            if (activeProjectRole !== 'owner') {
+                displayMessageBox('فقط مالک پروژه می‌تواند همکار اضافه کند.');
+                return;
+            }
+            const email = window.prompt('ایمیل کاربر ثبت‌نام‌شده را وارد کنید:');
+            if (email === null || !email.trim()) return;
+            const role = window.prompt('نقش همکار: editor یا viewer', 'editor');
+            if (role === null) return;
+            try {
+                const result = await projectFetch(`/projects/${activeProjectId}/members`, {
+                    method: 'POST',
+                    body: JSON.stringify({ email: email.trim(), role: role.trim().toLowerCase() })
+                });
+                setWorkStatus(`«${result.member.email}» به‌عنوان ${result.member.role} اضافه شد`);
+                closeDisclosureMenus();
+            } catch (error) {
+                displayMessageBox(error.message || 'افزودن همکار انجام نشد.');
+            }
+        }
+
+        async function publishCurrentProject() {
+            if (!activeProjectId) {
+                displayMessageBox('برای انتشار، ابتدا پروژه را ذخیره کنید.');
+                return;
+            }
+            if (activeProjectRole !== 'owner') {
+                displayMessageBox('فقط مالک پروژه می‌تواند آن را منتشر کند.');
+                return;
+            }
+            const slug = window.prompt('آدرس کوتاه اختیاری (حروف کوچک انگلیسی، عدد و -):', '');
+            if (slug === null) return;
+            try {
+                const result = await projectFetch(`/projects/${activeProjectId}/publications`, {
+                    method: 'POST',
+                    body: JSON.stringify(slug.trim() ? { slug: slug.trim() } : {})
+                });
+                const url = result.publication.url;
+                await navigator.clipboard?.writeText(url).catch(() => {});
+                displayMessageBox(`نسخه ${result.publication.revision_number} منتشر شد. لینک در کلیپ‌بورد کپی شد:\n${url}`);
+                closeDisclosureMenus();
+            } catch (error) {
+                displayMessageBox(error.message || 'انتشار انجام نشد. ابتدا نسخه جدید ذخیره کنید یا slug دیگری انتخاب کنید.');
+            }
+        }
+
+        async function exportSavedProject() {
+            if (!activeProjectId) {
+                displayMessageBox('ابتدا پروژه را ذخیره و باز کنید.');
+                return;
+            }
+            try {
+                const response = await fetch(`${backendBaseUrl}/projects/${activeProjectId}/export`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.detail || 'خروجی گرفتن انجام نشد.');
+                }
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'project.html';
+                link.click();
+                URL.revokeObjectURL(link.href);
+                closeDisclosureMenus();
+            } catch (error) {
+                displayMessageBox(error.message || 'خروجی گرفتن انجام نشد.');
             }
         }
 
@@ -1573,6 +1658,9 @@
         });
         saveProjectBtn.addEventListener('click', saveCurrentProject);
         loadProjectBtn.addEventListener('click', loadSavedProject);
+        shareProjectBtn.addEventListener('click', shareCurrentProject);
+        publishProjectBtn.addEventListener('click', publishCurrentProject);
+        exportProjectBtn.addEventListener('click', exportSavedProject);
         galleryBtn.addEventListener('click', () => {
             window.location.href = '/gallery';
         });
