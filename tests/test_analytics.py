@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, hurdle_poisson_regression, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
+from analytics import advanced_numeric_imputation, count_regression, count_regression_with_categorical_predictors, cox_proportional_hazards, hurdle_poisson_regression, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, regression_with_categorical_predictors, run_statistical_test, simple_imputation, weighted_ols, zero_inflated_count_regression
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -119,6 +119,19 @@ def _hurdle_records():
     return [
         {"count": int(count), "x": float(value), "hurdle_driver": float(driver), "exposure": float(duration)}
         for count, value, driver, duration in zip(counts, predictor, hurdle_driver, exposure)
+    ]
+
+
+def _categorical_count_records():
+    generator = np.random.default_rng(95)
+    predictor = generator.normal(size=300)
+    exposure = generator.uniform(0.7, 2.0, size=300)
+    treatment = np.arange(300) % 2
+    mean = exposure * np.exp(0.2 + 0.25 * predictor + 0.4 * treatment + 0.08 * predictor * treatment)
+    counts = generator.negative_binomial(4, 4 / (4 + mean))
+    return [
+        {"count": int(count), "x": float(value), "group": "treatment" if group else "control", "exposure": float(duration)}
+        for count, value, group, duration in zip(counts, predictor, treatment, exposure)
     ]
 
 
@@ -370,6 +383,24 @@ def test_hurdle_poisson_models_positive_count_and_positive_size_separately():
     assert hurdle_slope["positive_count_odds_ratio"] > 1
 
 
+def test_count_regression_supports_categorical_predictors_and_interactions():
+    records = _categorical_count_records()
+    poisson = count_regression_with_categorical_predictors(
+        records, "count", ["x", "group"], "poisson", "exposure", ["group"], {"group": "control"}, [("x", "group")]
+    )
+    poisson_terms = {item["term"] for item in poisson["coefficients"]}
+    assert poisson["categorical_encoding"][0]["reference"] == "control"
+    assert "group[treatment]" in poisson_terms
+    assert "group[treatment] × x" in poisson_terms
+
+    negative_binomial = count_regression_with_categorical_predictors(
+        records, "count", ["x", "group"], "negative_binomial", "exposure", ["group"], {"group": "control"}
+    )
+    group_effect = next(item for item in negative_binomial["coefficients"] if item["term"] == "group[treatment]")
+    assert negative_binomial["dispersion_alpha"] > 0
+    assert group_effect["rate_ratio"] > 1
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -553,6 +584,22 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert hurdle.status_code == 200
     assert hurdle.json()["method"].startswith("Hurdle Poisson")
+    categorical_count = client.post(
+        "/analysis/count-regression-categorical",
+        headers=headers,
+        json={
+            "records": _categorical_count_records(),
+            "outcome": "count",
+            "predictors": ["x", "group"],
+            "distribution": "negative_binomial",
+            "exposure_column": "exposure",
+            "categorical_predictors": ["group"],
+            "category_references": {"group": "control"},
+            "interactions": [["x", "group"]],
+        },
+    )
+    assert categorical_count.status_code == 200
+    assert categorical_count.json()["categorical_encoding"][0]["reference"] == "control"
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

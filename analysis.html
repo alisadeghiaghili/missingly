@@ -59,6 +59,7 @@
             <label for="categoryReferences">reference هر predictor (مثلاً group:control,sex:female)</label><input id="categoryReferences" placeholder="group:control">
             <label for="interactions">interactionها (مثلاً age:group,sex:group)</label><input id="interactions" placeholder="age:group">
             <button id="categoricalRegression" class="secondary">رگرسیون با categorical + interaction</button>
+            <button id="categoricalCountRegression" class="secondary">Count regression با categorical + interaction</button>
             <label for="imputation">جایگزینی دادهٔ گمشده</label>
             <select id="imputation"><option value="mean">mean</option><option value="median">median</option><option value="mode">mode</option><option value="constant">constant</option><option value="knn">KNN (numeric)</option><option value="iterative">iterative regression (numeric)</option></select>
             <label for="imputeColumns">ستون‌ها (اختیاری، با کاما جدا کنید)</label><input id="imputeColumns" placeholder="خالی = همه ستون‌ها">
@@ -189,6 +190,27 @@
             call('/analysis/regression', {
                 records: records(), model: regressionModel.value, outcome: outcome.value.trim(),
                 predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                category_references: references, interactions: pairs
+            });
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('categoricalCountRegression').addEventListener('click', () => {
+        try {
+            const references = {};
+            categoryReferences.value.split(',').map(value => value.trim()).filter(Boolean).forEach(entry => {
+                const [column, ...level] = entry.split(':').map(value => value.trim());
+                if (!column || !level.join(':')) throw new Error('referenceها باید به شکل column:level باشند.');
+                references[column] = level.join(':');
+            });
+            const pairs = interactions.value.split(',').map(value => value.trim()).filter(Boolean).map(entry => {
+                const pair = entry.split(':').map(value => value.trim()).filter(Boolean);
+                if (pair.length !== 2) throw new Error('interactionها باید به شکل predictor1:predictor2 باشند.');
+                return pair;
+            });
+            call('/analysis/count-regression-categorical', {
+                records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
+                distribution: countDistribution.value, exposure_column: countExposure.value.trim() || null,
                 categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 category_references: references, interactions: pairs
             });

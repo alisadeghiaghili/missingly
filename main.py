@@ -26,6 +26,7 @@ from analytics import (
     AnalyticsError,
     advanced_numeric_imputation,
     count_regression,
+    count_regression_with_categorical_predictors,
     cox_proportional_hazards,
     kaplan_meier_analysis,
     hurdle_poisson_regression,
@@ -546,6 +547,16 @@ class CategoricalRegressionRequest(DatasetAnalysisRequest):
     categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
     category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
     interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
+
+
+class CategoricalCountRegressionRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
+    category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
+    interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
+    distribution: Literal["poisson", "negative_binomial"] = "poisson"
+    exposure_column: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class ImputationRequest(DatasetAnalysisRequest):
@@ -3325,6 +3336,36 @@ async def analyze_categorical_regression(
         "analysis.categorical_regression",
         "dataset",
         metadata={"rows": len(body.records), "model": body.model, "predictors": len(body.predictors)},
+    )
+    return result
+
+
+@app.post("/analysis/count-regression-categorical")
+async def analyze_categorical_count_regression(
+    body: CategoricalCountRegressionRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"count-regression-categorical:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = count_regression_with_categorical_predictors(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.distribution,
+            body.exposure_column,
+            body.categorical_predictors,
+            body.category_references,
+            body.interactions,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.categorical_count_regression",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors), "distribution": body.distribution},
     )
     return result
 

@@ -1111,7 +1111,7 @@ def zero_inflated_count_regression(
         "dispersion_alpha": dispersion_alpha,
         "log_likelihood": _round(fitted.llf),
         "aic": _round(fitted.aic),
-        "bic": _round(fitted.bic),
+        "bic": _round(fitted.bic_llf if hasattr(fitted, "bic_llf") else fitted.bic),
         "warning": "The inflation component models structural-zero odds. Assess fit, sparse covariate patterns, dependence, and study design before treating observed zeros as structural.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
@@ -1750,6 +1750,183 @@ def regression_with_categorical_predictors(
     else:
         result.update({"outcome": outcome_description, "mcfadden_pseudo_r_squared": _round(1 - fitted.llf / fitted.llnull)})
     return result
+
+
+def _treatment_coded_design(
+    frame: pd.DataFrame,
+    predictors: list[str],
+    categorical_predictors: list[str] | None,
+    category_references: dict[str, str] | None,
+    interactions: list[tuple[str, str]] | None,
+) -> tuple[pd.DataFrame, list[dict[str, Any]], list[tuple[str, str]]]:
+    """Build a bounded treatment-coded design matrix without converting missing values to a level."""
+    categorical = categorical_predictors or []
+    references = category_references or {}
+    if len(set(categorical)) != len(categorical) or not set(categorical).issubset(predictors):
+        raise AnalyticsError("categorical_predictors must be a unique subset of predictors")
+    if not set(references).issubset(categorical):
+        raise AnalyticsError("category_references may only name categorical_predictors")
+    normalized_interactions: list[tuple[str, str]] = []
+    for pair in interactions or []:
+        if len(pair) != 2 or pair[0] == pair[1] or pair[0] not in predictors or pair[1] not in predictors:
+            raise AnalyticsError("Each interaction must contain two distinct predictor names")
+        normalized = tuple(sorted(pair))
+        if normalized not in normalized_interactions:
+            normalized_interactions.append(normalized)
+    numeric = _numeric_columns(frame)
+    design = pd.DataFrame(index=frame.index)
+    feature_groups: dict[str, list[str]] = {}
+    encoding: list[dict[str, Any]] = []
+    for predictor in predictors:
+        if predictor not in frame.columns:
+            raise AnalyticsError(f"Column '{predictor}' was not found")
+        if predictor not in categorical:
+            if predictor not in numeric:
+                raise AnalyticsError(f"Numeric predictor '{predictor}' must contain only numeric observed values")
+            design[predictor] = numeric[predictor]
+            feature_groups[predictor] = [predictor]
+            continue
+        source = frame[predictor].astype("string")
+        levels = sorted(source.dropna().unique().tolist())
+        if not 2 <= len(levels) <= 30:
+            raise AnalyticsError(f"Categorical predictor '{predictor}' must have between two and thirty observed levels")
+        reference = references.get(predictor, levels[0])
+        if reference not in levels:
+            raise AnalyticsError(f"Reference '{reference}' was not observed in categorical predictor '{predictor}'")
+        terms = []
+        for level in levels:
+            if level != reference:
+                term = f"{predictor}[{level}]"
+                design[term] = np.where(source.isna(), np.nan, (source == level).astype(float))
+                terms.append(term)
+        feature_groups[predictor] = terms
+        encoding.append({"predictor": predictor, "reference": reference, "levels": levels, "terms": terms})
+    for left, right in normalized_interactions:
+        for left_term in feature_groups[left]:
+            for right_term in feature_groups[right]:
+                term = f"{left_term} × {right_term}"
+                design[term] = design[left_term] * design[right_term]
+    if design.shape[1] > 100:
+        raise AnalyticsError("Categorical encoding and interactions may produce at most 100 model features")
+    return design, encoding, normalized_interactions
+
+
+def count_regression_with_categorical_predictors(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    distribution: str = "poisson",
+    exposure_column: str | None = None,
+    categorical_predictors: list[str] | None = None,
+    category_references: dict[str, str] | None = None,
+    interactions: list[tuple[str, str]] | None = None,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit Poisson or NB2 count regression with treatment-coded factors and interactions."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if distribution not in {"poisson", "negative_binomial"}:
+        raise AnalyticsError("distribution must be either 'poisson' or 'negative_binomial'")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    if exposure_column and exposure_column in {outcome, *predictors}:
+        raise AnalyticsError("exposure_column must differ from outcome and predictors")
+    frame = _frame(records)
+    numeric = _numeric_columns(frame)
+    if outcome not in numeric:
+        raise AnalyticsError(f"Count regression requires numeric column: '{outcome}'")
+    if exposure_column and exposure_column not in numeric:
+        raise AnalyticsError(f"Count regression requires numeric column: '{exposure_column}'")
+    observed_outcome = numeric[outcome].dropna()
+    if (observed_outcome < 0).any() or not np.isclose(observed_outcome, np.round(observed_outcome)).all():
+        raise AnalyticsError("Count regression outcome must contain non-negative integer counts")
+    design, encoding, normalized_interactions = _treatment_coded_design(
+        frame, predictors, categorical_predictors, category_references, interactions
+    )
+    source = pd.DataFrame({"outcome": numeric[outcome]})
+    if exposure_column:
+        source["exposure"] = numeric[exposure_column]
+    data = pd.concat([source, design], axis=1).dropna()
+    if len(data) <= design.shape[1] + 1 or data["outcome"].sum() <= 0:
+        raise AnalyticsError("Count regression requires enough complete rows and at least one observed count")
+    if exposure_column and (data["exposure"] <= 0).any():
+        raise AnalyticsError("exposure_column must contain strictly positive values")
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for term in design.columns:
+        exog[term] = data[term].astype(float)
+    if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("Count regression design is perfectly collinear")
+    offset = np.log(data["exposure"].to_numpy()) if exposure_column else None
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            if distribution == "poisson":
+                fitted = sm.GLM(data["outcome"].to_numpy(), exog, family=sm.families.Poisson(), offset=offset).fit()
+                converged = bool(fitted.converged)
+            else:
+                fitted = sm.NegativeBinomial(data["outcome"].to_numpy(), exog, loglike_method="nb2", offset=offset).fit(disp=False)
+                converged = bool(fitted.mle_retvals.get("converged", False))
+        if not converged or any(issubclass(item.category, ConvergenceWarning) for item in captured):
+            raise AnalyticsError("Count regression did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Count regression could not fit this dataset") from exc
+    params, standard_errors, p_values = np.asarray(fitted.params, dtype=float), np.asarray(fitted.bse, dtype=float), np.asarray(fitted.pvalues, dtype=float)
+    dispersion_alpha = None
+    if distribution == "negative_binomial":
+        dispersion_alpha = float(params[-1])
+        params, standard_errors, p_values = params[:-1], standard_errors[:-1], p_values[:-1]
+        if not math.isfinite(dispersion_alpha) or dispersion_alpha <= 0:
+            raise AnalyticsError("Negative-binomial dispersion estimate was invalid")
+    if not np.isfinite(params).all() or not np.isfinite(standard_errors).all():
+        raise AnalyticsError("Count regression produced non-finite estimates")
+    critical = float(stats.norm.ppf(1 - alpha / 2))
+    coefficients = []
+    for index, term in enumerate(exog.columns):
+        estimate, standard_error = float(params[index]), float(standard_errors[index])
+        coefficients.append(
+            {
+                "term": term,
+                "log_rate_ratio": _round(estimate),
+                "std_error": _round(standard_error),
+                "z_value": _round(estimate / standard_error),
+                "p_value": _round(p_values[index]),
+                "rate_ratio": _exp_round(estimate),
+                "rate_ratio_ci_lower": _exp_round(estimate - critical * standard_error),
+                "rate_ratio_ci_upper": _exp_round(estimate + critical * standard_error),
+            }
+        )
+    predicted = np.asarray(fitted.predict(), dtype=float)
+    variance = predicted if distribution == "poisson" else predicted + float(dispersion_alpha) * predicted**2
+    pearson_chi_square = float(np.sum((data["outcome"].to_numpy() - predicted) ** 2 / variance))
+    settings = {
+        "analysis": "count_regression_with_categorical_predictors",
+        "outcome": outcome,
+        "predictors": predictors,
+        "distribution": distribution,
+        "exposure_column": exposure_column,
+        "categorical_predictors": categorical_predictors or [],
+        "category_references": category_references or {},
+        "interactions": normalized_interactions,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Poisson count regression with categorical predictors" if distribution == "poisson" else "Negative-binomial (NB2) count regression with categorical predictors",
+        "n": int(len(data)),
+        "total_count": int(data["outcome"].sum()),
+        "exposure_column": exposure_column,
+        "categorical_encoding": encoding,
+        "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
+        "coefficients": coefficients,
+        "aic": _round(fitted.aic),
+        "bic": _round(fitted.bic_llf if hasattr(fitted, "bic_llf") else fitted.bic),
+        "pearson_chi_square": _round(pearson_chi_square),
+        "overdispersion_ratio": _round(pearson_chi_square / float(fitted.df_resid)),
+        "dispersion_alpha": _round(dispersion_alpha),
+        "warning": "This model does not diagnose zero inflation, dependence, or a complex-survey design.",
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
 
 
 def run_statistical_test(

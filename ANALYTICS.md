@@ -50,7 +50,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 - `/analysis/regression` fits OLS or binary logistic regression with numeric predictors, explicitly selected categorical predictors, explicit per-column reference levels, and selected pairwise interactions.
 - Categorical terms use treatment coding, never a hidden reference. Missing predictor values remain missing rather than being converted to a reference-level zero. The design is rejected if it is rank-deficient, exceeds 100 engineered features, or has insufficient complete rows.
-- This shared encoding layer currently powers linear and binary logistic regression. Categorical encoding for mixed, survival, count, ordinal, and multinomial models will be added only with model-specific validation.
+- The same bounded treatment-coding contract now also powers Poisson and NB2 count regression, including log-exposure offsets. Categorical encoding for mixed, survival, zero-inflated, hurdle, ordinal, and multinomial models will be added only with model-specific validation.
 
 ## Supported now
 
@@ -66,6 +66,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Models: ordinal logistic (proportional-odds) regression with an explicit outcome-category order.
 - Models: baseline-category multinomial logistic regression with an explicit reference category.
 - Regression: OLS and binary logistic models with treatment-coded categorical predictors and selected pairwise interactions.
+- Regression: Poisson and NB2 count models with treatment-coded categorical predictors, selected pairwise interactions, and optional log-exposure offsets.
 - Reproducibility: each result has the engine version and SHA-256 fingerprint of its input plus analysis settings.
 
 ## Statistical guardrails
