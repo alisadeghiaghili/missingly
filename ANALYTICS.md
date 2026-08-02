@@ -14,6 +14,11 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 ## Multiple imputation with inference
 
 `/analysis/multiple-imputation/ols` runs posterior-draw iterative imputation for numeric columns and fits OLS to every completed dataset. It pools coefficient estimates, within/between/total variance, standard errors, degrees of freedom, confidence intervals, p-values, and fraction of missing information using Rubin's rules. The method is limited to numeric OLS and does not establish MAR/MCAR assumptions for the user; those remain a study-design judgment.
+
+## Survival and reporting
+
+- Kaplan–Meier accepts non-negative numeric time and a two-category event column. It reports at-risk counts, events, Greenwood log-log confidence intervals, and a log-rank test only for exactly two groups.
+- The HTML report is self-contained and escapes all user-provided titles and values. It includes dataset profile, missing-data notes, correlations, and the reproducibility fingerprint; it is a descriptive report, not a claim of causal or mechanism-specific inference.
 - Multiple imputation, KNN, random forest imputation, and mechanism-specific modeling are deliberately not presented as supported until they have validation benchmarks.
 
 ## Supported now

@@ -6,8 +6,9 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation
+from analytics import advanced_numeric_imputation, kaplan_meier_analysis, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation
 from ingestion import import_tabular_bytes
+from reporting import build_descriptive_report
 
 
 RECORDS = [
@@ -116,6 +117,25 @@ def test_multiple_imputation_ols_uses_rubin_pooling_and_is_reproducible():
     assert first["reproducibility"] == second["reproducibility"]
 
 
+def test_kaplan_meier_log_rank_and_escaped_html_report():
+    records = [
+        {"time": 1, "event": "event", "group": "control", "score": 10},
+        {"time": 2, "event": "event", "group": "control", "score": 11},
+        {"time": 3, "event": "censor", "group": "control", "score": 12},
+        {"time": 1, "event": "censor", "group": "treatment", "score": 18},
+        {"time": 2, "event": "event", "group": "treatment", "score": 19},
+        {"time": 4, "event": "event", "group": "treatment", "score": 20},
+    ]
+    survival = kaplan_meier_analysis(records, "time", "event", "group")
+    assert survival["event"] == {"censor_or_reference": "censor", "event": "event"}
+    assert len(survival["curves"]) == 2
+    assert survival["log_rank"]["degrees_freedom"] == 1
+    report = build_descriptive_report(records, "<img src=x onerror=alert(1)>")
+    assert "<img src=x" not in report
+    assert "&lt;img src=x" in report
+    assert "Input SHA-256" in report
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -194,3 +214,19 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert logistic.status_code == 200
     assert logistic.json()["method"].startswith("Binary logistic")
+
+    survival_records = [
+        {"time": 1, "event": "event", "group": "a"},
+        {"time": 2, "event": "censor", "group": "a"},
+        {"time": 1, "event": "censor", "group": "b"},
+        {"time": 3, "event": "event", "group": "b"},
+    ]
+    survival = client.post(
+        "/analysis/survival",
+        headers=headers,
+        json={"records": survival_records, "time_column": "time", "event_column": "event", "group_column": "group"},
+    )
+    assert survival.status_code == 200
+    report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
+    assert report.status_code == 200
+    assert report.headers["content-disposition"].startswith("attachment;")

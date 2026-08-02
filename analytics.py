@@ -531,6 +531,98 @@ def multiple_imputation_ols(
     }
 
 
+def kaplan_meier_analysis(
+    records: list[dict[str, Any]],
+    time_column: str,
+    event_column: str,
+    group_column: str | None = None,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Estimate Kaplan-Meier curves and a two-group log-rank test when applicable."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    frame = _frame(records)
+    time = _numeric_column(frame, time_column)
+    if event_column not in frame.columns:
+        raise AnalyticsError(f"Column '{event_column}' was not found")
+    group = frame[group_column] if group_column else pd.Series("All", index=frame.index)
+    data = pd.DataFrame({"time": time, "event": frame[event_column], "group": group}).dropna()
+    if data.empty or (data["time"] < 0).any():
+        raise AnalyticsError("Survival time must contain non-negative complete numeric values")
+    event_labels = sorted(data["event"].astype(str).unique().tolist())
+    if len(event_labels) != 2:
+        raise AnalyticsError("event_column must contain exactly two observed categories")
+    data["event_binary"] = (data["event"].astype(str) == event_labels[1]).astype(int)
+    group_labels = sorted(data["group"].astype(str).unique().tolist())
+    if len(group_labels) > 20:
+        raise AnalyticsError("Kaplan-Meier analysis supports at most 20 observed groups")
+    critical = float(stats.norm.ppf(1 - alpha / 2))
+    curves = []
+    for label in group_labels:
+        subset = data.loc[data["group"].astype(str) == label]
+        event_times = sorted(subset.loc[subset["event_binary"] == 1, "time"].unique().tolist())
+        survival = 1.0
+        greenwood_sum = 0.0
+        points = [{"time": 0.0, "at_risk": int(len(subset)), "events": 0, "censored": 0, "survival": 1.0, "ci_lower": 1.0, "ci_upper": 1.0}]
+        for event_time in event_times:
+            at_risk = int((subset["time"] >= event_time).sum())
+            events = int(((subset["time"] == event_time) & (subset["event_binary"] == 1)).sum())
+            censored = int(((subset["time"] == event_time) & (subset["event_binary"] == 0)).sum())
+            survival *= 1 - events / at_risk
+            if at_risk > events:
+                greenwood_sum += events / (at_risk * (at_risk - events))
+                variance = survival**2 * greenwood_sum
+            else:
+                variance = 0.0
+            if survival <= 0 or survival >= 1 or variance <= 0:
+                lower, upper = survival, survival
+            else:
+                theta = math.log(-math.log(survival))
+                se_theta = math.sqrt(variance / (survival**2 * math.log(survival) ** 2))
+                lower = math.exp(-math.exp(theta + critical * se_theta))
+                upper = math.exp(-math.exp(theta - critical * se_theta))
+            points.append(
+                {
+                    "time": _round(event_time),
+                    "at_risk": at_risk,
+                    "events": events,
+                    "censored": censored,
+                    "survival": _round(survival),
+                    "ci_lower": _round(lower),
+                    "ci_upper": _round(upper),
+                }
+            )
+        curves.append({"group": label, "n": int(len(subset)), "events": int(subset["event_binary"].sum()), "points": points})
+    log_rank = None
+    if len(group_labels) == 2:
+        left = data.loc[data["group"].astype(str) == group_labels[0]]
+        right = data.loc[data["group"].astype(str) == group_labels[1]]
+        observed_minus_expected = 0.0
+        variance = 0.0
+        event_times = sorted(data.loc[data["event_binary"] == 1, "time"].unique().tolist())
+        for event_time in event_times:
+            n_left, n_right = int((left["time"] >= event_time).sum()), int((right["time"] >= event_time).sum())
+            d_left, d_right = int(((left["time"] == event_time) & (left["event_binary"] == 1)).sum()), int(((right["time"] == event_time) & (right["event_binary"] == 1)).sum())
+            total_risk, total_events = n_left + n_right, d_left + d_right
+            if total_risk <= 1 or total_events == 0:
+                continue
+            expected_left = total_events * n_left / total_risk
+            observed_minus_expected += d_left - expected_left
+            variance += n_left * n_right * total_events * (total_risk - total_events) / (total_risk**2 * (total_risk - 1))
+        if variance > 0:
+            statistic = observed_minus_expected**2 / variance
+            log_rank = {"method": "Log-rank test", "groups": group_labels, "chi_square": _round(statistic), "degrees_freedom": 1, "p_value": _round(stats.chi2.sf(statistic, 1))}
+    settings = {"analysis": "kaplan_meier", "time": time_column, "event": event_column, "group": group_column, "alpha": alpha}
+    return {
+        "method": "Kaplan-Meier survival estimate",
+        "n": int(len(data)),
+        "event": {"censor_or_reference": event_labels[0], "event": event_labels[1]},
+        "curves": curves,
+        "log_rank": log_rank,
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
 def _json_value(value: Any) -> Any:
     if value is None or value is pd.NA:
         return None

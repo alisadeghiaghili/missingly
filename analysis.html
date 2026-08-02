@@ -65,6 +65,12 @@
             <label for="miColumns">ستون‌های imputation برای OLS (اختیاری)</label><input id="miColumns" placeholder="خالی = همه ستون‌های عددی">
             <label for="miDraws">تعداد imputation برای Rubin pooling</label><input id="miDraws" type="number" value="5" min="2" max="50">
             <button id="multipleImputationOls" class="secondary">Multiple imputation + OLS</button>
+            <label for="survivalTime">ستون زمان survival</label><input id="survivalTime" placeholder="time">
+            <label for="survivalEvent">ستون event/censor</label><input id="survivalEvent" placeholder="event">
+            <label for="survivalGroup">ستون گروه survival (اختیاری)</label><input id="survivalGroup" placeholder="group">
+            <button id="survival" class="secondary">Kaplan–Meier + log-rank</button>
+            <label for="reportTitle">عنوان گزارش HTML</label><input id="reportTitle" value="Missingly statistical report">
+            <button id="reportHtml" class="secondary">دانلود گزارش HTML</button>
             <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند. برای logistic، outcome دقیقاً دو گروه و predictors عددی‌اند.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
@@ -90,6 +96,10 @@
     const maxIter = document.getElementById('maxIter');
     const miColumns = document.getElementById('miColumns');
     const miDraws = document.getElementById('miDraws');
+    const survivalTime = document.getElementById('survivalTime');
+    const survivalEvent = document.getElementById('survivalEvent');
+    const survivalGroup = document.getElementById('survivalGroup');
+    const reportTitle = document.getElementById('reportTitle');
     function records() {
         const parsed = JSON.parse(recordsInput.value);
         if (!Array.isArray(parsed)) throw new Error('داده باید آرایهٔ JSON باشد.');
@@ -145,6 +155,17 @@
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 impute_columns: miColumns.value.split(',').map(value => value.trim()).filter(Boolean), m: Number(miDraws.value), max_iter: Number(maxIter.value), random_state: 2026
             });
+        } catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('survival').addEventListener('click', () => {
+        try { call('/analysis/survival', { records: records(), time_column: survivalTime.value.trim(), event_column: survivalEvent.value.trim(), group_column: survivalGroup.value.trim() || null }); }
+        catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('reportHtml').addEventListener('click', async () => {
+        try {
+            const response = await fetch('/analysis/report.html', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ records: records(), title: reportTitle.value.trim() || 'Missingly statistical report' }) });
+            if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.detail || 'گزارش ساخته نشد.'); }
+            const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = 'missingly-report.html'; link.click(); URL.revokeObjectURL(link.href);
         } catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });
     document.getElementById('goApp').addEventListener('click', () => { window.location.href = '/app'; });

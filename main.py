@@ -25,6 +25,7 @@ import uvicorn
 from analytics import (
     AnalyticsError,
     advanced_numeric_imputation,
+    kaplan_meier_analysis,
     missingness_report,
     multiple_imputation_ols,
     profile_dataset,
@@ -38,6 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from ingestion import IngestionError, import_tabular_bytes
+from reporting import build_descriptive_report
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError, SQLAlchemyError
@@ -544,6 +546,16 @@ class MultipleImputationOLSRequest(DatasetAnalysisRequest):
     m: int = Field(default=5, ge=2, le=50)
     max_iter: int = Field(default=10, ge=1, le=100)
     random_state: int = Field(default=2026, ge=0, le=2_147_483_647)
+
+
+class SurvivalRequest(DatasetAnalysisRequest):
+    time_column: str = Field(min_length=1, max_length=128)
+    event_column: str = Field(min_length=1, max_length=128)
+    group_column: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class DescriptiveReportRequest(DatasetAnalysisRequest):
+    title: str = Field(default="Missingly statistical report", min_length=1, max_length=180)
 
 
 class CodeGenRequest(BaseModel):
@@ -2958,6 +2970,45 @@ async def analyze_multiple_imputation_ols(
         metadata={"rows": len(body.records), "m": body.m, "predictors": len(body.predictors)},
     )
     return result
+
+
+@app.post("/analysis/survival")
+async def analyze_survival(
+    body: SurvivalRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"survival:{current_user['id']}:{client_ip(request)}", 10, 60)
+    try:
+        result = kaplan_meier_analysis(body.records, body.time_column, body.event_column, body.group_column, body.alpha)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.kaplan_meier",
+        "dataset",
+        metadata={"rows": len(body.records), "grouped": bool(body.group_column)},
+    )
+    return result
+
+
+@app.post("/analysis/report.html")
+async def download_descriptive_report(
+    body: DescriptiveReportRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"report:{current_user['id']}:{client_ip(request)}", 10, 60)
+    try:
+        content = build_descriptive_report(body.records, body.title)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(current_user["id"], "analysis.html_report_exported", "dataset", metadata={"rows": len(body.records)})
+    return Response(
+        content=content,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="missingly-report.html"'},
+    )
 
 
 @app.post("/analysis/tests")
