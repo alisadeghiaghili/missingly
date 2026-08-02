@@ -19,7 +19,12 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 
 - Kaplan–Meier accepts non-negative numeric time and a two-category event column. It reports at-risk counts, events, Greenwood log-log confidence intervals, and a log-rank test only for exactly two groups.
 - The HTML report is self-contained and escapes all user-provided titles and values. It includes dataset profile, missing-data notes, correlations, and the reproducibility fingerprint; it is a descriptive report, not a claim of causal or mechanism-specific inference.
-- Multiple imputation, KNN, random forest imputation, and mechanism-specific modeling are deliberately not presented as supported until they have validation benchmarks.
+- Random-forest imputation and mechanism-specific missing-data modeling are deliberately not presented as supported until they have validation benchmarks.
+
+## Clustered and weighted continuous outcomes
+
+- `/analysis/mixed-linear` fits a Gaussian linear mixed-effects model with one random intercept grouping column and fixed numeric predictors, using REML. It reports fixed-effect z inference, variance components, and the intraclass correlation. Random slopes, crossed effects, generalized mixed models, and repeated-measures covariance structures are not yet supported.
+- `/analysis/weighted-ols` fits weighted least squares with strictly positive numeric analytic weights. It reports coefficient t inference and weighted R-squared. It is not a complex-survey estimator: strata, primary sampling units, finite-population corrections, calibration, and design-based standard errors are intentionally out of scope.
 
 ## Supported now
 
@@ -27,6 +32,7 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Missingness report: missing-value patterns and point-biserial associations between a missingness indicator and observed numeric variables. It explicitly avoids treating low missingness as proof of MCAR.
 - Statistical tests: Pearson correlation, two-sided Welch two-sample t-test, Pearson chi-square independence test, and OLS regression with coefficient confidence intervals.
 - Models: binary logistic regression (maximum likelihood) with event/reference coding, log-odds, odds ratios, confidence intervals, AIC/BIC, McFadden pseudo-R², and convergence/separation rejection.
+- Models: Gaussian random-intercept linear mixed-effects models and analytic-weighted OLS for continuous outcomes.
 - Reproducibility: each result has the engine version and SHA-256 fingerprint of its input plus analysis settings.
 
 ## Statistical guardrails
@@ -34,6 +40,6 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Numeric methods reject columns with mixed observed numeric/non-numeric values rather than silently coercing them.
 - Pearson requires at least three non-constant paired values; Welch requires two observations per group; OLS rejects perfect collinearity and insufficient degrees of freedom.
 - Chi-square reports a warning when an expected cell count is below five.
-- This phase does not claim support for Little's MCAR test, multiple imputation, survey weights, mixed models, survival analysis, or causal inference. Those require separate validated implementations.
+- This phase does not claim support for Little's MCAR test, full complex-survey estimation, random-slope or generalized mixed models, Cox regression, or causal inference. Those require separate validated implementations.
 
 The contracts in `tests/test_analytics.py` are the initial numerical benchmark suite. Any new method must add known-result tests and document assumptions before it is exposed in the API.

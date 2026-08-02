@@ -69,9 +69,13 @@
             <label for="survivalEvent">ستون event/censor</label><input id="survivalEvent" placeholder="event">
             <label for="survivalGroup">ستون گروه survival (اختیاری)</label><input id="survivalGroup" placeholder="group">
             <button id="survival" class="secondary">Kaplan–Meier + log-rank</button>
+            <label for="mixedGroup">ستون خوشه برای mixed-effects</label><input id="mixedGroup" placeholder="patient_id یا school_id">
+            <button id="mixedLinear" class="secondary">Linear mixed-effects (random intercept)</button>
+            <label for="weightColumn">ستون وزن تحلیلی برای Weighted OLS</label><input id="weightColumn" placeholder="weight">
+            <button id="weightedOls" class="secondary">Weighted OLS</button>
             <label for="reportTitle">عنوان گزارش HTML</label><input id="reportTitle" value="Missingly statistical report">
             <button id="reportHtml" class="secondary">دانلود گزارش HTML</button>
-            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، outcome و predictors عددی هستند. برای logistic، outcome دقیقاً دو گروه و predictors عددی‌اند.</p>
+            <p class="notice">برای Pearson، outcome و group هر دو عددی‌اند. برای OLS، mixed-effects و weighted OLS، outcome و predictors عددی‌اند. mixed-effects فقط random intercept دارد؛ Weighted OLS برای وزن تحلیلی مثبت است و طرح نمونه‌گیری پیچیده را مدل نمی‌کند.</p>
             <button id="goApp" class="secondary">بازگشت به سازنده</button>
         </section>
     </div>
@@ -99,6 +103,8 @@
     const survivalTime = document.getElementById('survivalTime');
     const survivalEvent = document.getElementById('survivalEvent');
     const survivalGroup = document.getElementById('survivalGroup');
+    const mixedGroup = document.getElementById('mixedGroup');
+    const weightColumn = document.getElementById('weightColumn');
     const reportTitle = document.getElementById('reportTitle');
     function records() {
         const parsed = JSON.parse(recordsInput.value);
@@ -159,6 +165,14 @@
     });
     document.getElementById('survival').addEventListener('click', () => {
         try { call('/analysis/survival', { records: records(), time_column: survivalTime.value.trim(), event_column: survivalEvent.value.trim(), group_column: survivalGroup.value.trim() || null }); }
+        catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('mixedLinear').addEventListener('click', () => {
+        try { call('/analysis/mixed-linear', { records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean), group_column: mixedGroup.value.trim() }); }
+        catch (error) { output.classList.add('error'); output.textContent = error.message; }
+    });
+    document.getElementById('weightedOls').addEventListener('click', () => {
+        try { call('/analysis/weighted-ols', { records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean), weight_column: weightColumn.value.trim() }); }
         catch (error) { output.classList.add('error'); output.textContent = error.message; }
     });
     document.getElementById('reportHtml').addEventListener('click', async () => {

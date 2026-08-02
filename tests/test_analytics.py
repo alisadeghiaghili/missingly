@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, kaplan_meier_analysis, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation
+from analytics import advanced_numeric_imputation, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -136,6 +136,36 @@ def test_kaplan_meier_log_rank_and_escaped_html_report():
     assert "Input SHA-256" in report
 
 
+def test_random_intercept_mixed_model_and_analytic_weighted_ols_contracts():
+    clustered_records = []
+    for group, effect in enumerate([-2.0, -1.0, 0.5, 1.5, 2.5, 3.0]):
+        for observation in range(6):
+            clustered_records.append(
+                {
+                    "patient": f"p-{group}",
+                    "x": float(observation),
+                    "y": 10 + 1.75 * observation + effect + (0.12 if observation % 2 else -0.12),
+                }
+            )
+    mixed = linear_mixed_effects(clustered_records, "y", ["x"], "patient")
+    slope = next(item for item in mixed["coefficients"] if item["term"] == "x")
+    assert mixed["groups"] == 6
+    assert mixed["estimation"] == "REML"
+    assert slope["estimate"] == pytest.approx(1.75, abs=0.05)
+    assert mixed["intraclass_correlation"] > 0
+
+    weighted_records = [
+        {"x": float(x), "y": 3 + 2.5 * x + (0.4 if x % 3 else -0.4), "weight": float((x % 4) + 1)}
+        for x in range(1, 16)
+    ]
+    weighted = weighted_ols(weighted_records, "y", ["x"], "weight")
+    weighted_slope = next(item for item in weighted["coefficients"] if item["term"] == "x")
+    assert weighted["method"].startswith("Weighted least squares")
+    assert weighted["sum_weights"] == sum(row["weight"] for row in weighted_records)
+    assert weighted_slope["estimate"] == pytest.approx(2.5, abs=0.15)
+    assert "not a complex-survey estimator" in weighted["warning"]
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -227,6 +257,28 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
         json={"records": survival_records, "time_column": "time", "event_column": "event", "group_column": "group"},
     )
     assert survival.status_code == 200
+    clustered_records = [
+        {"patient": f"p-{group}", "x": float(observation), "y": 5 + 1.5 * observation + group}
+        for group in range(4)
+        for observation in range(5)
+    ]
+    mixed = client.post(
+        "/analysis/mixed-linear",
+        headers=headers,
+        json={"records": clustered_records, "outcome": "y", "predictors": ["x"], "group_column": "patient"},
+    )
+    assert mixed.status_code == 200
+    weighted = client.post(
+        "/analysis/weighted-ols",
+        headers=headers,
+        json={
+            "records": [{"x": float(x), "y": 4 + 2 * x + (0.1 if x % 2 else -0.1), "weight": float((x % 3) + 1)} for x in range(1, 12)],
+            "outcome": "y",
+            "predictors": ["x"],
+            "weight_column": "weight",
+        },
+    )
+    assert weighted.status_code == 200
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")

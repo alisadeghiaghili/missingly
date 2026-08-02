@@ -623,6 +623,171 @@ def kaplan_meier_analysis(
     }
 
 
+def linear_mixed_effects(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    group_column: str,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit a Gaussian random-intercept model for clustered continuous outcomes."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    if group_column in {outcome, *predictors}:
+        raise AnalyticsError("group_column must differ from outcome and predictors")
+    frame = _frame(records)
+    if group_column not in frame.columns:
+        raise AnalyticsError(f"Column '{group_column}' was not found")
+    numeric = _numeric_columns(frame)
+    for column in [outcome, *predictors]:
+        if column not in numeric:
+            raise AnalyticsError(f"Linear mixed-effects requires numeric column: '{column}'")
+    data = pd.DataFrame({"outcome": numeric[outcome], "group": frame[group_column].astype("string")})
+    for index, column in enumerate(predictors):
+        data[f"predictor_{index}"] = numeric[column]
+    data = data.dropna()
+    group_sizes = data["group"].value_counts()
+    if len(data) <= len(predictors) + 2 or len(group_sizes) < 2:
+        raise AnalyticsError("Linear mixed-effects requires more complete rows and at least two groups")
+    if int(group_sizes.min()) < 2:
+        raise AnalyticsError("Each observed group must contain at least two complete rows")
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for index, column in enumerate(predictors):
+        exog[column] = data[f"predictor_{index}"].astype(float)
+    if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("Linear mixed-effects predictors are perfectly collinear")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fitted = sm.MixedLM(data["outcome"].astype(float), exog, groups=data["group"]).fit(
+                reml=True, method="lbfgs", disp=False
+            )
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Linear mixed-effects model could not fit this dataset") from exc
+    random_variance = float(fitted.cov_re.iloc[0, 0])
+    residual_variance = float(fitted.scale)
+    if (
+        not fitted.converged
+        or not math.isfinite(random_variance)
+        or random_variance <= 0
+        or not math.isfinite(residual_variance)
+        or residual_variance <= 0
+        or not np.isfinite(fitted.fe_params.to_numpy()).all()
+        or not np.isfinite(fitted.bse_fe.to_numpy()).all()
+    ):
+        raise AnalyticsError("Linear mixed-effects fit was singular or did not converge")
+    confidence_intervals = fitted.conf_int(alpha=alpha)
+    coefficients = []
+    for term in exog.columns:
+        coefficients.append(
+            {
+                "term": term,
+                "estimate": _round(fitted.fe_params[term]),
+                "std_error": _round(fitted.bse_fe[term]),
+                "z_value": _round(fitted.tvalues[term]),
+                "p_value": _round(fitted.pvalues[term]),
+                "ci_lower": _round(confidence_intervals.loc[term, 0]),
+                "ci_upper": _round(confidence_intervals.loc[term, 1]),
+            }
+        )
+    settings = {
+        "analysis": "linear_mixed_effects_random_intercept",
+        "outcome": outcome,
+        "predictors": predictors,
+        "group_column": group_column,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Gaussian linear mixed-effects model (random intercept)",
+        "n": int(len(data)),
+        "groups": int(len(group_sizes)),
+        "minimum_group_size": int(group_sizes.min()),
+        "estimation": "REML",
+        "coefficients": coefficients,
+        "random_intercept_variance": _round(random_variance),
+        "residual_variance": _round(residual_variance),
+        "intraclass_correlation": _round(random_variance / (random_variance + residual_variance)),
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
+def weighted_ols(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    weight_column: str,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit weighted least squares for strictly positive analytic weights."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    if weight_column in {outcome, *predictors}:
+        raise AnalyticsError("weight_column must differ from outcome and predictors")
+    frame = _frame(records)
+    numeric = _numeric_columns(frame)
+    for column in [outcome, *predictors, weight_column]:
+        if column not in numeric:
+            raise AnalyticsError(f"Weighted OLS requires numeric column: '{column}'")
+    data = pd.DataFrame({"outcome": numeric[outcome], "weight": numeric[weight_column]})
+    for index, column in enumerate(predictors):
+        data[f"predictor_{index}"] = numeric[column]
+    data = data.dropna()
+    parameter_count = len(predictors) + 1
+    if len(data) <= parameter_count:
+        raise AnalyticsError("Weighted OLS requires more complete rows than fitted parameters")
+    if (data["weight"] <= 0).any() or not np.isfinite(data["weight"].to_numpy()).all():
+        raise AnalyticsError("weight_column must contain strictly positive finite values")
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for index, column in enumerate(predictors):
+        exog[column] = data[f"predictor_{index}"].astype(float)
+    if np.linalg.matrix_rank(exog.to_numpy()) != parameter_count:
+        raise AnalyticsError("Weighted OLS predictors are perfectly collinear")
+    try:
+        fitted = sm.WLS(data["outcome"].astype(float), exog, weights=data["weight"].astype(float)).fit()
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Weighted OLS model could not fit this dataset") from exc
+    if not np.isfinite(fitted.params.to_numpy()).all() or not np.isfinite(fitted.bse.to_numpy()).all():
+        raise AnalyticsError("Weighted OLS model produced non-finite estimates")
+    critical = float(stats.t.ppf(1 - alpha / 2, fitted.df_resid))
+    coefficients = []
+    for term in exog.columns:
+        estimate = float(fitted.params[term])
+        standard_error = float(fitted.bse[term])
+        coefficients.append(
+            {
+                "term": term,
+                "estimate": _round(estimate),
+                "std_error": _round(standard_error),
+                "t_value": _round(fitted.tvalues[term]),
+                "p_value": _round(fitted.pvalues[term]),
+                "ci_lower": _round(estimate - critical * standard_error),
+                "ci_upper": _round(estimate + critical * standard_error),
+            }
+        )
+    settings = {
+        "analysis": "weighted_ols",
+        "outcome": outcome,
+        "predictors": predictors,
+        "weight_column": weight_column,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Weighted least squares (analytic weights)",
+        "n": int(len(data)),
+        "sum_weights": _round(data["weight"].sum()),
+        "r_squared": _round(fitted.rsquared),
+        "adjusted_r_squared": _round(fitted.rsquared_adj),
+        "residual_degrees_freedom": _round(fitted.df_resid),
+        "coefficients": coefficients,
+        "warning": "Analytic weights only: this is not a complex-survey estimator and does not model strata, clusters, or finite-population corrections.",
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
 def _json_value(value: Any) -> Any:
     if value is None or value is pd.NA:
         return None

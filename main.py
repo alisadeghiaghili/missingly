@@ -26,12 +26,14 @@ from analytics import (
     AnalyticsError,
     advanced_numeric_imputation,
     kaplan_meier_analysis,
+    linear_mixed_effects,
     missingness_report,
     multiple_imputation_ols,
     profile_dataset,
     records_to_csv,
     run_statistical_test,
     simple_imputation,
+    weighted_ols,
 )
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
@@ -552,6 +554,18 @@ class SurvivalRequest(DatasetAnalysisRequest):
     time_column: str = Field(min_length=1, max_length=128)
     event_column: str = Field(min_length=1, max_length=128)
     group_column: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class MixedLinearModelRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    group_column: str = Field(min_length=1, max_length=128)
+
+
+class WeightedOLSRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    weight_column: str = Field(min_length=1, max_length=128)
 
 
 class DescriptiveReportRequest(DatasetAnalysisRequest):
@@ -2988,6 +3002,46 @@ async def analyze_survival(
         "analysis.kaplan_meier",
         "dataset",
         metadata={"rows": len(body.records), "grouped": bool(body.group_column)},
+    )
+    return result
+
+
+@app.post("/analysis/mixed-linear")
+async def analyze_mixed_linear(
+    body: MixedLinearModelRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"mixed-linear:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = linear_mixed_effects(body.records, body.outcome, body.predictors, body.group_column, body.alpha)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.linear_mixed_effects",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors)},
+    )
+    return result
+
+
+@app.post("/analysis/weighted-ols")
+async def analyze_weighted_ols(
+    body: WeightedOLSRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"weighted-ols:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = weighted_ols(body.records, body.outcome, body.predictors, body.weight_column, body.alpha)
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.weighted_ols",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors)},
     )
     return result
 
