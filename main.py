@@ -31,6 +31,7 @@ from analytics import (
     linear_mixed_effects,
     missingness_report,
     multiple_imputation_ols,
+    multinomial_logistic_regression,
     ordinal_logistic_regression,
     profile_dataset,
     records_to_csv,
@@ -579,6 +580,12 @@ class OrdinalLogisticRequest(DatasetAnalysisRequest):
     outcome: str = Field(min_length=1, max_length=128)
     predictors: list[str] = Field(min_length=1, max_length=30)
     category_order: list[str] = Field(min_length=3, max_length=20)
+
+
+class MultinomialLogisticRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    reference_category: str = Field(min_length=1, max_length=128)
 
 
 class MixedLinearModelRequest(DatasetAnalysisRequest):
@@ -3123,6 +3130,28 @@ async def analyze_ordinal_logistic(
         "analysis.ordinal_logistic",
         "dataset",
         metadata={"rows": len(body.records), "predictors": len(body.predictors), "categories": len(body.category_order)},
+    )
+    return result
+
+
+@app.post("/analysis/multinomial-logistic")
+async def analyze_multinomial_logistic(
+    body: MultinomialLogisticRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"multinomial-logistic:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = multinomial_logistic_regression(
+            body.records, body.outcome, body.predictors, body.reference_category, body.alpha
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.multinomial_logistic",
+        "dataset",
+        metadata={"rows": len(body.records), "predictors": len(body.predictors)},
     )
     return result
 

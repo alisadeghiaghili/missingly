@@ -1071,6 +1071,107 @@ def ordinal_logistic_regression(
     }
 
 
+def multinomial_logistic_regression(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    reference_category: str,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Fit a baseline-category multinomial logistic model with explicit reference."""
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    frame = _frame(records)
+    if outcome not in frame.columns:
+        raise AnalyticsError(f"Column '{outcome}' was not found")
+    numeric = _numeric_columns(frame)
+    for column in predictors:
+        if column not in numeric:
+            raise AnalyticsError(f"Multinomial logistic regression requires numeric predictor: '{column}'")
+    data = pd.DataFrame({"outcome": frame[outcome].astype("string")})
+    for index, column in enumerate(predictors):
+        data[f"predictor_{index}"] = numeric[column]
+    data = data.dropna()
+    observed_categories = sorted(data["outcome"].unique().tolist())
+    if not 3 <= len(observed_categories) <= 20:
+        raise AnalyticsError("Multinomial logistic regression requires between three and twenty observed outcome categories")
+    if reference_category not in observed_categories:
+        raise AnalyticsError("reference_category must be one of the observed outcome labels")
+    categories = [reference_category, *[label for label in observed_categories if label != reference_category]]
+    parameter_count = (len(predictors) + 1) * (len(categories) - 1)
+    if len(data) <= parameter_count:
+        raise AnalyticsError("Multinomial logistic regression requires more complete rows than fitted parameters")
+    exog = pd.DataFrame({"intercept": 1.0}, index=data.index)
+    for index, column in enumerate(predictors):
+        values = data[f"predictor_{index}"].astype(float)
+        if values.nunique() < 2:
+            raise AnalyticsError(f"Multinomial logistic predictor '{column}' must not be constant")
+        exog[column] = values
+    if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
+        raise AnalyticsError("Multinomial logistic predictors are perfectly collinear")
+    category_codes = data["outcome"].map({label: index for index, label in enumerate(categories)}).astype(int)
+    try:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            fitted = sm.MNLogit(category_codes, exog).fit(method="newton", maxiter=100, disp=False)
+        if not fitted.mle_retvals.get("converged", False) or any(
+            issubclass(item.category, ConvergenceWarning) for item in captured
+        ):
+            raise AnalyticsError("Multinomial logistic regression did not converge")
+    except AnalyticsError:
+        raise
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
+        raise AnalyticsError("Multinomial logistic regression could not fit this dataset") from exc
+    if not np.isfinite(fitted.params.to_numpy()).all() or not np.isfinite(fitted.bse.to_numpy()).all():
+        raise AnalyticsError("Multinomial logistic regression produced non-finite estimates")
+    critical = float(stats.norm.ppf(1 - alpha / 2))
+    coefficient_sets = []
+    for category_index, category in enumerate(categories[1:]):
+        coefficients = []
+        for term in exog.columns:
+            estimate = float(fitted.params.loc[term, category_index])
+            standard_error = float(fitted.bse.loc[term, category_index])
+            coefficients.append(
+                {
+                    "term": term,
+                    "log_relative_risk_ratio": _round(estimate),
+                    "std_error": _round(standard_error),
+                    "z_value": _round(estimate / standard_error),
+                    "p_value": _round(fitted.pvalues.loc[term, category_index]),
+                    "relative_risk_ratio": _exp_round(estimate),
+                    "relative_risk_ratio_ci_lower": _exp_round(estimate - critical * standard_error),
+                    "relative_risk_ratio_ci_upper": _exp_round(estimate + critical * standard_error),
+                }
+            )
+        coefficient_sets.append({"category": category, "reference_category": reference_category, "coefficients": coefficients})
+    likelihood_ratio = max(0.0, 2 * (float(fitted.llf) - float(fitted.llnull)))
+    settings = {
+        "analysis": "multinomial_logistic_regression",
+        "outcome": outcome,
+        "predictors": predictors,
+        "reference_category": reference_category,
+        "alpha": alpha,
+    }
+    return {
+        "method": "Multinomial logistic regression (baseline-category)",
+        "n": int(len(data)),
+        "categories": categories,
+        "reference_category": reference_category,
+        "coefficient_sets": coefficient_sets,
+        "log_likelihood": _round(fitted.llf),
+        "aic": _round(fitted.aic),
+        "bic": _round(fitted.bic),
+        "mcfadden_pseudo_r_squared": _round(fitted.prsquared),
+        "likelihood_ratio_chi_square": _round(likelihood_ratio),
+        "likelihood_ratio_degrees_freedom": len(predictors) * (len(categories) - 1),
+        "likelihood_ratio_p_value": _round(stats.chi2.sf(likelihood_ratio, len(predictors) * (len(categories) - 1))),
+        "warning": "Classes are modeled as unordered. This model does not diagnose sparse classes, separation, dependence, or causal effects.",
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
 def weighted_ols(
     records: list[dict[str, Any]],
     outcome: str,

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, ordinal_logistic_regression, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
+from analytics import advanced_numeric_imputation, count_regression, cox_proportional_hazards, kaplan_meier_analysis, linear_mixed_effects, missingness_report, multiple_imputation_ols, multinomial_logistic_regression, ordinal_logistic_regression, profile_dataset, records_to_csv, run_statistical_test, simple_imputation, weighted_ols
 from ingestion import import_tabular_bytes
 from reporting import build_descriptive_report
 
@@ -57,6 +57,17 @@ def _ordinal_records():
     latent = 0.9 * predictor + generator.logistic(size=120)
     outcomes = np.where(latent < -0.7, "low", np.where(latent < 0.8, "medium", "high"))
     return [{"severity": str(outcome), "x": float(value)} for outcome, value in zip(outcomes, predictor)]
+
+
+def _multinomial_records():
+    generator = np.random.default_rng(41)
+    predictor = generator.normal(size=200)
+    logits = np.column_stack([np.zeros(200), -0.2 + 0.6 * predictor, 0.1 - 0.5 * predictor])
+    probabilities = np.exp(logits)
+    probabilities /= probabilities.sum(axis=1, keepdims=True)
+    category_codes = [generator.choice(3, p=probability) for probability in probabilities]
+    labels = np.array(["baseline", "positive", "negative"])
+    return [{"class": str(labels[code]), "x": float(value)} for code, value in zip(category_codes, predictor)]
 
 
 def test_profile_and_missingness_are_deterministic_and_do_not_claim_mcar():
@@ -248,6 +259,18 @@ def test_ordinal_logistic_requires_explicit_category_order_and_reports_common_od
     assert "proportional-odds assumption" in ordinal["warning"]
 
 
+def test_multinomial_logistic_uses_explicit_reference_category():
+    multinomial = multinomial_logistic_regression(_multinomial_records(), "class", ["x"], "baseline")
+    coefficients = {item["category"]: item["coefficients"] for item in multinomial["coefficient_sets"]}
+    positive_slope = next(item for item in coefficients["positive"] if item["term"] == "x")
+    negative_slope = next(item for item in coefficients["negative"] if item["term"] == "x")
+    assert multinomial["method"].startswith("Multinomial logistic")
+    assert multinomial["reference_category"] == "baseline"
+    assert positive_slope["relative_risk_ratio"] > 1
+    assert negative_slope["relative_risk_ratio"] < 1
+    assert multinomial["likelihood_ratio_p_value"] < 0.001
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -382,6 +405,13 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert ordinal.status_code == 200
     assert ordinal.json()["categories"] == ["low", "medium", "high"]
+    multinomial = client.post(
+        "/analysis/multinomial-logistic",
+        headers=headers,
+        json={"records": _multinomial_records(), "outcome": "class", "predictors": ["x"], "reference_category": "baseline"},
+    )
+    assert multinomial.status_code == 200
+    assert multinomial.json()["reference_category"] == "baseline"
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")
