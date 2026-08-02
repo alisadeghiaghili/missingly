@@ -8,6 +8,9 @@ from typing import Any
 from analytics import missingness_report, profile_dataset
 
 
+__all__ = ["build_descriptive_report"]
+
+
 def _cell(value: Any) -> str:
     return html.escape("—" if value is None else str(value))
 
@@ -19,6 +22,23 @@ def _table(headers: list[str], rows: list[list[Any]]) -> str:
 
 
 def build_descriptive_report(records: list[dict[str, Any]], title: str) -> str:
+    """Build an escaped, self-contained HTML descriptive-analysis report in memory.
+
+    Args:
+        records: JSON-like row objects accepted by the profiling and missingness APIs.
+        title: Reader-facing report title; HTML-sensitive characters are escaped.
+
+    Returns:
+        A complete UTF-8-compatible HTML document with dataset, variable, missingness,
+        correlation, and interpretation-boundary sections.
+
+    Raises:
+        AnalyticsError: If records cannot be profiled as a valid rectangular dataset.
+
+    Examples:
+        >>> "Dataset overview" in build_descriptive_report([{"score": 10}], "Study")
+        True
+    """
     profile = profile_dataset(records)
     missingness = missingness_report(records)
     dataset = profile["dataset"]

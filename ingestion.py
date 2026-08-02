@@ -13,14 +13,42 @@ import pyreadstat
 from analytics import AnalyticsError, _frame_to_records, profile_dataset
 
 
+__all__ = ["IngestionError", "SUPPORTED_FORMATS", "import_tabular_bytes"]
+
+
 SUPPORTED_FORMATS = {".csv", ".json", ".xlsx", ".sav", ".dta", ".xpt", ".sas7bdat"}
 
 
 class IngestionError(ValueError):
-    """Raised when an upload cannot be safely interpreted as a supported table."""
+    """Signal that an uploaded tabular file cannot safely become analysis records.
+
+    Examples:
+        >>> raise IngestionError("Uploaded file is empty")
+        Traceback (most recent call last):
+        ...
+        ingestion.IngestionError: Uploaded file is empty
+    """
 
 
 def import_tabular_bytes(filename: str, content: bytes) -> dict[str, Any]:
+    """Parse one supported in-memory tabular upload into normalized JSON-like records.
+
+    Args:
+        filename: Upload filename whose extension selects the parser.
+        content: Raw file bytes; no source file is written to disk.
+
+    Returns:
+        A mapping with normalized format, row count, column names, and records ready for
+        the analytics API.
+
+    Raises:
+        IngestionError: If the extension is unsupported, parsing fails, or the table is
+            empty, ambiguous, or invalid for analytics.
+
+    Examples:
+        >>> import_tabular_bytes("scores.csv", b"score\n10\n20\n")["rows"]
+        2
+    """
     suffix = PurePath(filename or "").suffix.lower()
     if suffix not in SUPPORTED_FORMATS:
         formats = ", ".join(sorted(SUPPORTED_FORMATS))

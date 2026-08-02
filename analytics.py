@@ -29,9 +29,38 @@ MAX_CELLS = 250_000
 MAX_CELL_TEXT = 10_000
 ENGINE_VERSION = "missingly-analytics/0.1"
 
+__all__ = [
+    "AnalyticsError",
+    "advanced_numeric_imputation",
+    "count_regression",
+    "count_regression_with_categorical_predictors",
+    "cox_proportional_hazards",
+    "hurdle_poisson_regression",
+    "kaplan_meier_analysis",
+    "linear_mixed_effects",
+    "missingness_report",
+    "multiple_imputation_ols",
+    "multinomial_logistic_regression",
+    "ordinal_logistic_regression",
+    "profile_dataset",
+    "records_to_csv",
+    "regression_with_categorical_predictors",
+    "run_statistical_test",
+    "simple_imputation",
+    "weighted_ols",
+    "zero_inflated_count_regression",
+]
+
 
 class AnalyticsError(ValueError):
-    """Raised when a requested analysis is not statistically valid."""
+    """Raised when validated input cannot support the requested statistical analysis.
+
+    Examples:
+        >>> raise AnalyticsError("Outcome must be numeric")
+        Traceback (most recent call last):
+        ...
+        analytics.AnalyticsError: Outcome must be numeric
+    """
 
 
 def _finite_number(value: Any) -> float | None:
@@ -157,6 +186,23 @@ def _correlations(numeric: dict[str, pd.Series]) -> list[dict[str, Any]]:
 
 
 def profile_dataset(records: list[dict[str, Any]], alpha: float = 0.05) -> dict[str, Any]:
+    """Profile an in-memory rectangular dataset without persisting raw records.
+
+    Args:
+        records: JSON-like row objects with scalar values and string column names.
+        alpha: Reserved confidence level included in the reproducibility fingerprint.
+
+    Returns:
+        A schema, numeric and categorical summaries, missingness totals, correlations,
+        and a deterministic input fingerprint.
+
+    Raises:
+        AnalyticsError: If records violate limits or do not form a valid tabular dataset.
+
+    Examples:
+        >>> profile_dataset([{"score": 10}, {"score": 20}])["dataset"]["rows"]
+        2
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     frame = _frame(records)
@@ -181,6 +227,22 @@ def profile_dataset(records: list[dict[str, Any]], alpha: float = 0.05) -> dict[
 
 
 def missingness_report(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Describe observed missingness without asserting a missing-data mechanism.
+
+    Args:
+        records: JSON-like row objects to inspect in memory.
+
+    Returns:
+        Column-level missingness, row patterns, observed numeric associations, warnings,
+        and a reproducibility fingerprint.
+
+    Raises:
+        AnalyticsError: If records are invalid, oversized, or contain unsupported values.
+
+    Examples:
+        >>> missingness_report([{"x": 1}, {"x": None}])["column_missingness"][0]["missing"]
+        1
+    """
     frame = _frame(records)
     numeric = _numeric_columns(frame)
     patterns: dict[tuple[str, ...], int] = {}
@@ -245,7 +307,24 @@ def simple_imputation(
     columns: list[str] | None = None,
     constant: Any | None = None,
 ) -> dict[str, Any]:
-    """Apply a transparent single-value imputation method and report each fill."""
+    """Fill selected missing cells using a transparent univariate rule.
+
+    Args:
+        records: JSON-like row objects to transform in memory.
+        method: One of mean, median, mode, or constant.
+        columns: Optional target columns; omitted selects all eligible columns.
+        constant: Replacement value required when method is constant.
+
+    Returns:
+        Transformed records, an audit of filled cells, and a reproducibility fingerprint.
+
+    Raises:
+        AnalyticsError: If a method, column, or fill value is incompatible with the data.
+
+    Examples:
+        >>> simple_imputation([{"x": 2}, {"x": None}], "mean")["records"][1]["x"]
+        2.0
+    """
     frame = _frame(records)
     method = method.strip().lower()
     if method not in {"mean", "median", "mode", "constant"}:
@@ -298,10 +377,25 @@ def advanced_numeric_imputation(
     max_iter: int = 10,
     random_state: int = 2026,
 ) -> dict[str, Any]:
-    """Impute numeric columns with KNN or deterministic chained regression.
+    """Apply KNN or deterministic iterative single imputation to numeric columns.
 
-    This is single imputation. It intentionally does not represent Rubin-pooled
-    multiple imputation or attach inferential certainty to imputed values.
+    Args:
+        records: JSON-like row objects to transform in memory.
+        method: The KNN or iterative imputation strategy.
+        columns: Numeric columns to include in the imputation model.
+        n_neighbors: Neighbor count for KNN imputation.
+        max_iter: Maximum iterations for iterative regression imputation.
+        random_state: Deterministic seed for iterative imputation.
+
+    Returns:
+        Imputed records, imputation metadata, and a settings-aware fingerprint.
+
+    Raises:
+        AnalyticsError: If selected columns are not eligible numeric imputation inputs.
+
+    Examples:
+        >>> advanced_numeric_imputation([{"x": 1, "y": 2}, {"x": 2, "y": None}], "knn", ["x", "y"])["records"][1]["y"]
+        2.0
     """
     frame = _frame(records)
     method = method.strip().lower()
@@ -370,7 +464,21 @@ def advanced_numeric_imputation(
 
 
 def records_to_csv(records: list[dict[str, Any]]) -> str:
-    """Export validated records with predictable LF line endings for reproducible sharing."""
+    """Export validated records as reproducible UTF-8 compatible CSV text.
+
+    Args:
+        records: JSON-like row objects to validate and export.
+
+    Returns:
+        CSV text with a header and LF line endings.
+
+    Raises:
+        AnalyticsError: If records violate the tabular input contract.
+
+    Examples:
+        >>> records_to_csv([{"x": 1}])
+        'x\n1\n'
+    """
     return _frame(records).to_csv(index=False, lineterminator="\n")
 
 
@@ -403,7 +511,28 @@ def multiple_imputation_ols(
     random_state: int = 2026,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Run posterior-draw iterative imputation and pool an OLS model with Rubin's rules."""
+    """Pool numeric OLS estimates across posterior iterative imputations using Rubin's rules.
+
+    Args:
+        records: JSON-like row objects containing numeric analysis and imputation columns.
+        outcome: Numeric OLS outcome column.
+        predictors: Unique numeric predictor columns.
+        impute_columns: Numeric columns included in each imputation model.
+        m: Number of completed datasets to generate.
+        max_iter: Maximum iterative-imputer iterations per completed dataset.
+        random_state: Base seed; each draw receives a deterministic derived seed.
+        alpha: Two-sided confidence level complement.
+
+    Returns:
+        Rubin-pooled coefficients, within/between/total variance, diagnostics, and a fingerprint.
+
+    Raises:
+        AnalyticsError: If model columns, imputation settings, or complete-data fits are invalid.
+
+    Examples:
+        >>> multiple_imputation_ols([{"x": 1, "y": 3}, {"x": 2, "y": None}, {"x": 3, "y": 7}], "y", ["x"], ["x", "y"], m=2)["m"]
+        2
+    """
     if not 2 <= m <= 50:
         raise AnalyticsError("m must be between 2 and 50 for multiple imputation")
     if not 1 <= max_iter <= 100:
@@ -539,7 +668,26 @@ def kaplan_meier_analysis(
     group_column: str | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Estimate Kaplan-Meier curves and a two-group log-rank test when applicable."""
+    """Estimate Kaplan-Meier curves and a two-group log-rank comparison when applicable.
+
+    Args:
+        records: JSON-like row objects containing follow-up time and event status.
+        time_column: Non-negative numeric follow-up-time column.
+        event_column: Observed two-level event/censor column.
+        group_column: Optional grouping column for separate curves.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Event coding, curve points with Greenwood log-log intervals, optional log-rank
+        inference, and a reproducibility fingerprint.
+
+    Raises:
+        AnalyticsError: If times, event coding, group count, or alpha are invalid.
+
+    Examples:
+        >>> kaplan_meier_analysis([{"t": 1, "e": "event"}, {"t": 2, "e": "censor"}], "t", "e")["n"]
+        2
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     frame = _frame(records)
@@ -693,7 +841,30 @@ def linear_mixed_effects(
     interactions: list[tuple[str, str]] | None = None,
     random_slope_column: str | None = None,
 ) -> dict[str, Any]:
-    """Fit a Gaussian random-intercept model for clustered continuous outcomes."""
+    """Fit a Gaussian mixed model with a random intercept and optional numeric random slope.
+
+    Args:
+        records: JSON-like clustered row objects.
+        outcome: Numeric continuous outcome column.
+        predictors: Fixed-effect predictor columns.
+        group_column: Cluster identifier for random effects.
+        alpha: Confidence interval complement.
+        categorical_predictors: Predictors to treatment-code with explicit references.
+        category_references: Optional categorical predictor to reference-level mapping.
+        interactions: Selected pairs of fixed predictors to interact.
+        random_slope_column: Optional numeric fixed predictor with a group-specific slope.
+
+    Returns:
+        Fixed-effect inference, encoded-factor metadata, random-effect variance/correlation,
+        ICC metadata, and a reproducibility fingerprint.
+
+    Raises:
+        AnalyticsError: If the design is singular, groups are too small, or fitting fails.
+
+    Examples:
+        >>> linear_mixed_effects([{"id": "a", "t": 0, "y": 1}, {"id": "a", "t": 1, "y": 2}, {"id": "b", "t": 0, "y": 3}, {"id": "b", "t": 1, "y": 4}], "y", ["t"], "id")["groups"]
+        2
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
@@ -821,7 +992,32 @@ def cox_proportional_hazards(
     category_references: dict[str, str] | None = None,
     interactions: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Fit a Cox proportional-hazards model with optional strata and clustered SEs."""
+    """Fit Cox proportional-hazards regression with validated encoding and diagnostics.
+
+    Args:
+        records: JSON-like follow-up rows.
+        time_column: Strictly positive numeric follow-up time.
+        event_column: Observed two-level event/censor column.
+        predictors: Fixed predictor columns.
+        strata_column: Optional baseline-hazard stratum column.
+        cluster_column: Optional cluster column for robust standard errors.
+        ties: Efron or Breslow tie method.
+        alpha: Confidence interval complement.
+        categorical_predictors: Predictors to treatment-code.
+        category_references: Explicit reference level for each categorical predictor.
+        interactions: Selected fixed-effect interaction pairs.
+
+    Returns:
+        Hazard-ratio inference, fit statistics, exploratory Schoenfeld-style diagnostics,
+        and a reproducibility fingerprint.
+
+    Raises:
+        AnalyticsError: If data are invalid, the model is non-identifiable, or fitting fails.
+
+    Examples:
+        >>> cox_proportional_hazards([{"t": 1, "e": "event", "x": 0}, {"t": 2, "e": "censor", "x": 1}, {"t": 3, "e": "event", "x": 2}], "t", "e", ["x"])["events"]
+        2
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if ties not in {"breslow", "efron"}:
@@ -956,7 +1152,26 @@ def count_regression(
     exposure_column: str | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit Poisson or NB2 count regression with an optional log-exposure offset."""
+    """Fit Poisson or NB2 count regression with an optional log-exposure offset.
+
+    Args:
+        records: JSON-like row objects with a non-negative integer outcome.
+        outcome: Count outcome column.
+        predictors: Unique numeric rate-predictor columns.
+        distribution: Either poisson or negative_binomial for an NB2 variance model.
+        exposure_column: Optional strictly positive exposure; its logarithm is an offset.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Rate-ratio inference, dispersion and fit diagnostics, and reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If the data, design, distribution, or fitted estimates are invalid.
+
+    Examples:
+        >>> count_regression([{"y": 1, "x": 0}, {"y": 2, "x": 1}, {"y": 4, "x": 2}], "y", ["x"])["distribution"]
+        'poisson'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if distribution not in {"poisson", "negative_binomial"}:
@@ -1082,7 +1297,27 @@ def zero_inflated_count_regression(
     inflation_predictors: list[str] | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit ZIP or ZINB2 regression with a separately modeled structural-zero process."""
+    """Fit ZIP or ZINB2 regression with a separately modeled structural-zero process.
+
+    Args:
+        records: JSON-like count-outcome rows.
+        outcome: Non-negative integer count column.
+        predictors: Numeric predictors for the count component.
+        distribution: Either poisson or negative_binomial for the count component.
+        exposure_column: Optional positive count-process exposure offset.
+        inflation_predictors: Optional numeric predictors for structural-zero probability.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Count and inflation-component estimates, fit metrics, and reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If data are unsuitable or either model component cannot converge.
+
+    Examples:
+        >>> zero_inflated_count_regression([{"y": 0, "x": 0}, {"y": 0, "x": 1}, {"y": 3, "x": 2}, {"y": 5, "x": 3}], "y", ["x"])["distribution"]
+        'poisson'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if distribution not in {"poisson", "negative_binomial"}:
@@ -1228,7 +1463,26 @@ def hurdle_poisson_regression(
     hurdle_predictors: list[str] | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit a logit hurdle and a zero-truncated Poisson count model for positive counts."""
+    """Fit a logit hurdle and a zero-truncated Poisson count model for positive counts.
+
+    Args:
+        records: JSON-like count-outcome rows.
+        outcome: Non-negative integer count column.
+        predictors: Numeric predictors for positive counts.
+        exposure_column: Optional positive exposure offset for the positive-count component.
+        hurdle_predictors: Optional numeric predictors of a positive rather than zero count.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Hurdle-logit and zero-truncated Poisson inference with reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If data are invalid or either component does not converge.
+
+    Examples:
+        >>> hurdle_poisson_regression([{"y": 0, "x": 0}, {"y": 1, "x": 1}, {"y": 2, "x": 2}, {"y": 4, "x": 3}], "y", ["x"])["method"]
+        'Poisson hurdle model'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
@@ -1401,7 +1655,25 @@ def ordinal_logistic_regression(
     category_order: list[str],
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit a proportional-odds ordinal logistic model with explicit category order."""
+    """Fit a proportional-odds ordinal logistic model with explicit category order.
+
+    Args:
+        records: JSON-like rows containing an ordered categorical outcome.
+        outcome: Ordered outcome column.
+        predictors: Unique numeric predictor columns.
+        category_order: Every observed outcome label in increasing order.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Proportional-odds coefficients, thresholds, odds ratios, and fingerprint metadata.
+
+    Raises:
+        AnalyticsError: If ordering, data, design, or model convergence is invalid.
+
+    Examples:
+        >>> ordinal_logistic_regression([{"y": "low", "x": 0}, {"y": "mid", "x": 1}, {"y": "high", "x": 2}], "y", ["x"], ["low", "mid", "high"])["category_order"]
+        ['low', 'mid', 'high']
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
@@ -1502,7 +1774,25 @@ def multinomial_logistic_regression(
     reference_category: str,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit a baseline-category multinomial logistic model with explicit reference."""
+    """Fit a baseline-category multinomial logistic model with explicit reference.
+
+    Args:
+        records: JSON-like rows containing a nominal multi-class outcome.
+        outcome: Nominal outcome column.
+        predictors: Unique numeric predictor columns.
+        reference_category: Observed category used as the baseline.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Per-comparison coefficients, relative-risk ratios, and reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If categories, data, design, or optimization are invalid.
+
+    Examples:
+        >>> multinomial_logistic_regression([{"y": "a", "x": 0}, {"y": "b", "x": 1}, {"y": "c", "x": 2}], "y", ["x"], "a")["reference_category"]
+        'a'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
@@ -1603,7 +1893,25 @@ def weighted_ols(
     weight_column: str,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit weighted least squares for strictly positive analytic weights."""
+    """Fit weighted least squares for strictly positive analytic weights.
+
+    Args:
+        records: JSON-like rows containing numeric analysis values.
+        outcome: Numeric continuous outcome column.
+        predictors: Unique numeric predictor columns.
+        weight_column: Strictly positive analytic-weight column.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Weighted least-squares coefficient inference and reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If weights, data, design, or model estimates are invalid.
+
+    Examples:
+        >>> weighted_ols([{"y": 1, "x": 0, "w": 1}, {"y": 3, "x": 1, "w": 2}, {"y": 5, "x": 2, "w": 1}], "y", ["x"], "w")["method"]
+        'Weighted least squares'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
@@ -1714,7 +2022,28 @@ def regression_with_categorical_predictors(
     interactions: list[tuple[str, str]] | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit OLS or binary logistic regression with explicit categorical encoding."""
+    """Fit OLS or binary logistic regression with explicit categorical encoding.
+
+    Args:
+        records: JSON-like rows containing the analysis fields.
+        model: Either linear for OLS or logistic for binary logistic regression.
+        outcome: Numeric OLS outcome or observed two-level logistic outcome.
+        predictors: Numeric or categorical fixed predictors.
+        categorical_predictors: Predictor subset to treatment-code.
+        category_references: Optional factor-to-reference-level mapping.
+        interactions: Selected pairs of predictor names to interact.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Encoded-design metadata, model-specific inference, and reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If factor levels, design, response, or fitting are invalid.
+
+    Examples:
+        >>> regression_with_categorical_predictors([{"y": 1, "x": 0, "g": "a"}, {"y": 3, "x": 1, "g": "b"}, {"y": 5, "x": 2, "g": "a"}], "linear", "y", ["x", "g"], ["g"])["model"]
+        'linear'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if model not in {"linear", "logistic"}:
@@ -1925,7 +2254,29 @@ def count_regression_with_categorical_predictors(
     interactions: list[tuple[str, str]] | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Fit Poisson or NB2 count regression with treatment-coded factors and interactions."""
+    """Fit Poisson or NB2 count regression with treatment-coded factors and interactions.
+
+    Args:
+        records: JSON-like count-outcome rows.
+        outcome: Non-negative integer count column.
+        predictors: Numeric or categorical fixed predictors.
+        distribution: Either poisson or negative_binomial for an NB2 variance model.
+        exposure_column: Optional strictly positive exposure offset.
+        categorical_predictors: Predictor subset to treatment-code.
+        category_references: Optional factor-to-reference-level mapping.
+        interactions: Selected predictor pairs to interact after treatment coding.
+        alpha: Confidence interval complement.
+
+    Returns:
+        Rate-ratio inference, categorical encoding, fit diagnostics, and fingerprint metadata.
+
+    Raises:
+        AnalyticsError: If factor levels, outcome, design, or model fitting is invalid.
+
+    Examples:
+        >>> count_regression_with_categorical_predictors([{"y": 1, "x": 0, "g": "a"}, {"y": 2, "x": 1, "g": "b"}, {"y": 4, "x": 2, "g": "a"}, {"y": 5, "x": 3, "g": "b"}], "y", ["x", "g"], categorical_predictors=["g"])["distribution"]
+        'poisson'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     if distribution not in {"poisson", "negative_binomial"}:
@@ -2040,6 +2391,26 @@ def run_statistical_test(
     predictors: list[str] | None = None,
     alpha: float = 0.05,
 ) -> dict[str, Any]:
+    """Run a validated classical inference procedure on in-memory tabular data.
+
+    Args:
+        records: JSON-like rows containing fields required by the selected test.
+        test: Supported test identifier such as pearson_correlation, t_test, anova, or ols.
+        outcome: Outcome or first analysis column, depending on the procedure.
+        group: Optional grouping column or second analysis column.
+        predictors: Optional unique numeric OLS predictor columns.
+        alpha: Confidence interval complement where a model supplies intervals.
+
+    Returns:
+        Test-specific statistic, p-value, sample-size details, and reproducibility metadata.
+
+    Raises:
+        AnalyticsError: If the test, columns, assumptions, or data shape are unsupported.
+
+    Examples:
+        >>> run_statistical_test([{"x": 1, "y": 2}, {"x": 2, "y": 4}, {"x": 3, "y": 6}], "pearson_correlation", "x", "y")["test"]
+        'pearson_correlation'
+    """
     if not 0 < alpha < 1:
         raise AnalyticsError("alpha must be between 0 and 1")
     frame = _frame(records)
