@@ -18,7 +18,8 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 ## Survival and reporting
 
 - Kaplan–Meier accepts non-negative numeric time and a two-category event column. It reports at-risk counts, events, Greenwood log-log confidence intervals, and a log-rank test only for exactly two groups.
-- `/analysis/cox` fits a Cox proportional-hazards model for strictly positive follow-up time, a two-category event column, numeric or explicitly treatment-coded categorical predictors, and selected pairwise interactions. It returns log hazard ratios, hazard ratios with confidence intervals, a partial-likelihood ratio test, Efron or Breslow tie handling, optional strata, or optional cluster-robust standard errors (one at a time). It does not test the proportional-hazards assumption or support time-varying coefficients.
+- `/analysis/cox` fits a Cox proportional-hazards model for strictly positive follow-up time, a two-category event column, numeric or explicitly treatment-coded categorical predictors, and selected pairwise interactions. It returns log hazard ratios, hazard ratios with confidence intervals, a partial-likelihood ratio test, Efron or Breslow tie handling, optional strata, or optional cluster-robust standard errors (one at a time).
+- Every Cox result includes an exploratory Schoenfeld-style event-residual correlation with log time, per model term and Bonferroni-adjusted for the displayed terms. It is not a formal global proportional-hazards test and does not support time-varying coefficients; inspect plots and study-specific diagnostics before interpretation.
 - The HTML report is self-contained and escapes all user-provided titles and values. It includes dataset profile, missing-data notes and patterns, correlations, interpretation boundaries, and the reproducibility fingerprint; it is a descriptive report, not a claim of causal or mechanism-specific inference.
 - Random-forest imputation and mechanism-specific missing-data modeling are deliberately not presented as supported until they have validation benchmarks.
 
@@ -74,6 +75,6 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Numeric methods reject columns with mixed observed numeric/non-numeric values rather than silently coercing them.
 - Pearson requires at least three non-constant paired values; Welch requires two observations per group; OLS rejects perfect collinearity and insufficient degrees of freedom.
 - Chi-square reports a warning when an expected cell count is below five.
-- This phase does not claim support for Little's MCAR test, full complex-survey estimation, hurdle negative-binomial models, random-slope or generalized mixed models, proportional-hazards diagnostics, time-varying Cox effects, or causal inference. Those require separate validated implementations.
+- This phase does not claim support for Little's MCAR test, full complex-survey estimation, hurdle negative-binomial models, random-slope or generalized mixed models, a formal global proportional-hazards test, time-varying Cox effects, or causal inference. Those require separate validated implementations.
 
 The contracts in `tests/test_analytics.py` are the initial numerical benchmark suite. Any new method must add known-result tests and document assumptions before it is exposed in the API.

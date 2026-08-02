@@ -624,6 +624,64 @@ def kaplan_meier_analysis(
     }
 
 
+def _cox_schoenfeld_style_diagnostic(
+    data: pd.DataFrame,
+    exog: pd.DataFrame,
+    fitted_params: np.ndarray,
+    strata_column: str | None,
+) -> dict[str, Any]:
+    """Calculate event-level Schoenfeld-style residual/time correlations for Cox diagnostics."""
+    residuals: dict[str, list[float]] = {term: [] for term in exog.columns}
+    event_times: list[float] = []
+    strata = data.groupby("strata", observed=True) if strata_column else [(None, data)]
+    for _, subset in strata:
+        for event_time in sorted(subset.loc[subset["event_binary"] == 1, "time"].unique().tolist()):
+            event_rows = subset.loc[(subset["time"] == event_time) & (subset["event_binary"] == 1)]
+            risk_rows = subset.loc[subset["time"] >= event_time]
+            risk_exog = exog.loc[risk_rows.index].to_numpy()
+            linear_predictor = risk_exog @ fitted_params
+            weights = np.exp(linear_predictor - np.max(linear_predictor))
+            weighted_mean = np.average(risk_exog, axis=0, weights=weights)
+            event_exog = exog.loc[event_rows.index].to_numpy()
+            for row in event_exog:
+                event_times.append(float(event_time))
+                for index, term in enumerate(exog.columns):
+                    residuals[term].append(float(row[index] - weighted_mean[index]))
+    transformed_time = np.log(np.asarray(event_times, dtype=float)) if event_times else np.array([])
+    diagnostics = []
+    for term in exog.columns:
+        values = np.asarray(residuals[term], dtype=float)
+        if len(values) < 5 or np.unique(transformed_time).size < 2 or np.unique(values).size < 2:
+            diagnostics.append(
+                {
+                    "term": term,
+                    "events_with_residuals": int(len(values)),
+                    "log_time_pearson_r": None,
+                    "p_value": None,
+                    "bonferroni_p_value": None,
+                    "status": "insufficient variation for an exploratory residual-time correlation",
+                }
+            )
+            continue
+        correlation, p_value = stats.pearsonr(transformed_time, values)
+        diagnostics.append(
+            {
+                "term": term,
+                "events_with_residuals": int(len(values)),
+                "log_time_pearson_r": _round(correlation),
+                "p_value": _round(p_value),
+                "bonferroni_p_value": _round(min(1.0, p_value * len(exog.columns))),
+                "status": "exploratory residual-time correlation",
+            }
+        )
+    return {
+        "method": "Schoenfeld-style residual correlation with log(time)",
+        "event_residuals": int(len(event_times)),
+        "diagnostics": diagnostics,
+        "warning": "Exploratory only: this is not a global proportional-hazards test and should be interpreted with plots and study-specific diagnostics.",
+    }
+
+
 def linear_mixed_effects(
     records: list[dict[str, Any]],
     outcome: str,
@@ -817,6 +875,9 @@ def cox_proportional_hazards(
                 "hazard_ratio_ci_upper": _exp_round(upper),
             }
         )
+    proportional_hazards_diagnostic = _cox_schoenfeld_style_diagnostic(
+        data, exog, np.asarray(fitted.params, dtype=float), strata_column
+    )
     settings = {
         "analysis": "cox_proportional_hazards",
         "time_column": time_column,
@@ -845,7 +906,8 @@ def cox_proportional_hazards(
         "categorical_encoding": encoding,
         "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],
         "coefficients": coefficients,
-        "warning": "This model does not test the proportional-hazards assumption; assess it with study-specific diagnostics before interpretation.",
+        "proportional_hazards_diagnostic": proportional_hazards_diagnostic,
+        "warning": "The residual-time diagnostic is exploratory, not a definitive global proportional-hazards test; assess it with plots and study-specific diagnostics before interpretation.",
         "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
     }
 

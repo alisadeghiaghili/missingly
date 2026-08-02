@@ -308,6 +308,8 @@ def test_cox_proportional_hazards_supports_strata_and_clustered_standard_errors(
     assert stratified["variance_estimator"] == "model-based"
     assert coefficient["hazard_ratio"] > 1
     assert stratified["likelihood_ratio_p_value"] < 0.05
+    assert stratified["proportional_hazards_diagnostic"]["event_residuals"] == stratified["events"]
+    assert stratified["proportional_hazards_diagnostic"]["diagnostics"][0]["term"] == "x"
 
     robust = cox_proportional_hazards(records, "time", "event", ["x"], cluster_column="cluster", ties="breslow")
     assert robust["ties"] == "breslow"
@@ -432,6 +434,9 @@ def test_cox_regression_supports_categorical_predictors_and_interactions():
     assert cox["categorical_encoding"][0]["reference"] == "control"
     assert terms["group[treatment]"]["hazard_ratio"] > 1
     assert "group[treatment] × x" in terms
+    diagnostics = {item["term"]: item for item in cox["proportional_hazards_diagnostic"]["diagnostics"]}
+    assert diagnostics["group[treatment]"]["events_with_residuals"] == cox["events"]
+    assert diagnostics["group[treatment] × x"]["bonferroni_p_value"] is not None
 
 
 @pytest.fixture
@@ -648,6 +653,7 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     )
     assert categorical_cox.status_code == 200
     assert categorical_cox.json()["categorical_encoding"][0]["reference"] == "control"
+    assert categorical_cox.json()["proportional_hazards_diagnostic"]["event_residuals"] > 0
     report = client.post("/analysis/report.html", headers=headers, json={"records": survival_records, "title": "Report"})
     assert report.status_code == 200
     assert report.headers["content-disposition"].startswith("attachment;")
