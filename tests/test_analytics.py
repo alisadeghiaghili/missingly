@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from analytics import advanced_numeric_imputation, missingness_report, profile_dataset, records_to_csv, run_statistical_test, simple_imputation
+from analytics import advanced_numeric_imputation, missingness_report, multiple_imputation_ols, profile_dataset, records_to_csv, run_statistical_test, simple_imputation
 from ingestion import import_tabular_bytes
 
 
@@ -90,6 +90,22 @@ def test_advanced_numeric_imputation_is_reproducible_and_preserves_observed_valu
     assert records_to_csv(first_iterative["records"]).startswith("x,y\n")
 
 
+def test_multiple_imputation_ols_uses_rubin_pooling_and_is_reproducible():
+    records = [
+        {"x": float(x) if x not in {3, 9} else None, "y": (2 + 3 * x + (0.25 if x % 2 else -0.25)) if x != 6 else None}
+        for x in range(1, 15)
+    ]
+    first = multiple_imputation_ols(records, "y", ["x"], ["x", "y"], m=4, max_iter=15, random_state=11)
+    second = multiple_imputation_ols(records, "y", ["x"], ["x", "y"], m=4, max_iter=15, random_state=11)
+    assert first["method"].endswith("Rubin-pooled OLS")
+    assert first["sample_size_per_imputation"] == [14, 14, 14, 14]
+    assert first["imputed_cells_per_dataset"] == {"x": 2, "y": 1}
+    slope = next(item for item in first["coefficients"] if item["term"] == "x")
+    assert slope["estimate"] == pytest.approx(3, abs=0.5)
+    assert slope["total_variance"] >= slope["within_variance"]
+    assert first["reproducibility"] == second["reproducibility"]
+
+
 @pytest.fixture
 def analytics_client(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "test")
@@ -143,3 +159,15 @@ def test_analysis_file_import_and_imputation_endpoints(analytics_client):
     assert exported.status_code == 200
     assert exported.headers["content-disposition"].startswith("attachment;")
     assert "group,score" in exported.text
+
+    mi_records = [
+        {"x": float(x) if x != 3 else None, "y": float(2 + 3 * x + (0.2 if x % 2 else -0.2)) if x != 5 else None}
+        for x in range(1, 11)
+    ]
+    pooled = client.post(
+        "/analysis/multiple-imputation/ols",
+        headers=headers,
+        json={"records": mi_records, "outcome": "y", "predictors": ["x"], "impute_columns": ["x", "y"], "m": 3},
+    )
+    assert pooled.status_code == 200
+    assert pooled.json()["m"] == 3

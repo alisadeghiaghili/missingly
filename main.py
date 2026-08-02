@@ -26,6 +26,7 @@ from analytics import (
     AnalyticsError,
     advanced_numeric_imputation,
     missingness_report,
+    multiple_imputation_ols,
     profile_dataset,
     records_to_csv,
     run_statistical_test,
@@ -532,6 +533,15 @@ class ImputationRequest(DatasetAnalysisRequest):
     columns: list[str] = Field(default_factory=list, max_length=100)
     constant: Any | None = None
     n_neighbors: int = Field(default=5, ge=1, le=100)
+    max_iter: int = Field(default=10, ge=1, le=100)
+    random_state: int = Field(default=2026, ge=0, le=2_147_483_647)
+
+
+class MultipleImputationOLSRequest(DatasetAnalysisRequest):
+    outcome: str = Field(min_length=1, max_length=128)
+    predictors: list[str] = Field(min_length=1, max_length=30)
+    impute_columns: list[str] = Field(default_factory=list, max_length=100)
+    m: int = Field(default=5, ge=2, le=50)
     max_iter: int = Field(default=10, ge=1, le=100)
     random_state: int = Field(default=2026, ge=0, le=2_147_483_647)
 
@@ -2919,6 +2929,35 @@ async def export_analysis_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="missingly-analysis.csv"'},
     )
+
+
+@app.post("/analysis/multiple-imputation/ols")
+async def analyze_multiple_imputation_ols(
+    body: MultipleImputationOLSRequest,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    enforce_rate_limit("analysis", f"mi-ols:{current_user['id']}:{client_ip(request)}", 6, 60)
+    try:
+        result = multiple_imputation_ols(
+            body.records,
+            body.outcome,
+            body.predictors,
+            body.impute_columns or None,
+            body.m,
+            body.max_iter,
+            body.random_state,
+            body.alpha,
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        current_user["id"],
+        "analysis.multiple_imputation_ols",
+        "dataset",
+        metadata={"rows": len(body.records), "m": body.m, "predictors": len(body.predictors)},
+    )
+    return result
 
 
 @app.post("/analysis/tests")

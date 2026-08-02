@@ -10,6 +10,10 @@ Each request is capped at 10,000 rows, 100 columns, 250,000 supplied cells, and 
 - Simple imputation supports `mean`, `median`, `mode`, or an explicit `constant`; each response reports the exact filled columns, values, and cell counts. It does not silently choose an algorithm.
 - Advanced numeric single imputation supports `knn` and deterministic `iterative` regression. Both require at least two numeric, non-all-missing selected columns and return the seed/settings in the fingerprint. They are not Rubin-pooled multiple imputation.
 - The authenticated CSV export endpoint returns the validated current records without retaining the dataset server-side.
+
+## Multiple imputation with inference
+
+`/analysis/multiple-imputation/ols` runs posterior-draw iterative imputation for numeric columns and fits OLS to every completed dataset. It pools coefficient estimates, within/between/total variance, standard errors, degrees of freedom, confidence intervals, p-values, and fraction of missing information using Rubin's rules. The method is limited to numeric OLS and does not establish MAR/MCAR assumptions for the user; those remain a study-design judgment.
 - Multiple imputation, KNN, random forest imputation, and mechanism-specific modeling are deliberately not presented as supported until they have validation benchmarks.
 
 ## Supported now

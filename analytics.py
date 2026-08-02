@@ -363,6 +363,164 @@ def records_to_csv(records: list[dict[str, Any]]) -> str:
     return _frame(records).to_csv(index=False, lineterminator="\n")
 
 
+def _fit_complete_case_ols(frame: pd.DataFrame, outcome: str, predictors: list[str]) -> tuple[np.ndarray, np.ndarray, int, float | None]:
+    data = frame[[outcome, *predictors]].dropna()
+    parameter_count = len(predictors) + 1
+    if len(data) <= parameter_count:
+        raise AnalyticsError("Each imputed OLS fit needs more complete rows than fitted parameters")
+    y = data[outcome].to_numpy(dtype=float)
+    matrix = np.column_stack([np.ones(len(data)), *[data[name].to_numpy(dtype=float) for name in predictors]])
+    coefficients, _, rank, _ = np.linalg.lstsq(matrix, y, rcond=None)
+    if rank != parameter_count:
+        raise AnalyticsError("OLS predictors are perfectly collinear after imputation")
+    residuals = y - matrix @ coefficients
+    degrees_freedom = len(y) - parameter_count
+    mse = float(np.sum(residuals**2) / degrees_freedom)
+    covariance = mse * np.linalg.inv(matrix.T @ matrix)
+    total_sum_squares = float(np.sum((y - y.mean()) ** 2))
+    r_squared = 1 - float(np.sum(residuals**2)) / total_sum_squares if total_sum_squares else None
+    return coefficients, covariance, int(len(y)), _round(r_squared)
+
+
+def multiple_imputation_ols(
+    records: list[dict[str, Any]],
+    outcome: str,
+    predictors: list[str],
+    impute_columns: list[str] | None = None,
+    m: int = 5,
+    max_iter: int = 10,
+    random_state: int = 2026,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Run posterior-draw iterative imputation and pool an OLS model with Rubin's rules."""
+    if not 2 <= m <= 50:
+        raise AnalyticsError("m must be between 2 and 50 for multiple imputation")
+    if not 1 <= max_iter <= 100:
+        raise AnalyticsError("max_iter must be between 1 and 100")
+    if not 0 < alpha < 1:
+        raise AnalyticsError("alpha must be between 0 and 1")
+    if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
+        raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
+    frame = _frame(records)
+    numeric = _numeric_columns(frame)
+    required = [outcome, *predictors]
+    for column in required:
+        if column not in numeric:
+            raise AnalyticsError(f"Multiple-imputation OLS requires numeric column: '{column}'")
+    selected = impute_columns or list(numeric)
+    if len(set(selected)) != len(selected) or len(selected) < 2:
+        raise AnalyticsError("impute_columns must contain at least two unique numeric columns")
+    for column in selected:
+        if column not in numeric:
+            raise AnalyticsError(f"Multiple imputation requires numeric column: '{column}'")
+        if numeric[column].dropna().empty:
+            raise AnalyticsError(f"Cannot impute an all-missing column: '{column}'")
+    for column in required:
+        if frame[column].isna().any() and column not in selected:
+            raise AnalyticsError(f"Missing model column '{column}' must be included in impute_columns")
+    source = pd.DataFrame({column: numeric[column] for column in selected})
+    missing_counts = {column: int(source[column].isna().sum()) for column in selected}
+    if not any(missing_counts.values()):
+        raise AnalyticsError("Multiple imputation requires at least one missing value in impute_columns")
+    estimates: list[np.ndarray] = []
+    covariances: list[np.ndarray] = []
+    r_squared_values: list[float] = []
+    sample_sizes: list[int] = []
+    for draw in range(m):
+        try:
+            imputer = IterativeImputer(
+                max_iter=max_iter,
+                random_state=random_state + draw,
+                sample_posterior=True,
+                initial_strategy="median",
+            )
+            values = imputer.fit_transform(source)
+        except Exception as exc:
+            raise AnalyticsError("Posterior iterative imputation could not fit this numeric dataset") from exc
+        if values.shape[1] != len(selected) or not np.isfinite(values).all():
+            raise AnalyticsError("Posterior iterative imputation did not produce a complete finite result")
+        completed = frame.copy()
+        completed_values = pd.DataFrame(values, columns=selected, index=frame.index)
+        for column in selected:
+            mask = completed[column].isna()
+            completed.loc[mask, column] = completed_values.loc[mask, column]
+        coefficients, covariance, sample_size, r_squared = _fit_complete_case_ols(completed, outcome, predictors)
+        estimates.append(coefficients)
+        covariances.append(covariance)
+        sample_sizes.append(sample_size)
+        if r_squared is not None:
+            r_squared_values.append(r_squared)
+    estimate_matrix = np.vstack(estimates)
+    covariance_stack = np.stack(covariances)
+    pooled_estimates = estimate_matrix.mean(axis=0)
+    within = covariance_stack.mean(axis=0)
+    between = np.cov(estimate_matrix, rowvar=False, ddof=1)
+    if np.ndim(between) == 0:
+        between = np.array([[float(between)]])
+    total = within + (1 + 1 / m) * between
+    names = ["intercept", *predictors]
+    coefficients: list[dict[str, Any]] = []
+    for index, name in enumerate(names):
+        within_variance = max(float(within[index, index]), 0.0)
+        between_variance = max(float(between[index, index]), 0.0)
+        total_variance = max(float(total[index, index]), 0.0)
+        standard_error = math.sqrt(total_variance)
+        relative_increase = ((1 + 1 / m) * between_variance / within_variance) if within_variance > 0 else math.inf
+        degrees_freedom = ((m - 1) * (1 + 1 / relative_increase) ** 2) if math.isfinite(relative_increase) and relative_increase > 0 else None
+        statistic = float(pooled_estimates[index] / standard_error) if standard_error > 0 else None
+        if statistic is None:
+            p_value = None
+            critical = None
+        elif degrees_freedom is None:
+            p_value = float(2 * stats.norm.sf(abs(statistic)))
+            critical = float(stats.norm.ppf(1 - alpha / 2))
+        else:
+            p_value = float(2 * stats.t.sf(abs(statistic), degrees_freedom))
+            critical = float(stats.t.ppf(1 - alpha / 2, degrees_freedom))
+        fraction_missing_information = ((1 + 1 / m) * between_variance / total_variance) if total_variance > 0 else None
+        coefficients.append(
+            {
+                "term": name,
+                "estimate": _round(pooled_estimates[index]),
+                "std_error": _round(standard_error),
+                "statistic": _round(statistic),
+                "p_value": _round(p_value),
+                "degrees_freedom": _round(degrees_freedom) if degrees_freedom is not None else None,
+                "within_variance": _round(within_variance),
+                "between_variance": _round(between_variance),
+                "total_variance": _round(total_variance),
+                "fraction_missing_information": _round(fraction_missing_information),
+                "ci_lower": _round(pooled_estimates[index] - critical * standard_error) if critical is not None else None,
+                "ci_upper": _round(pooled_estimates[index] + critical * standard_error) if critical is not None else None,
+            }
+        )
+    settings = {
+        "analysis": "multiple_imputation_ols",
+        "outcome": outcome,
+        "predictors": predictors,
+        "impute_columns": selected,
+        "m": m,
+        "max_iter": max_iter,
+        "random_state": random_state,
+        "alpha": alpha,
+    }
+    diagnostics = []
+    if m < 5:
+        diagnostics.append("Fewer than five imputations were requested; increase m when missing information is substantial.")
+    if any((item["fraction_missing_information"] or 0) > 0.50 for item in coefficients):
+        diagnostics.append("At least one coefficient has high fraction of missing information; inspect the imputation model and sensitivity analyses.")
+    return {
+        "method": "Posterior iterative multiple imputation with Rubin-pooled OLS",
+        "m": m,
+        "sample_size_per_imputation": sample_sizes,
+        "pooled_r_squared_mean": _round(np.mean(r_squared_values)) if r_squared_values else None,
+        "imputed_cells_per_dataset": missing_counts,
+        "coefficients": coefficients,
+        "diagnostics": diagnostics,
+        "reproducibility": {"engine": ENGINE_VERSION, "input_sha256": _fingerprint(records, settings)},
+    }
+
+
 def _json_value(value: Any) -> Any:
     if value is None or value is pd.NA:
         return None
