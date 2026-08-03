@@ -1569,15 +1569,10 @@ def _impute_knn_gower(
     pd.DataFrame
         Imputed copy of *df*.
     """
-    try:
-        import gower  # type: ignore[import]
-    except ImportError as exc:
-        raise ImportError(
-            "Gower distance requires the 'gower' package: pip install gower"
-        ) from exc
+    from missingly._distance import gower_distance
 
     result = df.copy()
-    dist_matrix = gower.gower_matrix(df)
+    dist_matrix = gower_distance(df)
 
     for col in df.columns:
         missing_mask = df[col].isna()

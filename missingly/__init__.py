@@ -58,6 +58,8 @@ from __future__ import annotations
 
 import warnings as _warnings
 
+from missingly._version import __version__
+
 # ---------------------------------------------------------------------------
 # Deprecation helper
 # ---------------------------------------------------------------------------
@@ -315,5 +317,3 @@ __all__ = [
     # Manipulation
     "replace_with_na", "replace_with_na_all", "add_any_miss_var", "bind_shadow_matrix",
 ]
-
-__version__ = "0.3.0"

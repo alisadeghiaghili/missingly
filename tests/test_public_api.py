@@ -14,6 +14,13 @@ import pytest
 import missingly
 
 
+def test_runtime_version_matches_distribution_metadata():
+    """Runtime and build metadata expose one consistent release version."""
+    from importlib.metadata import version
+
+    assert missingly.__version__ == version("missingly") == "1.0.0"
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

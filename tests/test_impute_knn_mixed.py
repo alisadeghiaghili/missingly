@@ -13,25 +13,13 @@ Scenarios
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import pandas as pd
 import pytest
 
-try:
-    import gower
-    HAS_GOWER = True
-except ImportError:
-    HAS_GOWER = False
-
-pytestmark = pytest.mark.skipif(
-    not HAS_GOWER,
-    reason="gower package not installed"
-)
-
 from missingly.impute import impute_knn
 from missingly._distance import gower_distance
+from missingly.exceptions import InvalidStrategyError
 from missingly.transformer import MissinglyImputer
 
 
@@ -112,12 +100,12 @@ def test_mixed_obvious_neighbour(obvious_cat_df):
 
 
 # ---------------------------------------------------------------------------
-# 4. Invalid metric raises ValueError
+# 4. Invalid metric raises the domain-specific public exception
 # ---------------------------------------------------------------------------
 
 def test_invalid_metric_raises():
     df = pd.DataFrame({"a": [1.0, np.nan, 3.0]})
-    with pytest.raises(ValueError, match="metric must be one of"):
+    with pytest.raises(InvalidStrategyError, match="`metric` must be one of"):
         impute_knn(df, metric="cosine")
 
 
@@ -171,9 +159,8 @@ def test_transformer_mixed_no_nan(small_mixed_df):
 # 9. Large-n warning from gower_distance
 # ---------------------------------------------------------------------------
 
-def test_gower_large_n_warning():
-    n = 10_001
-    df = pd.DataFrame({"x": np.zeros(n), "c": ["a"] * n})
-    with pytest.warns(UserWarning, match="10001"):
-        # Only compute the first tiny slice to avoid OOM in CI
-        gower_distance(df.head(n))  # triggers warning before loop
+def test_gower_large_n_warning(monkeypatch):
+    monkeypatch.setattr("missingly._distance._LARGE_N_WARN", 10)
+    df = pd.DataFrame({"x": np.zeros(11), "c": ["a"] * 11})
+    with pytest.warns(UserWarning, match="11"):
+        gower_distance(df)
