@@ -13,6 +13,8 @@ Scenarios
 
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -160,7 +162,8 @@ def test_transformer_mixed_no_nan(small_mixed_df):
 # ---------------------------------------------------------------------------
 
 def test_gower_large_n_warning(monkeypatch):
-    monkeypatch.setattr("missingly._distance._LARGE_N_WARN", 10)
+    distance_module = importlib.import_module("missingly._distance")
+    monkeypatch.setattr(distance_module, "_LARGE_N_WARN", 10)
     df = pd.DataFrame({"x": np.zeros(11), "c": ["a"] * 11})
     with pytest.warns(UserWarning, match="11"):
         gower_distance(df)

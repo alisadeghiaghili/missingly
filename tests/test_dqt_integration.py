@@ -81,19 +81,15 @@ def test_dqt_correlation_heatmap_in_all():
 def test_visualise_module_does_not_import_dqt_at_module_level():
     """Importing missingly.visualise must not drag in data_quality_toolkit
     as a side-effect at module level."""
-    # Remove cached modules so we get a clean import
+    # Remove only DQT's cached modules. Reloading the facade in place avoids
+    # replacing the root ``missingly`` module and invalidating public aliases
+    # held by tests or user code elsewhere in the process.
     mods_to_remove = [k for k in sys.modules if "data_quality_toolkit" in k]
     saved = {k: sys.modules.pop(k) for k in mods_to_remove}
 
     try:
-        # Re-import visualise fresh (it may already be cached; that's fine—
-        # we only care that DQT is not pulled in *by* the import itself)
-        if "missingly.visualise" in sys.modules:
-            del sys.modules["missingly.visualise"]
-        if "missingly" in sys.modules:
-            del sys.modules["missingly"]
-
-        import missingly.visualise  # noqa: F401
+        visualise_module = importlib.import_module("missingly.visualise")
+        importlib.reload(visualise_module)
 
         dqt_imported = any(
             k.startswith("data_quality_toolkit") for k in sys.modules
@@ -103,6 +99,9 @@ def test_visualise_module_does_not_import_dqt_at_module_level():
             "missingly.visualise — it must be a lazy function-level import."
         )
     finally:
+        for module_name in list(sys.modules):
+            if module_name.startswith("data_quality_toolkit"):
+                sys.modules.pop(module_name)
         sys.modules.update(saved)
 
 
