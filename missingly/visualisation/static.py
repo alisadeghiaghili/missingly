@@ -406,15 +406,46 @@ def upset(
 ) -> dict | Any:
     """UpSet plot of missing-value co-occurrence patterns.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose joint missingness patterns are plotted.
+    figsize : tuple of float, optional
+        Matplotlib figure size.  A readable default is selected when omitted.
+    min_subset_size : int, default 1
+        Minimum number of rows required for an intersection to be displayed.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Backend-specific options.  The native Matplotlib backend accepts
+        ``show_pct``; Plotly options are forwarded to its implementation.
+
     Returns
     -------
-    dict with keys 'intersections', 'matrix', 'totals'  (matplotlib backend)
-    or plotly Figure  (interactive backend).
+    dict or plotly.graph_objects.Figure
+        Matplotlib axes under ``intersections``, ``matrix``, and ``totals``;
+        or an interactive Plotly figure.
 
     Raises
     ------
     ImportError
-        When ``upsetplot`` is not installed (matplotlib backend only).
+        If Plotly is requested but not installed.
+    TypeError
+        If an unsupported Matplotlib keyword argument is supplied.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from missingly.visualisation.static import upset
+    >>> frame = pd.DataFrame({"a": [1.0, np.nan], "b": [np.nan, np.nan]})
+    >>> axes = upset(frame)
+    >>> sorted(axes)
+    ['intersections', 'matrix', 'totals']
     """
     if backend == "plotly" or interactive:
         _require_plotly()

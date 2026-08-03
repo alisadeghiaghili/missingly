@@ -18,6 +18,24 @@ comparison, and reporting on those.
 
 ## Session Log
 
+### [2026-08-03] Unrelated-branch reconciliation and statistical credibility
+
+- Verified that `origin/main` and `agent/missingly-analytics-upgrade` have unrelated Git
+  histories; the package branch remains canonical and the web/statistics product is not
+  force-merged.
+- Selectively ported the compatible strengths: evidence-gated competitor analysis,
+  statistical conformance policy, and deterministic provenance.
+- Added a keep/drop audit in `BRANCH_INTEGRATION.md`; FastAPI, auth, payments, general
+  statistics, and product UI remain outside the missing-data-only scope.
+- Removed placeholder-only skips and the external Gower test skip. Optional DQT tests
+  remain conditional locally and are mandatory in their dedicated CI job.
+- Corrected Rubin pooling terminology and behavior: large-sample Rubin degrees of
+  freedom, distinct `lambda` and `fmi`, and finite/non-negative input guardrails.
+- T1 remains open until measured line coverage reaches at least 85%; passing-test count
+  alone is not a coverage claim.
+
+---
+
 ### [2026-07-04] Initial missingly Critical Review
 
 **Critical Gaps Found:**
