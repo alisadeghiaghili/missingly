@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mixed KNN uses Missingly's internal Gower implementation rather than an external
   runtime package.
 - Runtime and distribution versions now share one metadata source.
+- Build metadata uses the SPDX license format and explicit package-data configuration,
+  eliminating setuptools deprecation and ambiguous-package warnings.
 
 ### Fixed
 - Reporting edge cases, localized recommendations, RTL font fallback, Little's MCAR
