@@ -646,6 +646,7 @@ class GeneralizedEstimatingEquationsRequest(DatasetAnalysisRequest):
     category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
     interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
     time_column: str | None = Field(default=None, min_length=1, max_length=128)
+    standard_errors: Literal["robust", "bias_reduced"] = "robust"
 
 
 class WeightedOLSRequest(DatasetAnalysisRequest):
@@ -3142,6 +3143,7 @@ async def analyze_generalized_estimating_equations(
             body.category_references,
             body.interactions,
             body.time_column,
+            body.standard_errors,
         )
     except AnalyticsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

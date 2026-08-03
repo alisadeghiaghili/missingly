@@ -992,6 +992,7 @@ def generalized_estimating_equations(
     category_references: dict[str, str] | None = None,
     interactions: list[tuple[str, str]] | None = None,
     time_column: str | None = None,
+    standard_errors: str = "robust",
 ) -> dict[str, Any]:
     """Fit a population-averaged GEE with robust sandwich standard errors.
 
@@ -1007,6 +1008,7 @@ def generalized_estimating_equations(
         category_references: Optional factor-to-reference-level mapping.
         interactions: Selected pairs of fixed predictor names to interact.
         time_column: Required numeric within-group time index for autoregressive GEE.
+        standard_errors: Robust sandwich or bias_reduced small-cluster covariance.
 
     Returns:
         Population-averaged coefficients, robust confidence intervals, working-correlation
@@ -1025,6 +1027,8 @@ def generalized_estimating_equations(
         raise AnalyticsError("family must be gaussian, binomial, or poisson")
     if working_correlation not in {"independence", "exchangeable", "autoregressive"}:
         raise AnalyticsError("working_correlation must be independence, exchangeable, or autoregressive")
+    if standard_errors not in {"robust", "bias_reduced"}:
+        raise AnalyticsError("standard_errors must be robust or bias_reduced")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
         raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
     if group_column in {outcome, *predictors}:
@@ -1068,15 +1072,17 @@ def generalized_estimating_equations(
             gee_family = sm.families.Gaussian()
     analysis_columns: dict[str, Any] = {"outcome": outcome_values, "group": frame[group_column].astype("string")}
     if time_values is not None:
-        analysis_columns["time"] = time_values
+        analysis_columns["_gee_time"] = time_values
     data = pd.concat([pd.DataFrame(analysis_columns), design], axis=1).dropna()
     if working_correlation == "autoregressive":
-        data = data.sort_values(["group", "time"], kind="stable")
-        if data.duplicated(["group", "time"]).any():
+        data = data.sort_values(["group", "_gee_time"], kind="stable")
+        if data.duplicated(["group", "_gee_time"]).any():
             raise AnalyticsError("Autoregressive GEE requires unique complete time values within every group")
     group_sizes = data["group"].value_counts()
     if len(group_sizes) < 3 or len(data) <= design.shape[1] + 2:
         raise AnalyticsError("GEE requires at least three groups and more complete rows than fitted parameters")
+    if standard_errors == "bias_reduced" and len(group_sizes) < 8:
+        raise AnalyticsError("Bias-reduced GEE standard errors require at least eight groups")
     if working_correlation in {"exchangeable", "autoregressive"} and int(group_sizes.min()) < 2:
         raise AnalyticsError(f"{working_correlation.title()} GEE requires at least two complete observations in every group")
     if family == "binomial" and data["outcome"].nunique() != 2:
@@ -1102,12 +1108,12 @@ def generalized_estimating_equations(
                 "cov_struct": covariance_structure,
             }
             if working_correlation == "autoregressive":
-                gee_kwargs["time"] = data["time"].to_numpy(dtype=float)
+                gee_kwargs["time"] = data["_gee_time"].to_numpy(dtype=float)
             fitted = sm.GEE(
                 data["outcome"].astype(float),
                 exog,
                 **gee_kwargs,
-            ).fit()
+            ).fit(cov_type=standard_errors)
         if not bool(getattr(fitted, "converged", True)):
             raise AnalyticsError("GEE did not converge")
         if any(issubclass(item.category, ConvergenceWarning) for item in captured):
@@ -1117,15 +1123,19 @@ def generalized_estimating_equations(
     except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:
         raise AnalyticsError("GEE could not fit this dataset") from exc
     estimates = np.asarray(fitted.params, dtype=float)
-    standard_errors = np.asarray(fitted.bse, dtype=float)
+    coefficient_standard_errors = np.asarray(fitted.bse, dtype=float)
     p_values = np.asarray(fitted.pvalues, dtype=float)
-    if not np.isfinite(estimates).all() or not np.isfinite(standard_errors).all() or (standard_errors <= 0).any():
+    if (
+        not np.isfinite(estimates).all()
+        or not np.isfinite(coefficient_standard_errors).all()
+        or (coefficient_standard_errors <= 0).any()
+    ):
         raise AnalyticsError("GEE produced non-finite or zero-precision estimates")
     critical = float(stats.norm.ppf(1 - alpha / 2))
     coefficients: list[dict[str, Any]] = []
     for index, term in enumerate(exog.columns):
         estimate = float(estimates[index])
-        standard_error = float(standard_errors[index])
+        standard_error = float(coefficient_standard_errors[index])
         lower = estimate - critical * standard_error
         upper = estimate + critical * standard_error
         coefficient = {
@@ -1163,6 +1173,7 @@ def generalized_estimating_equations(
         "family": family,
         "working_correlation": working_correlation,
         "time_column": time_column,
+        "standard_errors": standard_errors,
         "categorical_predictors": categorical_predictors or [],
         "category_references": category_references or {},
         "interactions": normalized_interactions,
@@ -1180,7 +1191,7 @@ def generalized_estimating_equations(
         "working_correlation": working_correlation,
         "working_correlation_estimate": _round(dependence),
         "time_column": time_column,
-        "variance_estimator": "robust sandwich",
+        "variance_estimator": "bias-reduced sandwich" if standard_errors == "bias_reduced" else "robust sandwich",
         "scale": _round(fitted.scale),
         "categorical_encoding": encoding,
         "interactions": [{"left": left, "right": right} for left, right in normalized_interactions],

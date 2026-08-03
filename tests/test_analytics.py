@@ -395,6 +395,8 @@ def test_generalized_estimating_equations_supports_correlated_continuous_binary_
     assert autoregressive["working_correlation"] == "autoregressive"
     assert autoregressive["time_column"] == "time"
     assert autoregressive["working_correlation_estimate"] is not None
+    bias_reduced = generalized_estimating_equations(records, "continuous", ["x"], "patient", standard_errors="bias_reduced")
+    assert bias_reduced["variance_estimator"] == "bias-reduced sandwich"
     with pytest.raises(AnalyticsError, match="Exchangeable GEE"):
         generalized_estimating_equations(
             [{"id": f"p-{index}", "x": index, "y": index + 1} for index in range(6)],
