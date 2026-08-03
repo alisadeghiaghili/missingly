@@ -46,6 +46,7 @@ docs = [
     "nbsphinx>=0.9.0",
     "numpydoc>=1.6.0",
     "ipykernel",
+    "pypandoc-binary>=1.15",
 ]
 test = [
     "pytest>=7.0.0",

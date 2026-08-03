@@ -633,8 +633,10 @@ def diagnose_missing(
     plain-English ``recommendation`` and a ``strategy_hint`` that maps
     directly to missingly imputation functions.
 
-    Decision logic
-    --------------
+    Notes
+    -----
+    Decision logic:
+
     1. Run Little's MCAR test on numeric columns.
     2. p >= *significance* -> MCAR: simple imputers are appropriate.
     3. p < *significance* -> not MCAR.  Check max nullity correlation:

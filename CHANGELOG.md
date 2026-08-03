@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Reporting edge cases, localized recommendations, RTL font fallback, Little's MCAR
   handling, and pandas 3-compatible UpSet rendering.
+- Stale Sphinx module references, invalid NumPy-doc sections, and undeclared Pandoc
+  requirements that prevented warning-free API and notebook documentation builds.
 
 ### Removed
 - Placeholder-only test modules that reported skipped work without testing behavior.

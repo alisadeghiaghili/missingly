@@ -19,10 +19,9 @@ Key design decisions
 --------------------
 * Python ``None`` in object-dtype columns is normalised to ``np.nan``
   before any sklearn estimator sees the data.
-* Categorical columns are handled separately for ML-based imputers:
-  - Numeric columns  → imputed with the provided regressor.
-  - Categorical columns → imputed with a classifier, avoiding the
-    error of treating category codes as continuous values.
+* Numeric columns in ML-based imputers use the provided regressor.
+* Categorical columns use a classifier, avoiding the error of treating
+  category codes as continuous values.
 * ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` do not
   accept NaN in feature matrices.  Any remaining NaN in the feature
   side is filled with column means computed from the training rows.

@@ -43,8 +43,8 @@ Design decisions
   ``transform`` uses it as the donor pool.  ``hotdeck_method`` selects
   between ``'random'``, ``'sequential'``, and ``'weighted'`` variants.
 
-Example
--------
+Examples
+--------
 >>> import pandas as pd, numpy as np
 >>> from sklearn.pipeline import Pipeline
 >>> from sklearn.ensemble import RandomForestClassifier
@@ -158,8 +158,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Donor pool size for ``hotdeck_method="weighted"``.
         Default is 5.
 
-    Example
-    -------
+    Examples
+    --------
     >>> from sklearn.pipeline import Pipeline
     >>> from sklearn.linear_model import LogisticRegression
     >>> pipe = Pipeline([
