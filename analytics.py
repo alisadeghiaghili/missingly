@@ -991,6 +991,7 @@ def generalized_estimating_equations(
     categorical_predictors: list[str] | None = None,
     category_references: dict[str, str] | None = None,
     interactions: list[tuple[str, str]] | None = None,
+    time_column: str | None = None,
 ) -> dict[str, Any]:
     """Fit a population-averaged GEE with robust sandwich standard errors.
 
@@ -1000,11 +1001,12 @@ def generalized_estimating_equations(
         predictors: Unique numeric or explicitly categorical fixed predictors.
         group_column: Identifier that groups correlated observations.
         family: One of gaussian, binomial, or poisson.
-        working_correlation: Either independence or exchangeable.
+        working_correlation: Independence, exchangeable, or autoregressive.
         alpha: Confidence interval complement.
         categorical_predictors: Predictor subset to treatment-code.
         category_references: Optional factor-to-reference-level mapping.
         interactions: Selected pairs of fixed predictor names to interact.
+        time_column: Required numeric within-group time index for autoregressive GEE.
 
     Returns:
         Population-averaged coefficients, robust confidence intervals, working-correlation
@@ -1021,12 +1023,16 @@ def generalized_estimating_equations(
         raise AnalyticsError("alpha must be between 0 and 1")
     if family not in {"gaussian", "binomial", "poisson"}:
         raise AnalyticsError("family must be gaussian, binomial, or poisson")
-    if working_correlation not in {"independence", "exchangeable"}:
-        raise AnalyticsError("working_correlation must be independence or exchangeable")
+    if working_correlation not in {"independence", "exchangeable", "autoregressive"}:
+        raise AnalyticsError("working_correlation must be independence, exchangeable, or autoregressive")
     if not predictors or len(set(predictors)) != len(predictors) or outcome in predictors:
         raise AnalyticsError("predictors must be a non-empty unique list that does not contain outcome")
     if group_column in {outcome, *predictors}:
         raise AnalyticsError("group_column must differ from outcome and predictors")
+    if time_column and time_column in {outcome, group_column, *predictors}:
+        raise AnalyticsError("time_column must differ from outcome, group_column, and predictors")
+    if working_correlation == "autoregressive" and not time_column:
+        raise AnalyticsError("Autoregressive GEE requires time_column")
     frame = _frame(records)
     if group_column not in frame.columns:
         raise AnalyticsError(f"Column '{group_column}' was not found")
@@ -1034,6 +1040,11 @@ def generalized_estimating_equations(
         frame, predictors, categorical_predictors, category_references, interactions
     )
     numeric = _numeric_columns(frame)
+    time_values: pd.Series | None = None
+    if time_column:
+        if time_column not in numeric:
+            raise AnalyticsError(f"GEE time_column must be numeric: '{time_column}'")
+        time_values = numeric[time_column]
     event: dict[str, str] | None = None
     if family == "binomial":
         if outcome not in frame.columns:
@@ -1055,18 +1066,19 @@ def generalized_estimating_equations(
             gee_family = sm.families.Poisson()
         else:
             gee_family = sm.families.Gaussian()
-    data = pd.concat(
-        [
-            pd.DataFrame({"outcome": outcome_values, "group": frame[group_column].astype("string")}),
-            design,
-        ],
-        axis=1,
-    ).dropna()
+    analysis_columns: dict[str, Any] = {"outcome": outcome_values, "group": frame[group_column].astype("string")}
+    if time_values is not None:
+        analysis_columns["time"] = time_values
+    data = pd.concat([pd.DataFrame(analysis_columns), design], axis=1).dropna()
+    if working_correlation == "autoregressive":
+        data = data.sort_values(["group", "time"], kind="stable")
+        if data.duplicated(["group", "time"]).any():
+            raise AnalyticsError("Autoregressive GEE requires unique complete time values within every group")
     group_sizes = data["group"].value_counts()
     if len(group_sizes) < 3 or len(data) <= design.shape[1] + 2:
         raise AnalyticsError("GEE requires at least three groups and more complete rows than fitted parameters")
-    if working_correlation == "exchangeable" and int(group_sizes.min()) < 2:
-        raise AnalyticsError("Exchangeable GEE requires at least two complete observations in every group")
+    if working_correlation in {"exchangeable", "autoregressive"} and int(group_sizes.min()) < 2:
+        raise AnalyticsError(f"{working_correlation.title()} GEE requires at least two complete observations in every group")
     if family == "binomial" and data["outcome"].nunique() != 2:
         raise AnalyticsError("Binomial GEE requires both outcome categories after complete-case filtering")
     if family == "poisson" and data["outcome"].sum() <= 0:
@@ -1076,20 +1088,25 @@ def generalized_estimating_equations(
         exog[term] = data[term].astype(float)
     if np.linalg.matrix_rank(exog.to_numpy()) != exog.shape[1]:
         raise AnalyticsError("GEE predictors are perfectly collinear")
-    covariance_structure = (
-        sm.cov_struct.Independence()
-        if working_correlation == "independence"
-        else sm.cov_struct.Exchangeable()
-    )
+    covariance_structure = {
+        "independence": sm.cov_struct.Independence(),
+        "exchangeable": sm.cov_struct.Exchangeable(),
+        "autoregressive": sm.cov_struct.Autoregressive(grid=True),
+    }[working_correlation]
     try:
         with warnings.catch_warnings(record=True) as captured:
             warnings.simplefilter("always")
+            gee_kwargs: dict[str, Any] = {
+                "groups": data["group"],
+                "family": gee_family,
+                "cov_struct": covariance_structure,
+            }
+            if working_correlation == "autoregressive":
+                gee_kwargs["time"] = data["time"].to_numpy(dtype=float)
             fitted = sm.GEE(
                 data["outcome"].astype(float),
                 exog,
-                groups=data["group"],
-                family=gee_family,
-                cov_struct=covariance_structure,
+                **gee_kwargs,
             ).fit()
         if not bool(getattr(fitted, "converged", True)):
             raise AnalyticsError("GEE did not converge")
@@ -1145,6 +1162,7 @@ def generalized_estimating_equations(
         "group_column": group_column,
         "family": family,
         "working_correlation": working_correlation,
+        "time_column": time_column,
         "categorical_predictors": categorical_predictors or [],
         "category_references": category_references or {},
         "interactions": normalized_interactions,
@@ -1161,6 +1179,7 @@ def generalized_estimating_equations(
         "event": event,
         "working_correlation": working_correlation,
         "working_correlation_estimate": _round(dependence),
+        "time_column": time_column,
         "variance_estimator": "robust sandwich",
         "scale": _round(fitted.scale),
         "categorical_encoding": encoding,

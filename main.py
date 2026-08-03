@@ -641,10 +641,11 @@ class GeneralizedEstimatingEquationsRequest(DatasetAnalysisRequest):
     predictors: list[str] = Field(min_length=1, max_length=30)
     group_column: str = Field(min_length=1, max_length=128)
     family: Literal["gaussian", "binomial", "poisson"] = "gaussian"
-    working_correlation: Literal["independence", "exchangeable"] = "exchangeable"
+    working_correlation: Literal["independence", "exchangeable", "autoregressive"] = "exchangeable"
     categorical_predictors: list[str] = Field(default_factory=list, max_length=30)
     category_references: dict[str, str] = Field(default_factory=dict, max_length=30)
     interactions: list[tuple[str, str]] = Field(default_factory=list, max_length=30)
+    time_column: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class WeightedOLSRequest(DatasetAnalysisRequest):
@@ -3140,6 +3141,7 @@ async def analyze_generalized_estimating_equations(
             body.categorical_predictors,
             body.category_references,
             body.interactions,
+            body.time_column,
         )
     except AnalyticsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

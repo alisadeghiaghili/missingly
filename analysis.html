@@ -96,7 +96,8 @@
             <button id="mixedLinear" class="secondary">Linear mixed-effects (random intercept/slope)</button>
             <label for="geeGroup">ستون خوشه برای GEE</label><input id="geeGroup" placeholder="patient_id یا school_id">
             <label for="geeFamily">خانوادهٔ GEE</label><select id="geeFamily"><option value="gaussian">Gaussian (continuous)</option><option value="binomial">Binomial (binary)</option><option value="poisson">Poisson (count)</option></select>
-            <label for="geeCorrelation">working correlation برای GEE</label><select id="geeCorrelation"><option value="exchangeable">Exchangeable</option><option value="independence">Independence</option></select>
+            <label for="geeCorrelation">working correlation برای GEE</label><select id="geeCorrelation"><option value="exchangeable">Exchangeable</option><option value="independence">Independence</option><option value="autoregressive">Autoregressive AR(1)</option></select>
+            <label for="geeTime">ستون زمان برای GEE AR(1) (الزامی فقط برای AR(1))</label><input id="geeTime" placeholder="visit_time">
             <button id="gee" class="secondary">Generalized estimating equations (GEE)</button>
             <label for="weightColumn">ستون وزن تحلیلی برای Weighted OLS</label><input id="weightColumn" placeholder="weight">
             <button id="weightedOls" class="secondary">Weighted OLS</button>
@@ -149,6 +150,7 @@
     const geeGroup = document.getElementById('geeGroup');
     const geeFamily = document.getElementById('geeFamily');
     const geeCorrelation = document.getElementById('geeCorrelation');
+    const geeTime = document.getElementById('geeTime');
     const weightColumn = document.getElementById('weightColumn');
     const reportTitle = document.getElementById('reportTitle');
     function records() {
@@ -356,7 +358,7 @@
                 records: records(), outcome: outcome.value.trim(), predictors: predictors.value.split(',').map(value => value.trim()).filter(Boolean),
                 group_column: geeGroup.value.trim(), family: geeFamily.value, working_correlation: geeCorrelation.value,
                 categorical_predictors: categoricalPredictors.value.split(',').map(value => value.trim()).filter(Boolean),
-                category_references: references, interactions: pairs
+                category_references: references, interactions: pairs, time_column: geeTime.value.trim() || null
             });
         }
         catch (error) { output.classList.add('error'); output.textContent = error.message; }

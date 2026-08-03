@@ -202,6 +202,7 @@ def _gee_records():
             records.append(
                 {
                     "patient": f"patient-{group}",
+                    "time": float(observation),
                     "x": predictor,
                     "arm": "treatment" if group % 2 else "control",
                     "continuous": float(4 + 1.1 * predictor + 0.8 * (group % 2) + cluster_effects[group] + generator.normal(0, 0.35)),
@@ -383,6 +384,17 @@ def test_generalized_estimating_equations_supports_correlated_continuous_binary_
     poisson = generalized_estimating_equations(records, "count", ["x"], "patient", family="poisson")
     poisson_slope = next(item for item in poisson["coefficients"] if item["term"] == "x")
     assert poisson_slope["rate_ratio"] > 1
+    autoregressive = generalized_estimating_equations(
+        records,
+        "continuous",
+        ["x"],
+        "patient",
+        working_correlation="autoregressive",
+        time_column="time",
+    )
+    assert autoregressive["working_correlation"] == "autoregressive"
+    assert autoregressive["time_column"] == "time"
+    assert autoregressive["working_correlation_estimate"] is not None
     with pytest.raises(AnalyticsError, match="Exchangeable GEE"):
         generalized_estimating_equations(
             [{"id": f"p-{index}", "x": index, "y": index + 1} for index in range(6)],
