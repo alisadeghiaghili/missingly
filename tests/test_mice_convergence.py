@@ -26,7 +26,7 @@ def simple_histories():
     """Two chains, 5 iterations each, variable 'a'."""
     return [
         {"a": [2.0, 2.1, 2.05, 2.02, 2.01]},
-        {"a": [1.9, 2.0, 2.03, 2.01, 2.02]},
+        {"a": [1.95, 2.02, 2.04, 2.01, 2.02]},
     ]
 
 

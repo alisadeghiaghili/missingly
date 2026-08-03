@@ -28,7 +28,7 @@ import numpy as np
 from jinja2 import Environment, FileSystemLoader
 
 from .diagnostics import miss_var_summary, miss_case_summary, n_miss, pct_miss, mcar_test
-from .visualise import matrix, bar, heatmap, vis_miss
+from .visualise import matrix, bar, heatmap, vis_miss, upset
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +289,56 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
             recommendation = "Random Forest or Gradient Boosting imputation + domain review"
             recommendation_detail = "Missingness is not MCAR and high (\u2265 20%). Use RF or GB imputation."
 
+    recommendation_translations = {
+        "fa": {
+            "Complete-case analysis or mean/median imputation": (
+                "تحلیل موارد کامل یا جایگزینی میانگین/میانه",
+                "غیبت داده‌ها MCAR و کم‌تر از ۵٪ است؛ حذف سطرها احتمالاً سوگیری معناداری ایجاد نمی‌کند.",
+            ),
+            "KNN or MICE imputation": (
+                "جایگزینی با KNN یا MICE",
+                "غیبت داده‌ها MCAR اما متوسط است؛ KNN یا MICE ساختار آماری بیشتری را حفظ می‌کند.",
+            ),
+            "MICE imputation + sensitivity analysis": (
+                "جایگزینی MICE همراه تحلیل حساسیت",
+                "غیبت داده‌ها MCAR اما زیاد است؛ از MICE استفاده کنید و تحلیل حساسیت انجام دهید.",
+            ),
+            "MICE or Random Forest imputation": (
+                "جایگزینی با MICE یا Random Forest",
+                "غیبت داده‌ها MCAR نیست؛ روش‌های مدل‌محور MICE یا Random Forest توصیه می‌شوند.",
+            ),
+            "Random Forest or Gradient Boosting imputation + domain review": (
+                "جایگزینی با Random Forest یا Gradient Boosting همراه بازبینی تخصصی",
+                "غیبت داده‌ها MCAR نیست و نرخ آن زیاد است؛ از RF یا GB همراه بازبینی دامنه استفاده کنید.",
+            ),
+        },
+        "de": {
+            "Complete-case analysis or mean/median imputation": (
+                "Vollständige Fälle oder Mittelwert-/Median-Imputation",
+                "Die Fehlwerte sind MCAR und selten; das Entfernen betroffener Zeilen verursacht voraussichtlich keine relevante Verzerrung.",
+            ),
+            "KNN or MICE imputation": (
+                "KNN- oder MICE-Imputation",
+                "Die Fehlwerte sind MCAR, aber moderat; KNN oder MICE erhält mehr statistische Struktur.",
+            ),
+            "MICE imputation + sensitivity analysis": (
+                "MICE-Imputation mit Sensitivitätsanalyse",
+                "Die Fehlwerte sind MCAR, aber häufig; verwenden Sie MICE und führen Sie eine Sensitivitätsanalyse durch.",
+            ),
+            "MICE or Random Forest imputation": (
+                "MICE- oder Random-Forest-Imputation",
+                "Die Fehlwerte sind nicht MCAR; modellbasierte Imputation mit MICE oder Random Forest wird empfohlen.",
+            ),
+            "Random Forest or Gradient Boosting imputation + domain review": (
+                "Random Forest oder Gradient Boosting mit fachlicher Prüfung",
+                "Die Fehlwerte sind nicht MCAR und häufig; verwenden Sie RF oder GB mit fachlicher Prüfung.",
+            ),
+        },
+    }
+    localized = recommendation_translations.get(lang, {}).get(recommendation)
+    if localized is not None:
+        recommendation, recommendation_detail = localized
+
     return {
         "mechanism": mechanism,
         "mechanism_detail": mechanism_detail,
@@ -380,18 +430,40 @@ def create_report(
         "complete_rows": int((~df_analysis.isnull().any(axis=1)).sum()),
     }
 
+    cases = miss_case_summary(df_analysis)
+    cases = cases.loc[cases["n_miss"] > 0].nlargest(10, "n_miss")
+    cases_rows = [
+        {
+            "index": row.case,
+            "missing": int(row.n_miss),
+            "pct": float(row.pct_miss),
+        }
+        for row in cases.itertuples(index=False)
+    ]
+
     mcar_result = None
     mcar_info = None
-    try:
-        mcar_result = mcar_test(df_analysis)
-        mcar_info = _mcar_interpretation(mcar_result["p_value"], overall_pct, lang=language)
-    except (ValueError, TypeError, np.linalg.LinAlgError, ArithmeticError) as exc:
-        warnings.warn(f"MCAR test failed: {exc}", UserWarning, stacklevel=2)
+    numeric_analysis = df_analysis.select_dtypes(include=[np.number])
+    # Little's MCAR test cannot estimate moments for columns containing no
+    # observed values.  Such columns remain visible in every descriptive
+    # section of the report, but are excluded from this inferential test.
+    numeric_analysis = numeric_analysis.loc[
+        :, numeric_analysis.notna().any(axis=0)
+    ]
+    if not numeric_analysis.empty and numeric_analysis.isnull().any(axis=None):
+        try:
+            mcar_result = mcar_test(numeric_analysis)
+            mcar_info = _mcar_interpretation(
+                mcar_result["p_value"], overall_pct, lang=language
+            )
+        except (ValueError, TypeError, np.linalg.LinAlgError, ArithmeticError) as exc:
+            warnings.warn(f"MCAR test failed: {exc}", UserWarning, stacklevel=2)
 
     matrix_plot  = _safe_plot(matrix,   df_analysis)
     bar_plot     = _safe_plot(bar,      df_analysis)
     heatmap_plot = _safe_plot(heatmap,  df_analysis)
     vismiss_plot = _safe_plot(vis_miss, df_analysis)
+    upset_plot   = _safe_plot(upset,    df_analysis)
 
     import os
     templates_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -408,6 +480,7 @@ def create_report(
         labels=labels,
         no_missing=no_missing,
         overview_rows=overview_rows,
+        cases_rows=cases_rows,
         summary=summary,
         mcar_result=mcar_result,
         mcar_info=mcar_info,
@@ -415,7 +488,7 @@ def create_report(
         bar_plot=bar_plot,
         heatmap_plot=heatmap_plot,
         vismiss_plot=vismiss_plot,
-        upset_plot=None,
+        upset_plot=upset_plot,
     )
 
     output_path = os.path.abspath(output_path)

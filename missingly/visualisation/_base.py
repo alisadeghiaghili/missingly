@@ -232,6 +232,11 @@ def _apply_rtl_font(
         if not any(_is_rtl(str(lbl)) for lbl in labels):
             return
 
+    # Tests and older callers used ``False`` as the unresolved sentinel. Do
+    # not pass that boolean to matplotlib's font validator as a family name.
+    if not isinstance(_RTL_FONT_REGISTERED, str):
+        _RTL_FONT_REGISTERED = None
+
     if _RTL_FONT_REGISTERED is None:
         _RTL_FONT_REGISTERED = _find_rtl_font()
 
@@ -243,7 +248,7 @@ def _apply_rtl_font(
             _RTL_FONT_REGISTERED = _find_rtl_font()
 
     if _RTL_FONT_REGISTERED is None:
-        if not _RTL_FONT_WARNED:
+        if not _RTL_WARNED:
             import warnings
             warnings.warn(
                 "No RTL-capable font found in matplotlib's font list.  "

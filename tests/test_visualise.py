@@ -437,13 +437,10 @@ def test_miss_which_persian(persian_df):
 def test_miss_which_content(nan_df):
     plt.close('all')
     ax = visualise.miss_which(nan_df)
-    raw = ax.collections[0].get_array()
-    data = np.asarray(raw).ravel()
-    col_names = list(nan_df.columns)
-    x_idx = col_names.index('X')
-    z_idx = col_names.index('Z')
-    assert float(data[x_idx]) == pytest.approx(1.0)
-    assert float(data[z_idx]) == pytest.approx(0.0)
+    data = np.asarray(ax.images[0].get_array())
+    assert float(data[1, 0]) == pytest.approx(1.0)
+    assert float(data[0, 0]) == pytest.approx(0.0)
+    assert data.shape == (len(nan_df), 2)
 
 
 # ---------------------------------------------------------------------------
