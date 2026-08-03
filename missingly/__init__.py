@@ -59,6 +59,7 @@ from __future__ import annotations
 import warnings as _warnings
 
 from missingly._version import __version__
+from missingly.provenance import analysis_provenance, dataframe_fingerprint
 
 # ---------------------------------------------------------------------------
 # Deprecation helper
@@ -316,4 +317,5 @@ __all__ = [
     "simulate_mcar", "simulate_mar", "simulate_mnar", "simulate_mixed",
     # Manipulation
     "replace_with_na", "replace_with_na_all", "add_any_miss_var", "bind_shadow_matrix",
+    "analysis_provenance", "dataframe_fingerprint",
 ]
