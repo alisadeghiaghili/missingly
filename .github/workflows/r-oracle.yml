@@ -35,6 +35,9 @@ jobs:
           packages: |
             github::njtierney/naniar@v1.1.0
             any::jsonlite
+          # ``all`` includes optional Suggests dependencies. The oracle uses only
+          # naniar::mcar_test, so install reproducible hard runtime dependencies.
+          dependencies: '"hard"'
 
       - name: Record fixture and script identities
         run: |
