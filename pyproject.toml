@@ -37,7 +37,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/alisadeghiaghili/missingly"
 "Bug Tracker" = "https://github.com/alisadeghiaghili/missingly/issues"
-Documentation = "https://missingly.readthedocs.io"
+Documentation = "https://alisadeghiaghili.github.io/missingly/"
 
 [project.optional-dependencies]
 docs = [

@@ -475,6 +475,11 @@ begins with issue #32; FCS/PMM parity remains R3/R4 work and is not implied by R
 is migrated. The compatibility boundary is deliberate: contracts must be stable and
 tested before they become the public return type of an FCS engine.
 
+**Documentation deployment policy:** GitHub Pages is the canonical public site. Its
+workflow builds Sphinx with warnings treated as errors, uploads an immutable Pages
+artifact, and deploys only from ``main`` using GitHub's protected ``github-pages``
+environment. The repository Pages source must be configured as GitHub Actions.
+
 **R5 acceptance:** exact streaming diagnostics, bounded-memory execution, optional
 Polars/Arrow interoperability, and reproducible 1M/10M-row benchmarks satisfy the
 large-data policy above without weakening pandas semantics or statistical validity.
