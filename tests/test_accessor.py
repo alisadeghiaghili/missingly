@@ -140,12 +140,18 @@ class TestStatisticalTests:
         with pytest.raises(ValueError, match="missing"):
             df_no_missing.miss.mcar_test()
 
-    def test_mar_mnar_test(self, df_numeric):
-        """mar_mnar_test should return a list of tuples."""
-        result = df_numeric.miss.mar_mnar_test(target="age")
+    def test_missingness_association_test(self, df_numeric):
+        """The accessor exposes the named observed-data association screen."""
+        frame = df_numeric.assign(outcome=[0, 1, 0, 1, 1])
+        result = frame.miss.missingness_association_test(target="outcome")
+        assert list(result.columns) == ["feature", "lrt_statistic", "p_value", "n_obs"]
+
+    def test_mar_mnar_test_warns(self, df_numeric):
+        """The legacy accessor makes its statistical limitation explicit."""
+        frame = df_numeric.assign(outcome=[0, 1, 0, 1, 1])
+        with pytest.warns(FutureWarning, match="cannot identify MAR versus MNAR"):
+            result = frame.miss.mar_mnar_test(target="outcome")
         assert isinstance(result, list)
-        if result:  # may be empty if no missing patterns
-            assert len(result[0]) == 3  # (feature, LRT, p_value)
 
 
 # ---------------------------------------------------------------------------

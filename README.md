@@ -19,7 +19,7 @@ missing data** in pandas DataFrames. It provides:
 - A fluent `df.miss.*` accessor that mirrors the ergonomics of the R `naniar` package.
 - sklearn-compatible transformers (`MissinglyImputer`) for use inside `Pipeline`.
 - One-shot HTML reports (`create_report`).
-- Statistical tests for MCAR / MAR / MNAR mechanisms.
+- Little's MCAR test and explicitly limited observed-data missingness diagnostics.
 - Time-series-aware gap analysis and imputation.
 
 ### Multiple Imputation (advanced)
@@ -89,8 +89,9 @@ mi.pct_miss(df)           # float — overall % missing
 mi.miss_var_summary(df)   # pd.DataFrame — per-column breakdown
 mi.miss_case_summary(df)  # pd.DataFrame — per-row breakdown
 mi.mcar_test(df)          # Little's MCAR test result
-mi.mar_mnar_test(df)      # MAR vs MNAR indicator
-mi.diagnose_missing(df)   # mechanism + recommendation dict
+# `outcome` must be fully observed and have one value per row in `df`.
+mi.missingness_association_test(df, outcome)  # observed-data association screen
+mi.diagnose_missing(df)   # MCAR evidence + assumption-aware guidance
 ```
 
 ### Visualisation

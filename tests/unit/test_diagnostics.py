@@ -7,7 +7,6 @@ import pytest
 from missingly.diagnostics import (
     bind_shadow,
     diagnose_missing,
-    mar_mnar_test,
     mcar_test,
     miss_case_summary,
     miss_scan_count,
@@ -246,8 +245,8 @@ class TestMcarTest:
 class TestDiagnose:
     def test_mechanism_valid_value(self, df_simple):
         result = diagnose_missing(df_simple)
-        assert result["mechanism"] in (
-            "MCAR", "MAR", "possible_MNAR", "insufficient_data"
+        assert result["mcar_evidence"] in (
+            "MCAR_not_rejected", "MCAR_rejected", "insufficient_data"
         )
 
     def test_recommendation_is_string(self, df_simple):
@@ -270,7 +269,7 @@ class TestDiagnose:
     def test_insufficient_data_mechanism_for_single_col(self):
         df = pd.DataFrame({"a": [1.0, np.nan, 3.0]})
         result = diagnose_missing(df)
-        assert result["mechanism"] == "insufficient_data"
+        assert result["mcar_evidence"] == "insufficient_data"
 
     def test_rejects_non_dataframe(self):
         with pytest.raises(TypeError):

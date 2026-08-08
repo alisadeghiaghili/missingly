@@ -399,13 +399,12 @@ class MissinglyAccessor:
         """
         return diagnostics.mcar_test(self._df)
 
-    def mar_mnar_test(self, target: str) -> pd.DataFrame:
-        """Test for MAR / MNAR patterns with respect to a target column.
+    def missingness_association_test(self, target: str) -> pd.DataFrame:
+        """Screen observedness associations with a fully observed target column.
 
-        Delegates to :func:`missingly.diagnostics.mar_mnar_test` with the
-        correct ``X`` / ``Y`` split.  The *target* column is used as the
-        outcome variable (``Y``); all remaining columns are used as
-        predictors (``X``).
+        This diagnostic does not identify MAR versus MNAR. It tests whether the
+        observedness of each non-target column is associated with the observed target,
+        conditional on the remaining supplied columns.
 
         Parameters
         ----------
@@ -415,12 +414,57 @@ class MissinglyAccessor:
         Returns
         -------
         pd.DataFrame
-            Result from :func:`missingly.diagnostics.mar_mnar_test`.
+            Named association-screen results from
+            :func:`missingly.diagnostics.missingness_association_test`.
 
         Raises
         ------
         MissingColumnError
             If *target* is not a column in the wrapped DataFrame.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import missingly  # noqa: F401
+        >>> frame = pd.DataFrame({"x": [1.0, np.nan, 3.0, 4.0], "y": [0, 1, 0, 1]})
+        >>> list(frame.miss.missingness_association_test("y").columns)
+        ['feature', 'lrt_statistic', 'p_value', 'n_obs']
+        """
+        if target not in self._df.columns:
+            raise MissingColumnError(
+                columns=[target],
+                available=list(self._df.columns),
+            )
+        X = self._df.drop(columns=[target])
+        Y = self._df[target]
+        if Y.isna().any():
+            raise ValueError(
+                "target must be fully observed for missingness_association_test."
+            )
+        return diagnostics.missingness_association_test(X, Y.to_numpy())
+
+    def mar_mnar_test(self, target: str) -> list:
+        """Deprecated compatibility wrapper for :meth:`missingness_association_test`.
+
+        Parameters
+        ----------
+        target : str
+            Name of the fully observed auxiliary target column.
+
+        Returns
+        -------
+        list of tuple
+            Legacy ``(feature, lrt_statistic, p_value)`` tuples.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import missingly  # noqa: F401
+        >>> frame = pd.DataFrame({"x": [1.0, np.nan, 3.0], "y": [0, 1, 1]})
+        >>> isinstance(frame.miss.mar_mnar_test("y"), list)
+        True
         """
         if target not in self._df.columns:
             raise MissingColumnError(
@@ -430,9 +474,7 @@ class MissinglyAccessor:
         X = self._df.drop(columns=[target])
         Y = self._df[target]
         valid_mask = Y.notna()
-        X = X[valid_mask]
-        Y = Y[valid_mask].to_numpy()
-        return diagnostics.mar_mnar_test(X, Y)
+        return diagnostics.mar_mnar_test(X.loc[valid_mask], Y.loc[valid_mask].to_numpy())
 
     def mice_convergence(
         self,

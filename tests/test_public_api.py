@@ -44,7 +44,7 @@ V1_SYMBOLS = [
     "bind_shadow", "n_miss", "n_complete", "pct_miss", "pct_complete",
     "miss_var_summary", "miss_case_summary",
     # diagnosis
-    "mcar_test", "mar_mnar_test", "diagnose_missing",
+    "mcar_test", "missingness_association_test", "mar_mnar_test", "diagnose_missing",
     "analysis_provenance", "dataframe_fingerprint",
     # visualisation core
     "matrix", "bar", "miss_case", "miss_var_pct", "vis_miss", "miss_which",

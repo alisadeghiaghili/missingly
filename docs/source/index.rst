@@ -13,7 +13,7 @@ Features
 
 * **Summary Statistics**: Quick overviews of missing data patterns
 * **Rich Visualizations**: Matrix plots, bar charts, dendrograms, upset plots, and more  
-* **Statistical Tests**: MCAR tests and missing data mechanism analysis
+* **Statistical Tests**: Little's MCAR test and observed-data missingness diagnostics
 * **Multiple Imputation Methods**: From simple mean imputation to advanced MICE
 * **Automated Reporting**: Generate comprehensive HTML reports
 * **Custom Missing Values**: Handle non-standard missing indicators

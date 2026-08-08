@@ -340,12 +340,15 @@ class TestMcarInterpretation:
             "recommendation", "recommendation_detail",
         }
 
-    def test_high_pvalue_is_mcar(self):
-        assert "MCAR" in _mcar_interpretation(0.80, 3.0)["mechanism"]
+    def test_high_pvalue_does_not_claim_mcar(self):
+        result = _mcar_interpretation(0.80, 3.0)
+        assert result["mechanism"] == "MCAR not rejected"
+        assert "does not establish MCAR" in result["mechanism_detail"]
 
-    def test_low_pvalue_not_mcar(self):
+    def test_low_pvalue_reports_only_evidence_against_mcar(self):
         r = _mcar_interpretation(0.01, 5.0)
-        assert "MAR" in r["mechanism"] or "MNAR" in r["mechanism"]
+        assert r["mechanism"] == "Evidence against MCAR"
+        assert "cannot distinguish MAR from MNAR" in r["mechanism_detail"]
 
     def test_nan_pvalue_unknown(self):
         assert "Unknown" in _mcar_interpretation(float("nan"), 10.0)["mechanism"]
@@ -374,46 +377,37 @@ class TestMcarInterpretation:
         assert "MCAR" in r["mechanism"]
 
     @pytest.mark.parametrize("lang", ["fa", "de"])
-    def test_mice_knn_in_moderate_missing(self, lang):
+    def test_localized_moderate_missing_recommendation(self, lang):
         r = _mcar_interpretation(0.80, 12.0, lang=lang)
-        assert "MICE" in r["recommendation"] or "KNN" in r["recommendation"]
+        assert r["recommendation"]
 
     @pytest.mark.parametrize("lang", ["fa", "de"])
-    def test_rf_gb_in_high_not_mcar(self, lang):
+    def test_high_missingness_recommends_sensitivity_analysis(self, lang):
         r = _mcar_interpretation(0.001, 30.0, lang=lang)
-        assert (
-            "Random Forest" in r["recommendation"]
-            or "Gradient Boosting" in r["recommendation"]
-        )
+        assert r["recommendation"]
 
-    def test_low_missing_mcar_simple_imputation(self):
+    def test_low_missing_recommends_documented_plan(self):
         r = _mcar_interpretation(0.80, 2.0)
-        assert (
-            "mean" in r["recommendation"].lower()
-            or "complete" in r["recommendation"].lower()
-        )
+        assert r["recommendation"] == "Document assumptions and choose an analysis plan"
 
-    def test_moderate_missing_mcar_knn_or_mice(self):
+    def test_moderate_missing_recommends_sensitivity(self):
         r = _mcar_interpretation(0.80, 12.0)
-        assert "KNN" in r["recommendation"] or "MICE" in r["recommendation"]
+        assert "sensitivity analysis" in r["recommendation"]
 
-    def test_high_missing_mcar_mice(self):
+    def test_high_missing_recommends_domain_review(self):
         r = _mcar_interpretation(0.80, 25.0)
-        assert "MICE" in r["recommendation"]
+        assert "domain review" in r["recommendation"]
 
-    def test_not_mcar_low_missing_model_based(self):
+    def test_low_pvalue_does_not_change_assumption_based_recommendation(self):
         r = _mcar_interpretation(0.01, 10.0)
-        assert "MICE" in r["recommendation"] or "Random Forest" in r["recommendation"]
+        assert "sensitivity analysis" in r["recommendation"]
 
-    def test_not_mcar_high_missing_rf_or_gb(self):
+    def test_high_missing_recommendation_does_not_claim_mechanism(self):
         r = _mcar_interpretation(0.001, 30.0)
-        assert (
-            "Random Forest" in r["recommendation"]
-            or "Gradient Boosting" in r["recommendation"]
-        )
+        assert "domain review" in r["recommendation"]
 
     @pytest.mark.parametrize("lang", ["fa", "de"])
-    @pytest.mark.parametrize("term", ["MCAR", "MICE", "KNN", "p-value"])
+    @pytest.mark.parametrize("term", ["MCAR", "p-value"])
     def test_stat_terms_in_combined_output(self, lang, term):
         r_mcar = _mcar_interpretation(0.80, 5.0, lang=lang)
         r_not  = _mcar_interpretation(0.01, 5.0, lang=lang)

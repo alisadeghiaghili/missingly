@@ -18,7 +18,7 @@
 - Einen flüssigen `df.miss.*`-Accessor, der die Ergonomie des R-Pakets `naniar` nachahmt.
 - Sklearn-kompatible Transformer (`MissinglyImputer`) für die Verwendung innerhalb von `Pipeline`.
 - Einzeilige HTML-Berichte (`create_report`).
-- Statistische Tests für MCAR / MAR / MNAR-Mechanismen.
+- Little-MCAR-Test und ausdrücklich begrenzte Diagnostik beobachteter Fehlwertmuster.
 - Zeitreihenbewusstes Lückenanalyse und Imputation.
 
 ---
@@ -69,7 +69,8 @@ mi.pct_miss(df)
 mi.miss_var_summary(df)
 mi.miss_case_summary(df)
 mi.mcar_test(df)
-mi.mar_mnar_test(df)
+# outcome muss vollständig beobachtet sein und eine Zeile pro Zeile in df enthalten.
+mi.missingness_association_test(df, outcome)
 mi.diagnose_missing(df)
 ```
 

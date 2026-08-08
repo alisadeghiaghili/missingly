@@ -221,7 +221,31 @@ def _safe_plot(plot_fn, df: pd.DataFrame, **kwargs) -> Optional[str]:
 
 
 def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -> dict:
-    """Produce an MCAR interpretation and imputation recommendation."""
+    """Produce assumption-aware interpretation of Little's MCAR test.
+
+    Parameters
+    ----------
+    p_value : float
+        P-value from Little's MCAR test. A non-significant value is evidence
+        insufficient to reject MCAR; it is not proof that data are MCAR.
+    overall_pct : float
+        Percentage of all values that are missing.
+    lang : {"en", "fa", "de"}, default="en"
+        Language used for human-readable details.
+
+    Returns
+    -------
+    dict
+        Mechanism evidence, explanatory text, and an analysis recommendation
+        selected from missingness magnitude and explicit assumptions rather
+        than an unidentifiable MAR/MNAR label.
+
+    Examples
+    --------
+    >>> result = _mcar_interpretation(0.20, 12.0)
+    >>> result["mechanism"]
+    'MCAR not rejected'
+    """
     import math
 
     is_fa = lang == "fa"
@@ -247,7 +271,7 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
                 "only one missing pattern). Treat the mechanism as unknown."
             )
     elif p_value > 0.05:
-        mechanism = "MCAR (Missing Completely At Random)"
+        mechanism = "MCAR not rejected"
         if is_fa:
             mechanism_detail = (
                 f"p-value = {p_value:.4f} > 0.05: \u0641\u0631\u0636\u06cc\u0647 MCAR \u0631\u062f \u0646\u0634\u062f."
@@ -257,10 +281,10 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
         else:
             mechanism_detail = (
                 f"p-value = {p_value:.4f} > 0.05: cannot reject MCAR. "
-                "Simple imputation strategies are statistically justified."
+                "This does not establish MCAR or justify single-value imputation for inference."
             )
     else:
-        mechanism = "MAR / MNAR (Not MCAR)"
+        mechanism = "Evidence against MCAR"
         if is_fa:
             mechanism_detail = f"p-value = {p_value:.4f} \u2264 0.05: \u0641\u0631\u0636\u06cc\u0647 MCAR \u0631\u062f \u0634\u062f."
         elif is_de:
@@ -268,29 +292,42 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
         else:
             mechanism_detail = (
                 f"p-value = {p_value:.4f} \u2264 0.05: MCAR is rejected. "
-                "Model-based imputation (MICE, RF) is recommended."
+                "Observed data cannot distinguish MAR from MNAR."
             )
 
-    if math.isnan(p_value) or p_value > 0.05:
-        if overall_pct < 5:
-            recommendation = "Complete-case analysis or mean/median imputation"
-            recommendation_detail = "Missingness is MCAR and low (< 5%). Dropping rows will not meaningfully bias results."
-        elif overall_pct < 20:
-            recommendation = "KNN or MICE imputation"
-            recommendation_detail = "Missingness is MCAR but moderate (5-20%). KNN or MICE preserves more statistical structure."
-        else:
-            recommendation = "MICE imputation + sensitivity analysis"
-            recommendation_detail = "Missingness is MCAR but high (\u2265 20%). Use MICE and run a sensitivity analysis."
+    if overall_pct < 5:
+        recommendation = "Document assumptions and choose an analysis plan"
+        recommendation_detail = (
+            "Low missingness does not establish MCAR. Pre-specify the analysis and "
+            "assess whether complete-case analysis is scientifically defensible."
+        )
+    elif overall_pct < 20:
+        recommendation = "Multiple imputation or model-based analysis + sensitivity analysis"
+        recommendation_detail = (
+            "Choose an imputation or likelihood-based model from substantive knowledge "
+            "and assess sensitivity to missing-data assumptions."
+        )
     else:
-        if overall_pct < 20:
-            recommendation = "MICE or Random Forest imputation"
-            recommendation_detail = "Missingness is not MCAR. Model-based imputation (MICE, RF) is recommended."
-        else:
-            recommendation = "Random Forest or Gradient Boosting imputation + domain review"
-            recommendation_detail = "Missingness is not MCAR and high (\u2265 20%). Use RF or GB imputation."
+        recommendation = "Multiple imputation + sensitivity analysis + domain review"
+        recommendation_detail = (
+            "High missingness requires a documented analysis plan, domain review, and "
+            "sensitivity analysis; no observed-data diagnostic can rule out MNAR."
+        )
 
     recommendation_translations = {
         "fa": {
+            "Document assumptions and choose an analysis plan": (
+                "ثبت فرض‌ها و انتخاب برنامه تحلیل",
+                "کم‌بودن غیبت داده‌ها MCAR را اثبات نمی‌کند؛ تحلیل را از پیش مشخص کنید و اعتبار تحلیل موارد کامل را با دانش دامنه بسنجید.",
+            ),
+            "Multiple imputation or model-based analysis + sensitivity analysis": (
+                "جایگزینی چندگانه یا تحلیل مدل‌محور همراه تحلیل حساسیت",
+                "روش را بر پایه دانش دامنه انتخاب کنید و حساسیت نتیجه را نسبت به فرض‌های غیبت داده بررسی کنید.",
+            ),
+            "Multiple imputation + sensitivity analysis + domain review": (
+                "جایگزینی چندگانه، تحلیل حساسیت و بازبینی تخصصی",
+                "غیبت زیاد به برنامه تحلیل مستند، بازبینی تخصصی و تحلیل حساسیت نیاز دارد؛ هیچ آزمون مبتنی بر داده مشاهده‌شده MNAR را رد نمی‌کند.",
+            ),
             "Complete-case analysis or mean/median imputation": (
                 "تحلیل موارد کامل یا جایگزینی میانگین/میانه",
                 "غیبت داده‌ها MCAR و کم‌تر از ۵٪ است؛ حذف سطرها احتمالاً سوگیری معناداری ایجاد نمی‌کند.",
@@ -313,6 +350,18 @@ def _mcar_interpretation(p_value: float, overall_pct: float, lang: str = "en") -
             ),
         },
         "de": {
+            "Document assumptions and choose an analysis plan": (
+                "Annahmen dokumentieren und Analyseplan wählen",
+                "Wenige Fehlwerte beweisen MCAR nicht; legen Sie die Analyse vorab fest und prüfen Sie die fachliche Plausibilität einer Complete-Case-Analyse.",
+            ),
+            "Multiple imputation or model-based analysis + sensitivity analysis": (
+                "Multiple Imputation oder modellbasierte Analyse mit Sensitivitätsanalyse",
+                "Wählen Sie das Modell anhand fachlicher Kenntnisse und prüfen Sie die Sensitivität gegenüber Annahmen zu fehlenden Werten.",
+            ),
+            "Multiple imputation + sensitivity analysis + domain review": (
+                "Multiple Imputation, Sensitivitätsanalyse und fachliche Prüfung",
+                "Viele Fehlwerte erfordern einen dokumentierten Analyseplan, fachliche Prüfung und Sensitivitätsanalyse; beobachtete Daten können MNAR nicht ausschließen.",
+            ),
             "Complete-case analysis or mean/median imputation": (
                 "Vollständige Fälle oder Mittelwert-/Median-Imputation",
                 "Die Fehlwerte sind MCAR und selten; das Entfernen betroffener Zeilen verursacht voraussichtlich keine relevante Verzerrung.",

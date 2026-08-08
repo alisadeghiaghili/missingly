@@ -20,7 +20,7 @@
 - accessor روان `df.miss.*` که الگوی پکیج `naniar` در R را دنبال می‌کند.
 - transformer‌های سازگار با sklearn (`MissinglyImputer`) برای استفاده در `Pipeline`.
 - گزارش‌های HTML یک‌مرحله‌ای (`create_report`).
-- آزمون‌های آماری برای مکانیسم‌های MCAR / MAR / MNAR.
+- آزمون لیتل برای MCAR و تشخیص‌های محدودِ الگوی غیبت بر مبنای داده‌های مشاهده‌شده.
 - تحلیل gap و imputation آگاه از سری‌زمانی.
 
 ---
@@ -80,8 +80,9 @@ mi.pct_miss(df)           # float — درصد کل گمشده
 mi.miss_var_summary(df)   # pd.DataFrame — خلاصه به ازای هر ستون
 mi.miss_case_summary(df)  # pd.DataFrame — خلاصه به ازای هر سطر
 mi.mcar_test(df)          # نتیجه آزمون MCAR لیتل
-mi.mar_mnar_test(df)      # شاخص MAR در برابر MNAR
-mi.diagnose_missing(df)   # dict مکانیسم + توصیه
+# outcome باید کاملاً مشاهده‌شده و هم‌طول df باشد.
+mi.missingness_association_test(df, outcome)  # بررسی ارتباط غیبت با پیامد مشاهده‌شده
+mi.diagnose_missing(df)   # شواهد MCAR + راهنمای مبتنی بر فرض‌ها
 ```
 
 ### تجسم

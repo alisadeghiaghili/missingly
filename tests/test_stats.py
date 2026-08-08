@@ -15,7 +15,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.diagnostics import mcar_test, mar_mnar_test, diagnose_missing
+from missingly.diagnostics import (
+    diagnose_missing,
+    mar_mnar_test,
+    mcar_test,
+    missingness_association_test,
+)
 import missingly
 
 
@@ -123,20 +128,29 @@ def test_mcar_test_sentinel(numeric_df_with_missing):
 
 
 # ---------------------------------------------------------------------------
-# mar_mnar_test
+# missingness_association_test and deprecated mar_mnar_test
 # ---------------------------------------------------------------------------
 
-def test_mar_mnar_test_returns_list(numeric_df_with_missing):
-    """mar_mnar_test must return a list."""
+def test_missingness_association_returns_named_frame(numeric_df_with_missing):
+    """The replacement diagnostic must expose an explicit result schema."""
     Y = np.random.default_rng(0).integers(0, 2, len(numeric_df_with_missing))
-    result = mar_mnar_test(numeric_df_with_missing, Y)
-    assert isinstance(result, list)
+    result = missingness_association_test(numeric_df_with_missing, Y)
+    assert list(result.columns) == ["feature", "lrt_statistic", "p_value", "n_obs"]
 
 
-def test_mar_mnar_test_tuple_structure(numeric_df_with_missing):
-    """Each element must be a 3-tuple (feature_name, LRT, p_value)."""
+def test_missingness_association_rejects_missing_outcome(numeric_df_with_missing):
+    """The association screen must not silently impute its auxiliary outcome."""
+    outcome = np.array([0.0] * len(numeric_df_with_missing))
+    outcome[0] = np.nan
+    with pytest.raises(ValueError, match="fully observed"):
+        missingness_association_test(numeric_df_with_missing, outcome)
+
+
+def test_mar_mnar_test_warns_and_preserves_legacy_tuple_shape(numeric_df_with_missing):
+    """The legacy name warns instead of claiming MAR/MNAR identification."""
     Y = np.random.default_rng(0).integers(0, 2, len(numeric_df_with_missing))
-    result = mar_mnar_test(numeric_df_with_missing, Y)
+    with pytest.warns(FutureWarning, match="cannot identify MAR versus MNAR"):
+        result = mar_mnar_test(numeric_df_with_missing, Y)
     for item in result:
         assert len(item) == 3
         assert isinstance(item[0], str)
@@ -158,19 +172,20 @@ def test_diagnose_required_keys(numeric_df_with_missing):
     """All required keys must be present in the result."""
     result = diagnose_missing(numeric_df_with_missing)
     for key in (
-        'mechanism', 'recommendation', 'strategy_hint',
+        'mcar_evidence', 'mechanism', 'recommendation', 'strategy_hint',
         'high_missingness_cols', 'max_nullity_corr',
         'chi_square', 'p_value',
     ):
         assert key in result, f"Missing key: {key}"
 
 
-def test_diagnose_mechanism_valid_values(numeric_df_with_missing):
-    """mechanism must be one of the four defined strings."""
+def test_diagnose_reports_only_mcar_evidence(numeric_df_with_missing):
+    """The diagnostic must not label observed data as MAR or MNAR."""
     result = diagnose_missing(numeric_df_with_missing)
-    assert result['mechanism'] in (
-        'MCAR', 'MAR', 'possible_MNAR', 'insufficient_data'
+    assert result['mcar_evidence'] in (
+        'MCAR_not_rejected', 'MCAR_rejected', 'insufficient_data'
     )
+    assert result['mechanism'] == result['mcar_evidence']
 
 
 def test_diagnose_recommendation_nonempty(numeric_df_with_missing):
@@ -194,7 +209,7 @@ def test_diagnose_strategy_hint_nonempty(numeric_df_with_missing):
 def test_diagnose_insufficient_data_single_col(single_col_df):
     """Single numeric column → insufficient_data (can't run Little's test)."""
     result = diagnose_missing(single_col_df)
-    assert result['mechanism'] == 'insufficient_data'
+    assert result['mcar_evidence'] == 'insufficient_data'
 
 
 def test_diagnose_insufficient_data_no_missing(no_missing_df):
@@ -234,8 +249,8 @@ def test_diagnose_sentinel(numeric_df_with_missing):
     df = numeric_df_with_missing.fillna(-99)
     result = diagnose_missing(df, missing_values=[-99])
     assert isinstance(result, dict)
-    assert result['mechanism'] in (
-        'MCAR', 'MAR', 'possible_MNAR', 'insufficient_data'
+    assert result['mcar_evidence'] in (
+        'MCAR_not_rejected', 'MCAR_rejected', 'insufficient_data'
     )
 
 

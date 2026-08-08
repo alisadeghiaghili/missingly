@@ -11,8 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deterministic DataFrame and configured-analysis SHA-256 provenance manifests.
 - Closed-form Rubin pooling conformance tests and an evidence-gated competitor roadmap.
 - Branch reconciliation and statistical TDD policy documents.
+- `missingness_association_test`, an explicitly limited observed-data association
+  screen with named results.
 
 ### Changed
+- `diagnose_missing` now reports MCAR evidence without claiming to identify MAR or
+  MNAR. Report recommendations require documented assumptions and sensitivity analysis.
 - Scalar MI pooling now distinguishes `lambda` from small-sample `fmi` and rejects
   non-finite estimates or invalid within-imputation variances.
 - Mixed KNN uses Missingly's internal Gower implementation rather than an external
@@ -22,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   eliminating setuptools deprecation and ambiguous-package warnings.
 
 ### Fixed
+- Removed public MAR-versus-MNAR identification claims. `mar_mnar_test` remains as a
+  warning-emitting compatibility wrapper and will be removed in a future major release.
 - Reporting edge cases, localized recommendations, RTL font fallback, Little's MCAR
   handling, and pandas 3-compatible UpSet rendering.
 - Stale Sphinx module references, invalid NumPy-doc sections, and undeclared Pandoc
