@@ -54,7 +54,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from numpy.linalg import inv, slogdet
+from numpy.linalg import LinAlgError, solve
 from scipy.stats import chi2
 from sklearn.linear_model import LogisticRegression
 
@@ -378,8 +378,12 @@ def miss_summary(
 # Section 2 — Statistical tests (from stats.py)
 # ===========================================================================
 
-def _em_mle_estimation(data, max_iter=100, tol=1e-5, ridge=1e-6):
-    """Estimate mean and covariance via EM for multivariate-normal data with NaN.
+def _em_mle_estimation(data, max_iter=500, tol=1e-7, ridge=1e-8):
+    """Estimate multivariate-normal moments with observed-data EM.
+
+    The M-step includes conditional covariance for the missing components. This
+    is required for the maximum-likelihood moments used by Little's statistic;
+    mean-imputation followed by ``numpy.cov`` is not an EM M-step.
 
     Parameters
     ----------
@@ -388,104 +392,142 @@ def _em_mle_estimation(data, max_iter=100, tol=1e-5, ridge=1e-6):
     max_iter : int
         Maximum EM iterations.
     tol : float
-        Log-likelihood convergence threshold.
+        Maximum absolute parameter change required for convergence.
     ridge : float
-        Diagonal ridge added to covariance for numerical stability.
+        Non-negative diagonal stabilizer for conditional covariance solves.
 
     Returns
     -------
     mu_hat : np.ndarray, shape (d,)
-    Sigma_hat : np.ndarray, shape (d, d)
+    sigma_hat : np.ndarray, shape (d, d)
+    iterations : int
+        Number of EM iterations performed.
     """
-    X = data.copy()
+    X = np.asarray(data, dtype=float)
     n, d = X.shape
-
     col_means = np.nanmean(X, axis=0)
-    for j in range(d):
-        X[np.isnan(X[:, j]), j] = col_means[j]
+    if not np.isfinite(col_means).all():
+        raise ValueError("mcar_test cannot estimate a column that is entirely missing.")
 
-    mu_hat = np.mean(X, axis=0)
-    # ``numpy.cov`` returns a scalar for a single-column matrix. Keep the
-    # covariance contract two-dimensional so conditional updates and
-    # downstream indexing work uniformly for one or many variables.
-    Sigma_hat = np.atleast_2d(np.cov(X, rowvar=False))
+    completed = np.where(np.isnan(X), col_means, X)
+    mu_hat = completed.mean(axis=0)
+    sigma_hat = (completed - mu_hat).T @ (completed - mu_hat) / n
+    sigma_hat = (sigma_hat + sigma_hat.T) / 2.0
 
-    def _log_likelihood(xx, mu, Sigma):
-        sign, logdet_val = slogdet(Sigma)
-        if sign <= 0 or np.isinf(logdet_val):
-            return -np.inf
-        inv_S = inv(Sigma)
-        const = 0.5 * (d * np.log(2 * np.pi) + logdet_val)
-        ll = sum(
-            -0.5 * (xx[i] - mu) @ inv_S @ (xx[i] - mu)
-            for i in range(n)
-        )
-        return ll - n * const
-
-    old_ll = -np.inf
-    for _ in range(max_iter):
-        for i in range(n):
-            row = data[i, :]
+    for iteration in range(1, max_iter + 1):
+        expected_sum = np.zeros(d, dtype=float)
+        expected_cross = np.zeros((d, d), dtype=float)
+        for row in X:
             missing = np.isnan(row)
-            if not missing.any():
-                continue
             observed = ~missing
-            Sigma_oo = Sigma_hat[np.ix_(observed, observed)] + np.eye(observed.sum()) * ridge
-            Sigma_mo = Sigma_hat[np.ix_(missing, observed)]
-            cond_mean = (
-                mu_hat[missing]
-                + Sigma_mo @ inv(Sigma_oo) @ (row[observed] - mu_hat[observed])
-            )
-            X[i, missing] = cond_mean
+            expected = mu_hat.copy()
+            conditional_covariance = None
+            if missing.any() and observed.any():
+                sigma_oo = sigma_hat[np.ix_(observed, observed)]
+                if ridge:
+                    sigma_oo = sigma_oo + np.eye(observed.sum()) * ridge
+                sigma_mo = sigma_hat[np.ix_(missing, observed)]
+                sigma_om = sigma_hat[np.ix_(observed, missing)]
+                try:
+                    solved_residual = solve(sigma_oo, row[observed] - mu_hat[observed])
+                    solved_covariance = solve(sigma_oo, sigma_om)
+                except LinAlgError as error:
+                    raise ValueError(
+                        "mcar_test could not invert an observed covariance block; "
+                        "remove collinear columns or use a positive ridge."
+                    ) from error
+                expected[missing] = mu_hat[missing] + sigma_mo @ solved_residual
+                conditional_covariance = (
+                    sigma_hat[np.ix_(missing, missing)] - sigma_mo @ solved_covariance
+                )
+            elif missing.any():
+                conditional_covariance = sigma_hat[np.ix_(missing, missing)]
 
-        mu_hat = np.mean(X, axis=0)
-        Sigma_hat = np.atleast_2d(np.cov(X, rowvar=False)) + np.eye(d) * ridge
-        ll_new = _log_likelihood(X, mu_hat, Sigma_hat)
-        if abs(ll_new - old_ll) < tol:
-            break
-        old_ll = ll_new
+            expected[observed] = row[observed]
+            expected_sum += expected
+            expected_cross += np.outer(expected, expected)
+            if conditional_covariance is not None:
+                expected_cross[np.ix_(missing, missing)] += conditional_covariance
 
-    return mu_hat, Sigma_hat
+        new_mu = expected_sum / n
+        new_sigma = expected_cross / n - np.outer(new_mu, new_mu)
+        new_sigma = (new_sigma + new_sigma.T) / 2.0
+        change = max(
+            float(np.max(np.abs(new_mu - mu_hat))),
+            float(np.max(np.abs(new_sigma - sigma_hat))),
+        )
+        mu_hat, sigma_hat = new_mu, new_sigma
+        if change <= tol:
+            return mu_hat, sigma_hat, iteration
+
+    raise RuntimeError(
+        "mcar_test EM algorithm did not converge within "
+        f"max_iter={max_iter}; increase max_iter or inspect the data."
+    )
 
 
 def mcar_test(
     X: pd.DataFrame,
-    max_iter: int = 100,
-    tol: float = 1e-5,
-    ridge: float = 1e-6,
+    max_iter: int = 500,
+    tol: float = 1e-7,
+    ridge: float = 1e-8,
     missing_values: Optional[List] = None,
 ) -> Dict:
     """Perform Little's MCAR test.
 
     Tests the null hypothesis that data are Missing Completely At Random
-    (MCAR).  A small p-value (< 0.05) gives evidence *against* MCAR.
+    (MCAR) under a multivariate-normal working model. A small p-value gives
+    evidence *against* MCAR; a large p-value does not prove MCAR.
 
     Parameters
     ----------
     X : pd.DataFrame
-        DataFrame with missing values.  Must contain at least two numeric
-        columns.
-    max_iter : int, default 100
+        DataFrame with missing values. All columns must be numeric, finite when
+        observed, and contain at least one observed value.
+    max_iter : int, default 500
         Maximum EM iterations.
-    tol : float, default 1e-5
-        EM convergence threshold.
-    ridge : float, default 1e-6
-        Diagonal ridge for numerical stability.
+    tol : float, default 1e-7
+        Maximum absolute EM parameter change required for convergence.
+    ridge : float, default 1e-8
+        Non-negative diagonal stabilizer used only for conditional covariance
+        solves. A positive value changes the numerical approximation.
     missing_values : list, optional
         Extra sentinel values treated as missing.
 
     Returns
     -------
     dict
-        Keys: ``chi_square``, ``df``, ``p_value``,
-        ``missing_patterns``, ``amount_missing``.
+        Keys: ``chi_square``, ``df``, ``p_value``, ``missing_patterns``,
+        ``amount_missing``, and ``em_iterations``.
 
     Raises
     ------
     TypeError
         If *X* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *X* is empty.
+        If data are invalid, non-numeric, non-finite when observed, contain an
+        all-missing column, or do not have enough informative rows.
+    RuntimeError
+        If observed-data EM does not converge within ``max_iter``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"x": [1.0, 2.0, np.nan, 4.0], "y": [1.0, np.nan, 3.0, 4.0]})
+    >>> "p_value" in mcar_test(frame)
+    True
+
+    Notes
+    -----
+    This is not a general test for MAR versus MNAR, and non-rejection is not a
+    basis for claiming MCAR or selecting a single imputation method.
+
+    References
+    ----------
+    Little, R. J. A. (1988). A test of missing completely at random for
+    multivariate data with missing values. *Journal of the American Statistical
+    Association*, 83(404), 1198-1202. https://doi.org/10.1080/01621459.1988.10478722
     """
     validate_dataframe(X, param="X")
     if missing_values is not None:
@@ -497,8 +539,27 @@ def mcar_test(
             "All values are present — MCAR test is not applicable."
         )
 
+    if X.shape[1] < 2:
+        raise ValueError("mcar_test requires at least two numeric columns.")
+    if not all(pd.api.types.is_numeric_dtype(dtype) for dtype in X.dtypes):
+        raise ValueError("mcar_test requires numeric columns; encode categoricals explicitly.")
+    if max_iter < 1:
+        raise ValueError("max_iter must be at least 1.")
+    if tol <= 0:
+        raise ValueError("tol must be positive.")
+    if ridge < 0:
+        raise ValueError("ridge must be non-negative.")
+
     data_np = X.to_numpy(dtype=float)
+    if np.isinf(data_np).any():
+        raise ValueError("mcar_test does not accept infinite observed values.")
     n, d = data_np.shape
+    if np.isnan(data_np).all(axis=0).any():
+        raise ValueError("mcar_test cannot estimate a column that is entirely missing.")
+    if (~np.isnan(data_np).all(axis=1)).sum() <= d:
+        raise ValueError(
+            "mcar_test requires more informative rows than numeric columns."
+        )
 
     r = np.isnan(data_np).astype(int)
     nmis = r.sum(axis=0)
@@ -511,7 +572,7 @@ def mcar_test(
     unique_patterns = np.sort(df_wp["MisPat"].unique())
     n_mis_pat = len(unique_patterns)
 
-    mu_hat, Sigma_hat = _em_mle_estimation(
+    mu_hat, Sigma_hat, em_iterations = _em_mle_estimation(
         data_np, max_iter=max_iter, tol=tol, ridge=ridge
     )
 
@@ -536,8 +597,16 @@ def mcar_test(
         if len(obs_cols) == 0:
             continue
         mean_diff = subset.mean(axis=0).values[obs_cols] - mu_hat[obs_cols]
-        Sigma_obs = Sigma_hat[np.ix_(obs_cols, obs_cols)] + np.eye(len(obs_cols)) * ridge
-        d2 += n_pat * (mean_diff @ inv(Sigma_obs) @ mean_diff)
+        Sigma_obs = Sigma_hat[np.ix_(obs_cols, obs_cols)]
+        if ridge:
+            Sigma_obs = Sigma_obs + np.eye(len(obs_cols)) * ridge
+        try:
+            d2 += n_pat * (mean_diff @ solve(Sigma_obs, mean_diff))
+        except LinAlgError as error:
+            raise ValueError(
+                "mcar_test could not invert a pattern covariance block; "
+                "remove collinear columns or use a positive ridge."
+            ) from error
 
     p_val = np.nan if df_val <= 0 else float(1 - chi2.cdf(d2, df_val))
     amount_missing = pd.DataFrame(
@@ -551,6 +620,7 @@ def mcar_test(
         "p_value": p_val,
         "missing_patterns": n_mis_pat,
         "amount_missing": amount_missing,
+        "em_iterations": em_iterations,
     }
 
 
@@ -807,7 +877,7 @@ def diagnose_missing(
     if can_test:
         try:
             test_result = mcar_test(num_df, max_iter=max_iter, tol=tol, ridge=ridge)
-        except (ValueError, np.linalg.LinAlgError, ArithmeticError):  # pragma: no cover
+        except (ValueError, RuntimeError, LinAlgError, ArithmeticError):
             can_test = False
 
     p_val = test_result.get("p_value")
