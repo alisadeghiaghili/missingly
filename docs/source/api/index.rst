@@ -15,3 +15,4 @@ This page contains the full API documentation for `missingly`.
    compare
    provenance
    benchmark
+   mi_contracts

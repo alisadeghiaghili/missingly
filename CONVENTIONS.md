@@ -471,6 +471,10 @@ and MICE chains/diagnostics have end-to-end stochastic regression tests.
 **R1 status:** complete in merged PRs #27, #28, and #31. R2 evidence infrastructure
 begins with issue #32; FCS/PMM parity remains R3/R4 work and is not implied by R1.
 
+**R3 status:** issue #37 introduces the typed MI contracts before any legacy imputer
+is migrated. The compatibility boundary is deliberate: contracts must be stable and
+tested before they become the public return type of an FCS engine.
+
 **R5 acceptance:** exact streaming diagnostics, bounded-memory execution, optional
 Polars/Arrow interoperability, and reproducible 1M/10M-row benchmarks satisfy the
 large-data policy above without weakening pandas semantics or statistical validity.
