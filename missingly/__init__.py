@@ -60,6 +60,13 @@ import warnings as _warnings
 
 from missingly._version import __version__
 from missingly.benchmark import BenchmarkManifest
+from missingly.mi_contracts import (
+    FCSKernel,
+    ImputationPlan,
+    ImputationResult,
+    MIData,
+    MissingnessSchema,
+)
 from missingly.provenance import analysis_provenance, dataframe_fingerprint
 
 # ---------------------------------------------------------------------------
@@ -320,4 +327,5 @@ __all__ = [
     # Manipulation
     "replace_with_na", "replace_with_na_all", "add_any_miss_var", "bind_shadow_matrix",
     "analysis_provenance", "dataframe_fingerprint", "BenchmarkManifest",
+    "MissingnessSchema", "ImputationPlan", "FCSKernel", "MIData", "ImputationResult",
 ]

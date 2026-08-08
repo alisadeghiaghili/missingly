@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acceptable.
 
 ### Added
+- Added typed, validated contracts for missingness schemas, imputation plans,
+  FCS kernels, MI data, and MI diagnostic results; existing imputation APIs
+  retain their return contracts pending a deliberate migration.
 - Added a versioned, privacy-preserving ``BenchmarkManifest`` contract for
   reproducible cross-tool numerical evidence without raw records.
 - Added a machine-readable manifest for the frozen Little's MCAR oracle; its
