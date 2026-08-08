@@ -97,6 +97,31 @@ class TestMultipleImputation:
                 "Chain 0 (seed=0) and chain 1 (seed=1) should produce distinct imputations."
             )
 
+    def test_history_chains_are_stochastic_and_reproducible(self, small_mixed_df):
+        """History mode must retain posterior draws, not collapse to one trace."""
+        first_results, first_histories = impute_mice(
+            small_mixed_df,
+            n_imputations=3,
+            max_iter=5,
+            random_state=17,
+            return_history=True,
+        )
+        second_results, second_histories = impute_mice(
+            small_mixed_df,
+            n_imputations=3,
+            max_iter=5,
+            random_state=17,
+            return_history=True,
+        )
+
+        assert any(
+            first_histories[0][column] != first_histories[1][column]
+            for column in first_histories[0]
+        )
+        assert first_histories == second_histories
+        for first, second in zip(first_results, second_results):
+            pd.testing.assert_frame_equal(first, second)
+
 
 # ---------------------------------------------------------------------------
 # Test 3 — edge cases

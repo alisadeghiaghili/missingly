@@ -1008,12 +1008,17 @@ def _gelman_rubin_rhat(traces: np.ndarray) -> float:
 
     Notes
     -----
-    When within-chain variance ``W`` is zero (all chains are constant),
-    returns 1.0 — technically converged at a single point.
+    Exactly identical chain traces return ``np.nan``. Identical histories
+    demonstrate that no between-chain stochasticity was observed, so they are
+    not evidence of convergence. Constant but distinct traces likewise return
+    ``np.nan`` because ``W`` is zero and R-hat is undefined.
     Returns ``np.nan`` if m < 2 or n < 2.
     """
     m, n = traces.shape
     if m < 2 or n < 2:
+        return np.nan
+
+    if np.array_equal(traces, np.broadcast_to(traces[0], traces.shape)):
         return np.nan
 
     chain_means = traces.mean(axis=1)          # shape (m,)
@@ -1023,7 +1028,7 @@ def _gelman_rubin_rhat(traces: np.ndarray) -> float:
     W = chain_vars.mean()                      # within-chain variance
 
     if W == 0:
-        return 1.0
+        return np.nan
 
     var_hat = ((n - 1) / n) * W + (1 / n) * B
     return float(np.sqrt(var_hat / W))
@@ -1092,6 +1097,9 @@ def mice_convergence(
     (van Buuren & Groothuis-Oudshoorn, 2011, J. Stat. Software 45(3)).
     The Gelman-Rubin statistic compares within-chain to between-chain
     variance (Gelman & Rubin, 1992, Statistical Science 7(4), 457-472).
+    It is a diagnostic, not proof that the imputation model or missing-data
+    assumptions are valid. Identical chain histories are reported as
+    non-converged because they contain no observed between-chain stochasticity.
     """
     vars_to_use = _validate_mice_histories(histories, variables=variables)
 

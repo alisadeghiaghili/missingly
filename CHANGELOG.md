@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevented `MissinglyImputer.transform` from refitting on evaluation data or
   using evaluation rows as donors. Unsafe transductive transformer modes now
   fail explicitly pending a train-only implementation.
+- Restored posterior stochasticity to MICE history chains and reject identical
+  chain traces as invalid convergence evidence rather than reporting R-hat as
+  acceptable.
 
 ### Added
 - Deterministic DataFrame and configured-analysis SHA-256 provenance manifests.

@@ -73,9 +73,13 @@ class TestGelmanRubinRhat:
         traces = np.array([[1.0], [2.0]])
         assert np.isnan(_gelman_rubin_rhat(traces))
 
-    def test_constant_chains_returns_one(self):
+    def test_identical_chain_traces_are_not_convergence_evidence(self):
         traces = np.array([[2.0, 2.0, 2.0], [2.0, 2.0, 2.0]])
-        assert _gelman_rubin_rhat(traces) == 1.0
+        assert np.isnan(_gelman_rubin_rhat(traces))
+
+    def test_identical_nonconstant_traces_are_not_convergence_evidence(self):
+        traces = np.array([[1.0, 1.5, 1.2], [1.0, 1.5, 1.2]])
+        assert np.isnan(_gelman_rubin_rhat(traces))
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +115,16 @@ class TestMiceConvergence:
         result = mice_convergence(diverged)
         assert result["converged"] is False
         assert result["converged_by_variable"]["a"] is False
+
+    def test_identical_histories_are_not_marked_converged(self):
+        histories = [
+            {"a": [1.0, 1.5, 1.2]},
+            {"a": [1.0, 1.5, 1.2]},
+        ]
+        result = mice_convergence(histories)
+        assert np.isnan(result["rhat"]["a"])
+        assert result["converged_by_variable"]["a"] is False
+        assert result["converged"] is False
 
     def test_fewer_than_two_chains_raises(self):
         with pytest.raises(ValueError, match="at least 2 chains"):
