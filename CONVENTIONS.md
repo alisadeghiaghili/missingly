@@ -18,6 +18,24 @@ comparison, and reporting on those.
 
 ## Session Log
 
+### [2026-08-03] Unrelated-branch reconciliation and statistical credibility
+
+- Verified that `origin/main` and `agent/missingly-analytics-upgrade` have unrelated Git
+  histories; the package branch remains canonical and the web/statistics product is not
+  force-merged.
+- Selectively ported the compatible strengths: evidence-gated competitor analysis,
+  statistical conformance policy, and deterministic provenance.
+- Added a keep/drop audit in `BRANCH_INTEGRATION.md`; FastAPI, auth, payments, general
+  statistics, and product UI remain outside the missing-data-only scope.
+- Removed placeholder-only skips and the external Gower test skip. Optional DQT tests
+  remain conditional locally and are mandatory in their dedicated CI job.
+- Corrected Rubin pooling terminology and behavior: large-sample Rubin degrees of
+  freedom, distinct `lambda` and `fmi`, and finite/non-negative input guardrails.
+- T1 remains open until measured line coverage reaches at least 85%; passing-test count
+  alone is not a coverage claim.
+
+---
+
 ### [2026-07-04] Initial missingly Critical Review
 
 **Critical Gaps Found:**
@@ -296,6 +314,119 @@ Coverage target ≥ 85%. Delete `manual_tests/`. Prerequisite: A1 done ✓, C4 d
 
 ---
 
+### [2026-08-08] Critical statistical and competitive audit
+
+**Verdict:** Missingly has a strong integrated Python surface, but it must not claim
+global superiority or statistical parity with `mice`, SAS, SPSS, or Stata yet. The
+immediate priority is correctness and evidence for existing functionality, not adding
+more methods.
+
+#### P0 — statistical validity and leakage blockers
+
+1. **MAR versus MNAR is not identifiable from observed data alone.**
+   `mar_mnar_test` must not claim to distinguish MAR from MNAR. Replace it with an
+   explicitly limited observed-data missingness-association diagnostic, add references,
+   and deprecate the misleading name. `diagnose_missing` must not infer MCAR, MAR, or
+   MNAR from a p-value threshold or a nullity-correlation threshold. It may report
+   evidence against MCAR and require an explicit, user-supplied assumption for the
+   analysis model.
+2. **Little's MCAR test is release-blocking until independently validated.**
+   Validate the EM estimate, degrees of freedom, convergence behavior, singular and
+   high-dimensional cases against frozen R fixtures. A non-rejection is not proof of
+   MCAR. Issue #22 is P0, not documentation-only work.
+3. **The MICE history path must generate genuine stochastic chains.**
+   Regression tests must prove different chains differ when posterior draws are
+   requested, and must reject the prior failure mode where identical histories produced
+   an apparently acceptable R-hat. Convergence output is a diagnostic, never a proof of
+   validity.
+4. **PMM and categorical "MICE method" claims require a single FCS engine.**
+   The standalone PMM/logreg/polyreg/polr functions must not be described as equivalent
+   to R `mice` until they use iterative conditional models, uncertainty draws, correct
+   donor matching, and cross-tool fixtures. A loop whose missing mask is exhausted on
+   its first pass is not a chained-equations implementation.
+5. **`MissinglyImputer` must have explicit train/transform semantics.**
+   No transform path may refit on evaluation data or use evaluation rows as donors in
+   inductive mode. Add anti-leakage tests for every strategy. If transductive imputation
+   is supported, it must be opt-in, named, documented, and excluded from ordinary
+   sklearn pipeline/CV use.
+
+#### Evidence and test policy additions
+
+- Every advertised inferential method needs an independent numerical oracle, not only
+  an invariant or smoke test. Cross-tool fixtures record dataset licence/SHA-256,
+  exact tool version, platform, seed, missing-data policy, estimand, uncertainty,
+  tolerances, and known algorithmic differences.
+- Simulation tests must measure bias, empirical confidence-interval coverage, Type-I
+  error, donor/distribution preservation, convergence failure behavior, and leakage.
+  Add monotone/non-monotone, high-dimensional, collinear, rare-category, unseen-level,
+  structural-missingness, weighted, clustered, and longitudinal fixtures.
+- Add property-based, metamorphic, mutation, minimum-dependency, installed-wheel, and
+  cross-platform tests. Passing test count and line coverage are not statistical
+  evidence.
+- The release coverage floor is **85%**, with a non-decreasing ratchet. CI also runs
+  formatting/linting, type checking, docstring-contract checks, dependency auditing,
+  package build validation, and docs builds on supported Windows, macOS, and Linux
+  combinations.
+
+#### Competitive scope additions
+
+The competitor analysis must be a capability registry, not a short list of famous
+packages. It must cover these families before any broad leadership claim:
+
+- likelihood/FIML/EM and joint Bayesian modelling;
+- mixed FCS, PMM, predictor matrices, blocks, visit sequences, `where`/`ignore`,
+  passive terms, constraints, and substantive-model compatibility;
+- multilevel, cross-classified, nested, survey-weighted, and fractional hot-deck MI;
+- Barnard--Rubin and Reiter pooling, joint tests, model adapters, contrasts,
+  predictions, and marginal effects;
+- MNAR sensitivity: delta adjustment, tipping points, NARFCS, pattern-mixture,
+  selection, and reference-based longitudinal models;
+- iterative forests/OOB diagnostics, matrix completion (PCA/MCA/MFA/SVD), copula,
+  AutoML/deep methods, and plugin-backed specialist engines;
+- time-series, spatial, survival, censored/limit-of-detection, count, compositional,
+  graph/network, clinical-trial, causal, and complex-survey missing-data workflows;
+- interoperability with pandas, sklearn, Polars/Arrow, sparse data, R/SAS/SPSS/Stata
+  interchange, and long/wide multiple-imputation storage.
+
+The core package remains missing-data focused. Specialist methods belong behind a
+versioned plugin protocol rather than growing a second "god package". A capability can
+be called *better* only when it has parity evidence plus a reproducible safety,
+usability, performance, or memory advantage on a published benchmark.
+
+#### Architecture and release policy additions
+
+- Introduce typed `MissingnessSchema`, `ImputationPlan`, `FCSKernel`, `MIData`, and
+  `ImputationResult` contracts. Results retain the original mask, method choices,
+  seed sequence, traces, warnings, constraints, provenance, and validation outcome.
+- Enforce sklearn estimator compliance deliberately: feature names, `set_output`,
+  metadata routing, supported containers, and documented exclusions.
+- Provenance is reproducibility metadata, **not** anonymisation. Add environment,
+  dependency, platform, RNG, code revision, and output identity; offer keyed/HMAC
+  fingerprints for sensitive low-entropy inputs.
+- Runtime downloads must be opt-in or integrity-checked and offline-safe. Do not make
+  a plotting call silently download an unpinned external asset.
+- Release status must be factual. `v1.0.0` publication, online documentation, issue
+  state, CI state, and deprecation milestones must be reconciled before declaring a
+  release complete.
+
+#### Revised execution order
+
+```
+R0 truth/release repair → R1 statistical-correctness firewall →
+R2 benchmark and evidence platform → R3 unified MI architecture →
+R4 algorithmic parity tracks → R5 ecosystem/scale → R6 measured leadership claims
+```
+
+**R0 acceptance:** CI is green, public documentation is live, release/checklist state
+is reconciled, and unsupported statistical claims are removed or clearly marked
+experimental.
+
+**R1 acceptance:** independent fixtures validate every shipped statistical result;
+no API claims to identify MAR versus MNAR; no sklearn strategy leaks transform data;
+and MICE chains/diagnostics have end-to-end stochastic regression tests.
+
+---
+
 ## Status Legend
 
 - `[ ] TODO` — not started / not yet in code
@@ -482,7 +613,10 @@ missingly/
 ---
 
 ## Source of Truth
-- **This file is the single source of truth for task status.**
-- Update it when a task is completed, not retroactively.
+- GitHub issues and pull requests are the operational source of truth; this file is
+  the versioned architecture, quality, and capability roadmap.
+- Update it in the same pull request as an implementation or a material audit. Do not
+  mark a task complete based only on API resemblance, a smoke test, or a passing local
+  test suite.
 - Every PR/commit that completes a task must update the status marker here.
 - No docstring may reference a module or symbol that does not exist in source.

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -19,16 +19,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}-${{ hashFiles('missingly/**/*.py') }}
@@ -36,15 +36,11 @@ jobs:
             ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}-
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
-      - name: Install data-quality-toolkit from GitHub
-        run: pip install git+https://github.com/alisadeghiaghili/data-quality-toolkit.git@main
-
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
           pip uninstall -y missingly || true
-          pip install -e '.[test]'
-          pip install statsmodels
+          pip install -e '.[test,all]'
 
       - name: Verify public API is importable
         run: |
@@ -56,11 +52,11 @@ jobs:
           PYEOF
 
       - name: Run pytest with coverage
-        run: pytest tests/ -v --tb=short --cov=missingly --cov-report=xml --cov-report=term-missing
+        run: pytest tests/ -v --tb=short --cov=missingly --cov-report=xml --cov-report=term-missing --cov-fail-under=80
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
           flags: unittests
@@ -72,22 +68,21 @@ jobs:
 
     steps:
       - name: Checkout missingly
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
-      - name: Install data-quality-toolkit (latest main)
-        run: pip install git+https://github.com/alisadeghiaghili/data-quality-toolkit.git@main
+      - name: Install pinned data-quality-toolkit
+        run: pip install "https://github.com/alisadeghiaghili/data-quality-toolkit/archive/8476f521f37dadd746231e519818e46bff69471c.zip"
 
       - name: Install missingly and test dependencies
         run: |
           python -m pip install --upgrade pip
           pip uninstall -y missingly || true
           pip install -e '.[test]'
-          pip install statsmodels
 
       - name: Verify correlation_heatmap contract
         run: |
@@ -114,3 +109,51 @@ jobs:
 
       - name: Run DQT-integration tests
         run: pytest tests/test_dqt_integration.py -v --tb=short
+
+  package:
+    name: Compile and validate distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Compile package
+        run: python -m compileall -q missingly
+
+      - name: Build wheel and source distribution
+        run: python -m build
+
+      - name: Validate distribution metadata
+        run: twine check dist/*
+
+  docs:
+    name: Build documentation with warnings as errors
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install package and documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[docs]'
+
+      - name: Build HTML documentation
+        run: python -m sphinx -W --keep-going -b html docs/source docs/_build/html

@@ -6,6 +6,19 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
+# ``nbsphinx`` invokes Pandoc as a subprocess.  The docs extra ships a
+# platform-specific binary through pypandoc-binary, whose directory is not
+# automatically added to PATH in every environment (notably Windows CI).
+try:
+    import pypandoc
+
+    _pandoc_dir = os.path.dirname(pypandoc.get_pandoc_path())
+    os.environ['PATH'] = _pandoc_dir + os.pathsep + os.environ.get('PATH', '')
+except (ImportError, OSError):
+    # nbsphinx will emit the actionable PandocMissing error if the docs extra
+    # was not installed; keeping config importable helps partial API builds.
+    pass
+
 # -- Project information -----------------------------------------------------
 
 project = 'missingly'

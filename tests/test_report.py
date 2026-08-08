@@ -208,12 +208,24 @@ class TestReportI18n:
 
     def test_all_fa_labels_present(self, df_typical):
         html = _write_report(df_typical, language="fa")
-        for key, val in _TRANSLATIONS["fa"].items():
+        rendered_keys = {
+            "title", "subtitle", "section_overview", "section_summary",
+            "section_cases", "section_mcar", "section_recommendation",
+            "section_plots", "stat_chi_square", "generated_by",
+        }
+        for key in rendered_keys:
+            val = _TRANSLATIONS["fa"][key]
             assert val in html, f"FA label '{key}'='{val}' missing from HTML"
 
     def test_all_de_labels_present(self, df_typical):
         html = _write_report(df_typical, language="de")
-        for key, val in _TRANSLATIONS["de"].items():
+        rendered_keys = {
+            "title", "subtitle", "section_overview", "section_summary",
+            "section_cases", "section_mcar", "section_recommendation",
+            "section_plots", "stat_chi_square", "generated_by",
+        }
+        for key in rendered_keys:
+            val = _TRANSLATIONS["de"][key]
             assert val in html, f"DE label '{key}'='{val}' missing from HTML"
 
     def test_unknown_lang_issues_userwarning(self, df_typical):

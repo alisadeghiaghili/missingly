@@ -44,13 +44,17 @@ class TestPoolScalarEstimates:
         result = pool_scalar_estimates(self.estimates, self.variances)
         assert 0.0 <= result["lambda"] <= 1.0
 
+    def test_fmi_in_unit_interval(self):
+        result = pool_scalar_estimates(self.estimates, self.variances)
+        assert 0.0 <= result["fmi"] <= 1.0
+
     def test_df_positive(self):
         result = pool_scalar_estimates(self.estimates, self.variances)
         assert result["df"] > 0
 
     def test_all_keys_present(self):
         result = pool_scalar_estimates(self.estimates, self.variances)
-        expected_keys = {"q_bar", "u_bar", "b", "t", "df", "r", "lambda"}
+        expected_keys = {"q_bar", "u_bar", "b", "t", "df", "r", "lambda", "fmi"}
         assert set(result.keys()) == expected_keys
 
     def test_identical_estimates_b_zero(self):

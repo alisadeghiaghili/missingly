@@ -14,6 +14,13 @@ import pytest
 import missingly
 
 
+def test_runtime_version_matches_distribution_metadata():
+    """Runtime and build metadata expose one consistent release version."""
+    from importlib.metadata import version
+
+    assert missingly.__version__ == version("missingly") == "1.0.0"
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -38,6 +45,7 @@ V1_SYMBOLS = [
     "miss_var_summary", "miss_case_summary",
     # diagnosis
     "mcar_test", "mar_mnar_test", "diagnose_missing",
+    "analysis_provenance", "dataframe_fingerprint",
     # visualisation core
     "matrix", "bar", "miss_case", "miss_var_pct", "vis_miss", "miss_which",
     "upset", "miss_patterns", "miss_cooccurrence", "heatmap", "miss_cluster",

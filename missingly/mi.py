@@ -64,21 +64,24 @@ def pool_scalar_estimates(
         ``"t"``
             Total variance, ``u_bar + (1 + 1/m) * b``.
         ``"df"``
-            Approximate degrees of freedom (Barnard & Rubin, 1999
-            correction; falls back to the original Rubin formula
-            when ``u_bar == 0``).
+            Approximate degrees of freedom from Rubin's (1987)
+            large-sample formula.
         ``"r"``
             Relative increase in variance due to non-response,
             ``(1 + 1/m) * b / u_bar``.
         ``"lambda"``
-            Estimated fraction of missing information,
+            Proportion of total variance attributable to missingness,
+            ``r / (r + 1)``.
+        ``"fmi"``
+            Small-sample fraction of missing information,
             ``(r + 2 / (df + 3)) / (r + 1)``.
 
     Raises
     ------
     ValueError
         If *estimates* and *variances* have different lengths, or if
-        fewer than 2 imputations are provided.
+        fewer than 2 imputations are provided, values are non-finite,
+        or a within-imputation variance is negative.
 
     Notes
     -----
@@ -94,7 +97,8 @@ def pool_scalar_estimates(
 
     which is Rubin's (1987) large-sample formula.  When ``b == 0``
     (all imputed estimates are identical, meaning no between-imputation
-    variability) ``df`` is set to ``inf`` and ``r`` / ``lambda`` to 0.
+    variability) ``df`` is set to ``inf`` and ``r`` / ``lambda`` /
+    ``fmi`` to 0.
     When ``u_bar == 0`` but ``b > 0``, ``r`` is ``inf`` and ``df`` is
     set to ``(m - 1)``.
 
@@ -142,6 +146,13 @@ def pool_scalar_estimates(
     q_arr = np.array(estimates, dtype=float)
     u_arr = np.array(variances, dtype=float)
 
+    if not np.isfinite(q_arr).all():
+        raise ValueError("estimates must contain only finite values.")
+    if not np.isfinite(u_arr).all():
+        raise ValueError("variances must contain only finite values.")
+    if (u_arr < 0).any():
+        raise ValueError("variances must be non-negative.")
+
     q_bar = float(q_arr.mean())                          # pooled estimate
     u_bar = float(u_arr.mean())                          # within-imputation variance
     b = float(np.var(q_arr, ddof=1))                    # between-imputation variance
@@ -150,21 +161,24 @@ def pool_scalar_estimates(
     # --- handle degenerate cases before computing r and df ---
     if b == 0.0:
         # All estimates are identical: no between-imputation variability.
-        # r = 0, df = inf, lambda = 0.
+        # r = 0, df = inf, lambda = fmi = 0.
         r = 0.0
         df = float("inf")
         lam = 0.0
+        fmi = 0.0
     elif u_bar == 0.0:
         # No within-imputation variance but estimates differ.
         # r = inf, df degenerates to (m-1).
         r = float("inf")
         df = float(m - 1)
         lam = 1.0
+        fmi = 1.0
     else:
         r = (1.0 + 1.0 / m) * b / u_bar
         # Rubin (1987) degrees-of-freedom formula
         df = (m - 1) * (1.0 + u_bar / ((1.0 + 1.0 / m) * b)) ** 2
-        lam = (r + 2.0 / (df + 3.0)) / (r + 1.0)
+        lam = r / (r + 1.0)
+        fmi = (r + 2.0 / (df + 3.0)) / (r + 1.0)
 
     return {
         "q_bar": q_bar,
@@ -174,6 +188,7 @@ def pool_scalar_estimates(
         "df": df,
         "r": r,
         "lambda": lam,
+        "fmi": fmi,
     }
 
 
@@ -260,7 +275,7 @@ def pool_linear_regression_results(
     array([1.05, 1.95])
     >>> result["se_"].shape
     (2,)
-    >>> np.all(result["se_"] > 0)
+    >>> bool(np.all(result["se_"] > 0))
     True
     """
     coefs = np.asarray(coefs, dtype=float)

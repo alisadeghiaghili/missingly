@@ -406,29 +406,51 @@ def upset(
 ) -> dict | Any:
     """UpSet plot of missing-value co-occurrence patterns.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose joint missingness patterns are plotted.
+    figsize : tuple of float, optional
+        Matplotlib figure size.  A readable default is selected when omitted.
+    min_subset_size : int, default 1
+        Minimum number of rows required for an intersection to be displayed.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Backend-specific options.  The native Matplotlib backend accepts
+        ``show_pct``; Plotly options are forwarded to its implementation.
+
     Returns
     -------
-    dict with keys 'intersections', 'matrix', 'totals'  (matplotlib backend)
-    or plotly Figure  (interactive backend).
+    dict or plotly.graph_objects.Figure
+        Matplotlib axes under ``intersections``, ``matrix``, and ``totals``;
+        or an interactive Plotly figure.
 
     Raises
     ------
     ImportError
-        When ``upsetplot`` is not installed (matplotlib backend only).
+        If Plotly is requested but not installed.
+    TypeError
+        If an unsupported Matplotlib keyword argument is supplied.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from missingly.visualisation.static import upset
+    >>> frame = pd.DataFrame({"a": [1.0, np.nan], "b": [np.nan, np.nan]})
+    >>> axes = upset(frame)
+    >>> sorted(axes)
+    ['intersections', 'matrix', 'totals']
     """
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _upset_plotly
         return _upset_plotly(_apply_sentinels(df, missing_values), **kwargs)
-
-    try:
-        from upsetplot import UpSet, from_indicators  # noqa: PLC0415
-    except ImportError as exc:
-        raise ImportError(
-            "The 'upsetplot' package is required for upset plots.  "
-            "Install it with:  pip install upsetplot\n"
-            "or:               pip install missingly[upset]"
-        ) from exc
 
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
@@ -439,23 +461,88 @@ def upset(
     if not cols_with_missing:
         return {"intersections": None, "matrix": None, "totals": None}
 
-    data = from_indicators(null_mat[cols_with_missing])
-    data = data[data >= min_subset_size]
-    if data.empty:
+    patterns = (
+        null_mat[cols_with_missing]
+        .value_counts(sort=True)
+        .loc[lambda counts: counts >= min_subset_size]
+    )
+    if patterns.empty:
         return {"intersections": None, "matrix": None, "totals": None}
 
-    us = UpSet(data, **kwargs)
-    if figsize:
-        us.figure_width = figsize[0]
-        us.figure_height = figsize[1]
-    fig_dict = us.plot()
-    # fig_dict from upsetplot has keys like 'matrix', 'intersections', 'totals'
-    result = {
-        "intersections": fig_dict.get("intersections"),
-        "matrix": fig_dict.get("matrix"),
-        "totals": fig_dict.get("totals"),
+    show_pct = bool(kwargs.pop("show_pct", False))
+    if kwargs:
+        unknown = ", ".join(sorted(kwargs))
+        raise TypeError(f"Unsupported UpSet keyword arguments: {unknown}")
+
+    figure = plt.figure(figsize=figsize or (9, 5), constrained_layout=True)
+    grid = figure.add_gridspec(
+        2,
+        2,
+        width_ratios=(1.2, 4.0),
+        height_ratios=(2.2, 1.4),
+    )
+    blank_ax = figure.add_subplot(grid[0, 0])
+    blank_ax.axis("off")
+    intersections_ax = figure.add_subplot(grid[0, 1])
+    totals_ax = figure.add_subplot(grid[1, 0])
+    matrix_ax = figure.add_subplot(grid[1, 1])
+
+    x_positions = np.arange(len(patterns))
+    intersection_values = patterns.to_numpy(dtype=float)
+    intersections_ax.bar(x_positions, intersection_values, color="#4C72B0")
+    intersections_ax.set_ylabel("Rows")
+    intersections_ax.set_xticks([])
+    intersections_ax.set_title("Missingness pattern intersections")
+    if show_pct:
+        total_rows = float(len(df))
+        for x_pos, value in zip(x_positions, intersection_values):
+            intersections_ax.text(
+                x_pos,
+                value,
+                f"{100 * value / total_rows:.1f}%",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+    pattern_values = [
+        tuple(bool(value) for value in pattern)
+        if isinstance(pattern, tuple)
+        else (bool(pattern),)
+        for pattern in patterns.index.tolist()
+    ]
+    for x_pos, pattern in zip(x_positions, pattern_values):
+        active = [idx for idx, value in enumerate(pattern) if value]
+        if len(active) > 1:
+            matrix_ax.plot([x_pos, x_pos], [min(active), max(active)], color="#333333")
+        for y_pos, value in enumerate(pattern):
+            matrix_ax.scatter(
+                x_pos,
+                y_pos,
+                color="#333333" if value else "#D9D9D9",
+                s=36,
+                zorder=3,
+            )
+    matrix_ax.set_yticks(range(len(cols_with_missing)))
+    matrix_ax.set_yticklabels(_rtl_safe_labels(cols_with_missing, ax=matrix_ax))
+    matrix_ax.set_xticks(x_positions)
+    matrix_ax.set_xticklabels([str(index + 1) for index in x_positions])
+    matrix_ax.set_xlabel("Pattern")
+    matrix_ax.invert_yaxis()
+
+    totals = null_mat[cols_with_missing].sum().to_numpy(dtype=float)
+    y_positions = np.arange(len(cols_with_missing))
+    totals_ax.barh(y_positions, totals, color="#7A9CC6")
+    totals_ax.set_yticks([])
+    totals_ax.set_xlabel("Missing")
+    totals_ax.invert_xaxis()
+    totals_ax.invert_yaxis()
+
+    return {
+        "intersections": intersections_ax,
+        "matrix": matrix_ax,
+        "totals": totals_ax,
     }
-    return result
 
 
 # ===========================================================================
@@ -511,7 +598,7 @@ def miss_patterns(
     ax_.set_yticks(y)
     ax_.set_yticklabels(counts.index.tolist(), fontsize=fontsize)
     ax_.set_xlabel("Row count", fontsize=fontsize)
-    ax_.set_title(f"Top-{top_n} missingness patterns")
+    ax_.set_title(f"Top-{top_n} Missingness Patterns")
     _clean_ax(ax_)
     return ax_
 
@@ -591,6 +678,7 @@ def heatmap(
     interactive: bool = False,
     mask_insignificant: bool = True,
     significance: float = 0.05,
+    method: str = "pearson",
     missing_values=None,
     **kwargs: Any,
 ) -> Any:
@@ -614,7 +702,12 @@ def heatmap(
                  ha="center", va="center", transform=ax_.transAxes)
         return ax_
 
+    if method not in {"pearson", "phi"}:
+        raise ValueError("method must be either 'pearson' or 'phi'")
+
     sub = null_mat[cols_with_missing].astype(float)
+    # Pearson correlation between two binary indicators is the phi
+    # coefficient, so both public names intentionally use this calculation.
     corr = sub.corr(method="pearson")
     diag_mask = np.eye(len(cols_with_missing), dtype=bool)
     final_mask = diag_mask
@@ -690,6 +783,7 @@ def dendrogram(
         fig, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
         ax_.text(0.5, 0.5, "Not enough columns with missing values",
                  ha="center", va="center", transform=ax_.transAxes)
+        ax_.set_title("Dendrogram of Variables by Missing Data Patterns")
         return ax_
 
     sub = null_mat[cols_with_missing].astype(float)
@@ -710,6 +804,7 @@ def dendrogram(
 
     col_labels = _rtl_safe_labels(cols_with_missing, ax=ax_)
     hierarchy.dendrogram(linkage, labels=col_labels, orientation=orientation, ax=ax_, **kwargs)
+    ax_.set_title("Dendrogram of Variables by Missing Data Patterns")
     ax_.tick_params(axis="x", labelsize=fontsize)
     _clean_ax(ax_)
     return ax_
@@ -866,7 +961,7 @@ def miss_row_profile(
     ax_.hist(completeness.values, bins=min(30, len(df)), color=color, edgecolor="white")
     ax_.set_xlabel("Row completeness", fontsize=fontsize)
     ax_.set_ylabel("Count", fontsize=fontsize)
-    ax_.set_title("Per-row completeness profile")
+    ax_.set_title("Row Missingness Profile")
     ax_.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
     _clean_ax(ax_)
     return ax_
@@ -943,7 +1038,10 @@ def shadow_scatter(
     if _is_rtl(str(x)) or _is_rtl(str(y)):
         _apply_rtl_font(ax_)
     ax_.set_xlabel(xl); ax_.set_ylabel(yl)
-    ax_.set_title(f"Shadow scatter: {xl} vs {yl}")
+    title = f"Shadow scatter: {xl} vs {yl}"
+    if hue is not None:
+        title += f" by {_rtl_safe(str(hue))}"
+    ax_.set_title(title)
     ax_.legend(fontsize=9)
     _clean_ax(ax_)
     return ax_
@@ -1116,6 +1214,7 @@ def miss_impute_compare(
     imputed: pd.DataFrame | Dict[str, pd.DataFrame],
     column: Optional[str] = None,
     *,
+    columns: Optional[list[str]] = None,
     figsize: tuple[float, float] | None = None,
     bins: int = 30,
     fontsize: int = 11,
@@ -1133,6 +1232,9 @@ def miss_impute_compare(
     column : str, optional
         Single column to compare.  If None and imputed is a DataFrame, all
         numeric columns with missing values in *original* are compared.
+    columns : list of str, optional
+        Explicit ordered subset of numeric columns to compare. This cannot
+        be combined with *column*.
 
     Returns
     -------
@@ -1147,7 +1249,11 @@ def miss_impute_compare(
         imputed_dict = imputed
 
     # Determine columns to compare
-    if column is not None:
+    if column is not None and columns is not None:
+        raise ValueError("Use either column or columns, not both")
+    if columns is not None:
+        cols_to_plot = list(columns)
+    elif column is not None:
         cols_to_plot = [column]
     else:
         cols_to_plot = [
@@ -1155,7 +1261,13 @@ def miss_impute_compare(
             if original[c].isnull().any() and pd.api.types.is_numeric_dtype(original[c])
         ]
         if not cols_to_plot:
-            cols_to_plot = [c for c in original.select_dtypes(include=[np.number]).columns]
+            raise ValueError(
+                "No numeric columns with missing values are available to compare"
+            )
+
+    unknown = [name for name in cols_to_plot if name not in original.columns]
+    if unknown:
+        raise ValueError(f"Columns not found in original data: {unknown}")
 
     n_cols_plot = len(cols_to_plot)
     n_methods = len(imputed_dict) + 1  # original + each method
@@ -1282,8 +1394,8 @@ def vis_miss_cumsum_case(
 def vis_miss_span(
     df: pd.DataFrame,
     column: str,
-    *,
     span_every: int = 20,
+    *,
     span: Optional[int] = None,
     figsize: tuple[float, float] = (10, 4),
     color: str = "#4C72B0",

@@ -13,3 +13,4 @@ This page contains the full API documentation for `missingly`.
    impute
    report
    compare
+   provenance

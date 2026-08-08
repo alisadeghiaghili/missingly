@@ -112,8 +112,8 @@ def compare_imputations(
     ValueError
         If *mask_frac* is not in (0, 1).
 
-    Example
-    -------
+    Examples
+    --------
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({'age': [25, 30, 35, 40], 'city': ['A','B','A','B']})
     >>> compare_imputations(df)
@@ -316,8 +316,8 @@ def cv_compare_imputations(
     ValueError
         If *X* and *y* have different lengths.
 
-    Example
-    -------
+    Examples
+    --------
     >>> import pandas as pd, numpy as np
     >>> from sklearn.linear_model import LogisticRegression
     >>> from missingly.compare import cv_compare_imputations

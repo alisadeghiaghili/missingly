@@ -138,7 +138,7 @@ class TestPoolLinearModels:
             impute_kwargs={"random_state": 0},
         )
         pooled = pool_linear_models(models, dfs, feature="x", target="y")
-        expected_keys = {"q_bar", "u_bar", "b", "t", "df", "r", "lambda"}
+        expected_keys = {"q_bar", "u_bar", "b", "t", "df", "r", "lambda", "fmi"}
         assert set(pooled.keys()) == expected_keys
 
     def test_total_variance_positive(self, simple_df):

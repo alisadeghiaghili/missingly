@@ -193,7 +193,7 @@ def pool_linear_models(
     dict
         Output of :func:`~missingly.mi.pool_scalar_estimates` for the
         slope of *feature*.  Keys: ``"q_bar"``, ``"u_bar"``, ``"b"``,
-        ``"t"``, ``"df"``, ``"r"``, ``"lambda"``.
+        ``"t"``, ``"df"``, ``"r"``, ``"lambda"``, ``"fmi"``.
 
     Raises
     ------
@@ -258,7 +258,12 @@ def pool_linear_models(
 
         x_vals = df[feature].values.astype(float)
         y_vals = df[target].values.astype(float)
-        y_pred = model.predict(x_vals.reshape(-1, 1)).ravel()
+        prediction_input = (
+            df[[feature]]
+            if hasattr(model, "feature_names_in_")
+            else x_vals.reshape(-1, 1)
+        )
+        y_pred = model.predict(prediction_input).ravel()
 
         n = len(y_vals)
         resid = y_vals - y_pred

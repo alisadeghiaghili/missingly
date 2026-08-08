@@ -402,7 +402,10 @@ def _em_mle_estimation(data, max_iter=100, tol=1e-5, ridge=1e-6):
         X[np.isnan(X[:, j]), j] = col_means[j]
 
     mu_hat = np.mean(X, axis=0)
-    Sigma_hat = np.cov(X, rowvar=False)
+    # ``numpy.cov`` returns a scalar for a single-column matrix. Keep the
+    # covariance contract two-dimensional so conditional updates and
+    # downstream indexing work uniformly for one or many variables.
+    Sigma_hat = np.atleast_2d(np.cov(X, rowvar=False))
 
     def _log_likelihood(xx, mu, Sigma):
         sign, logdet_val = slogdet(Sigma)
@@ -433,7 +436,7 @@ def _em_mle_estimation(data, max_iter=100, tol=1e-5, ridge=1e-6):
             X[i, missing] = cond_mean
 
         mu_hat = np.mean(X, axis=0)
-        Sigma_hat = np.cov(X, rowvar=False) + np.eye(d) * ridge
+        Sigma_hat = np.atleast_2d(np.cov(X, rowvar=False)) + np.eye(d) * ridge
         ll_new = _log_likelihood(X, mu_hat, Sigma_hat)
         if abs(ll_new - old_ll) < tol:
             break
@@ -630,8 +633,10 @@ def diagnose_missing(
     plain-English ``recommendation`` and a ``strategy_hint`` that maps
     directly to missingly imputation functions.
 
-    Decision logic
-    --------------
+    Notes
+    -----
+    Decision logic:
+
     1. Run Little's MCAR test on numeric columns.
     2. p >= *significance* -> MCAR: simple imputers are appropriate.
     3. p < *significance* -> not MCAR.  Check max nullity correlation:

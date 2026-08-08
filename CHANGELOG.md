@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Deterministic DataFrame and configured-analysis SHA-256 provenance manifests.
+- Closed-form Rubin pooling conformance tests and an evidence-gated competitor roadmap.
+- Branch reconciliation and statistical TDD policy documents.
+
+### Changed
+- Scalar MI pooling now distinguishes `lambda` from small-sample `fmi` and rejects
+  non-finite estimates or invalid within-imputation variances.
+- Mixed KNN uses Missingly's internal Gower implementation rather than an external
+  runtime package.
+- Runtime and distribution versions now share one metadata source.
+- Build metadata uses the SPDX license format and explicit package-data configuration,
+  eliminating setuptools deprecation and ambiguous-package warnings.
+
+### Fixed
+- Reporting edge cases, localized recommendations, RTL font fallback, Little's MCAR
+  handling, and pandas 3-compatible UpSet rendering.
+- Stale Sphinx module references, invalid NumPy-doc sections, and undeclared Pandoc
+  requirements that prevented warning-free API and notebook documentation builds.
+
+### Removed
+- Placeholder-only test modules that reported skipped work without testing behavior.
+
 ## [1.0.0] - 2026-07-29
 
 ### Added
