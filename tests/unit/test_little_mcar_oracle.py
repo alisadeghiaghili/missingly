@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from missingly.benchmark import BenchmarkManifest
 from missingly.diagnostics import mcar_test
 
 
 _FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "little_mcar"
 _AIRQUALITY = _FIXTURE_DIR / "airquality.csv"
-_AIRQUALITY_SHA256 = "65d2c4afd976c169af9bb0bd97e9e78e1e8a185f1b52e2e3153e30f90c7fb5f8"
+_MANIFEST = _FIXTURE_DIR / "benchmark_manifest.json"
 
 
 @pytest.fixture(scope="module")
@@ -23,19 +25,42 @@ def airquality() -> pd.DataFrame:
     return pd.read_csv(_AIRQUALITY).drop(columns="rownames")
 
 
-def test_airquality_fixture_hash_is_frozen():
-    """Prevent a silent fixture change from invalidating the R oracle values."""
-    assert sha256(_AIRQUALITY.read_bytes()).hexdigest() == _AIRQUALITY_SHA256
+@pytest.fixture(scope="module")
+def benchmark_manifest() -> BenchmarkManifest:
+    """Load the machine-readable evidence contract for the frozen oracle."""
+    return BenchmarkManifest.from_dict(json.loads(_MANIFEST.read_text(encoding="utf-8")))
 
 
-def test_little_mcar_matches_frozen_naniar_oracle(airquality):
+def test_airquality_fixture_hash_matches_its_benchmark_manifest(benchmark_manifest):
+    """Prevent a silent data change from invalidating the recorded oracle metrics."""
+    assert sha256(_AIRQUALITY.read_bytes()).hexdigest() == benchmark_manifest.dataset_sha256
+
+
+def test_imported_oracle_manifest_is_explicit_about_its_provenance_gap(benchmark_manifest):
+    """Do not silently present an unversioned imported regression value as parity proof."""
+    assert "not published" in benchmark_manifest.reference_tool_version
+    assert "not published" in benchmark_manifest.reference_platform
+    assert any("before claiming cross-tool parity" in item for item in benchmark_manifest.known_differences)
+
+
+def test_little_mcar_matches_frozen_naniar_oracle(airquality, benchmark_manifest):
     """Match ``naniar::mcar_test(airquality)`` within numerical EM tolerance."""
     result = mcar_test(airquality)
 
-    assert result["missing_patterns"] == 4
-    assert result["df"] == 14
-    assert result["chi_square"] == pytest.approx(35.1061288689702, abs=1e-4)
-    assert result["p_value"] == pytest.approx(0.00141778113856683, abs=1e-7)
+    expected = benchmark_manifest.expected_metrics
+    tolerances = benchmark_manifest.tolerances
+    assert result["missing_patterns"] == pytest.approx(
+        expected["missing_patterns"], abs=tolerances["missing_patterns"]
+    )
+    assert result["df"] == pytest.approx(
+        expected["degrees_of_freedom"], abs=tolerances["degrees_of_freedom"]
+    )
+    assert result["chi_square"] == pytest.approx(
+        expected["chi_square"], abs=tolerances["chi_square"]
+    )
+    assert result["p_value"] == pytest.approx(
+        expected["p_value"], abs=tolerances["p_value"]
+    )
     assert result["em_iterations"] > 0
 
 
