@@ -409,6 +409,49 @@ usability, performance, or memory advantage on a published benchmark.
   state, CI state, and deprecation milestones must be reconciled before declaring a
   release complete.
 
+#### Large-data execution policy
+
+Large-data support is a first-class R5 track, not an unverified claim that existing
+pandas code "supports 10M rows". The architecture is capability-based:
+
+- pandas remains the reference backend for public semantics and numerical parity;
+- Apache Arrow/DataFrame Interchange is the container boundary where zero-copy or
+  bounded-copy conversion is possible;
+- optional Polars `LazyFrame` is the preferred single-machine streaming backend for
+  projection, null counting, grouped summaries, pattern aggregation, and other
+  operations that can be expressed without materialising the full input;
+- a chunked pandas/Arrow fallback covers file and iterator sources when Polars is not
+  installed; Polars must remain an optional extra, never a core dependency;
+- Dask or another distributed engine is admitted only after reproducible benchmarks
+  show that single-machine streaming is insufficient. No backend-specific conditionals
+  may spread through statistical kernels; adapters expose explicit capabilities.
+
+Every operation must declare one of four execution classes: exact-streaming,
+bounded-memory batch, explicitly approximate, or materialising. Approximation and
+sampling are opt-in, seeded, labelled in results, and include error/coverage metadata
+where applicable. Algorithms such as exact KNN, dense nullity correlation, MICE, and
+forest imputation must not silently claim streaming behavior; they either use a
+documented scalable variant or fail before allocation with an actionable memory-budget
+error.
+
+R5 acceptance requires:
+
+1. Exact summary results are invariant across pandas, Arrow/chunked, and Polars paths
+   on shared fixtures, including mixed dtypes, sentinels, all-missing columns, and
+   partition boundaries.
+2. A public execution policy exposes backend choice, memory budget, chunk size,
+   deterministic seed, approximation status, and copy/materialisation behavior.
+3. Pull requests run a 1M-row smoke benchmark; scheduled/release jobs run documented
+   10M-row narrow and wide Parquet benchmarks and record wall time, peak RSS, input
+   bytes, extra-memory ratio, output identity, backend/version, and hardware.
+4. Streaming summaries on 10M rows do not construct a dense shadow matrix and keep
+   peak additional memory bounded by the configured budget. Benchmark failure is a
+   release failure, not a warning hidden in logs.
+5. Cancellation, partial-read failure, invalid schema, unsupported backend capability,
+   and out-of-budget behavior have deterministic tests and actionable exceptions.
+6. Performance claims name the dataset and competitor version and require numerical
+   parity plus a statistically reported speed or memory advantage.
+
 #### Revised execution order
 
 ```
@@ -424,6 +467,10 @@ experimental.
 **R1 acceptance:** independent fixtures validate every shipped statistical result;
 no API claims to identify MAR versus MNAR; no sklearn strategy leaks transform data;
 and MICE chains/diagnostics have end-to-end stochastic regression tests.
+
+**R5 acceptance:** exact streaming diagnostics, bounded-memory execution, optional
+Polars/Arrow interoperability, and reproducible 1M/10M-row benchmarks satisfy the
+large-data policy above without weakening pandas semantics or statistical validity.
 
 ---
 
