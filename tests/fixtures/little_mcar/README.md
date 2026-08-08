@@ -8,6 +8,14 @@ or exact `naniar` package version; it is therefore an independent numerical
 regression guard, **not** cross-tool parity evidence. Regenerate it from a
 locked R environment before making a parity claim.
 
+`generate_naniar_reference.R` and the **Reproduce R statistical oracle**
+workflow provide that locked regeneration path: Ubuntu 24.04, R 4.4.2, and
+`naniar` v1.1.0. The workflow uploads a scalar-only evidence artifact recording
+the R/package/platform and SHA-256 identities, then compares it against the
+reviewed numerical oracle. A follow-up PR must replace the legacy provenance
+gap in `benchmark_manifest.json` with the reviewed artifact values before the
+fixture is labelled cross-tool parity evidence.
+
 `airquality.csv` is the public R `datasets::airquality` data set, mirrored by
 [Rdatasets](https://vincentarelbundock.github.io/Rdatasets/). Its SHA-256 is
 `65d2c4afd976c169af9bb0bd97e9e78e1e8a185f1b52e2e3153e30f90c7fb5f8`.
