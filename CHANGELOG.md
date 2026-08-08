@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added a versioned, privacy-preserving ``BenchmarkManifest`` contract for
   reproducible cross-tool numerical evidence without raw records.
+- Added a machine-readable manifest for the frozen Little's MCAR oracle; its
+  inherited R-version/platform provenance gap is now explicit rather than
+  being presented as parity evidence.
 - Deterministic DataFrame and configured-analysis SHA-256 provenance manifests.
 - Closed-form Rubin pooling conformance tests and an evidence-gated competitor roadmap.
 - Branch reconciliation and statistical TDD policy documents.

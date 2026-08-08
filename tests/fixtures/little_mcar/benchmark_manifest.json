@@ -1,0 +1,31 @@
+{
+  "dataset_license": "R datasets package (GPL-2 | GPL-3)",
+  "dataset_name": "R datasets::airquality mirrored by Rdatasets",
+  "dataset_sha256": "65d2c4afd976c169af9bb0bd97e9e78e1e8a185f1b52e2e3153e30f90c7fb5f8",
+  "dataset_source_url": "https://vincentarelbundock.github.io/Rdatasets/csv/datasets/airquality.csv",
+  "estimand": "Little MCAR chi-square statistic, degrees of freedom, p-value, and observed missing-pattern count",
+  "expected_metrics": {
+    "chi_square": 35.1061288689702,
+    "degrees_of_freedom": 14.0,
+    "missing_patterns": 4.0,
+    "p_value": 0.00141778113856683
+  },
+  "known_differences": [
+    "This imported upstream regression expectation did not publish its R runtime or naniar package version; regenerate a locked R reference before claiming cross-tool parity.",
+    "Missingly uses its own observed-data EM implementation, so only the recorded scalar oracle metrics are compared."
+  ],
+  "method": "naniar::mcar_test(airquality), imported from the upstream regression fixture",
+  "missingly_version": "0.2.0",
+  "missing_value_policy": "R NA values are retained and no complete-row prefilter is applied before Little's test.",
+  "reference_platform": "not published by the imported upstream regression fixture",
+  "reference_tool": "R naniar",
+  "reference_tool_version": "not published by the imported upstream regression fixture",
+  "schema_version": 1,
+  "seed": null,
+  "tolerances": {
+    "chi_square": 0.0001,
+    "degrees_of_freedom": 0.0,
+    "missing_patterns": 0.0,
+    "p_value": 0.0000001
+  }
+}
