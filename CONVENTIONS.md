@@ -468,6 +468,9 @@ experimental.
 no API claims to identify MAR versus MNAR; no sklearn strategy leaks transform data;
 and MICE chains/diagnostics have end-to-end stochastic regression tests.
 
+**R1 status:** complete in merged PRs #27, #28, and #31. R2 evidence infrastructure
+begins with issue #32; FCS/PMM parity remains R3/R4 work and is not implied by R1.
+
 **R5 acceptance:** exact streaming diagnostics, bounded-memory execution, optional
 Polars/Arrow interoperability, and reproducible 1M/10M-row benchmarks satisfy the
 large-data policy above without weakening pandas semantics or statistical validity.

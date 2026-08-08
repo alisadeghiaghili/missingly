@@ -14,3 +14,4 @@ This page contains the full API documentation for `missingly`.
    report
    compare
    provenance
+   benchmark
