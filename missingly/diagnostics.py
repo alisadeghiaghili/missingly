@@ -32,10 +32,12 @@ Public API — Statistical Tests
 -------------------------------
 mcar_test
     Little's MCAR test (chi-square + p-value).
+missingness_association_test
+    Exploratory observed-data association screen; does not identify MAR or MNAR.
 mar_mnar_test
-    Likelihood-ratio test distinguishing MAR from MNAR.
+    Deprecated compatibility wrapper for ``missingness_association_test``.
 diagnose_missing
-    Actionable wrapper: returns mechanism, recommendation, strategy_hint.
+    MCAR evidence summary and assumption-aware planning guidance.
 
 Public API — MICE Convergence Diagnostics
 ------------------------------------------
@@ -48,6 +50,7 @@ plot_mice_convergence
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -557,66 +560,162 @@ def _logistic_log_likelihood(model, X, y):
     return float(np.sum(y * np.log(p) + (1 - y) * np.log(1 - p)))
 
 
-def mar_mnar_test(
+def missingness_association_test(
     X: pd.DataFrame,
-    Y,
+    outcome,
     missing_values: Optional[List] = None,
-) -> List:
-    """Likelihood-ratio test distinguishing MAR from MNAR per feature.
+) -> pd.DataFrame:
+    """Screen observedness associations with an observed auxiliary outcome.
+
+    For each feature with both observed and missing values, this diagnostic compares
+    two logistic models for its observedness indicator: one using the other columns in
+    ``X`` and one additionally using ``outcome``. It tests whether that *observed*
+    outcome is associated with observedness conditional on the supplied columns.
+
+    This is an exploratory association screen. It does **not** test or identify MAR
+    versus MNAR: those mechanisms are not identifiable from observed data alone.
 
     Parameters
     ----------
-    X : pd.DataFrame
-        Predictor DataFrame.
-    Y : array-like
-        Outcome variable (used only in the MNAR model).
+    X : pandas.DataFrame
+        DataFrame whose column-observedness indicators are screened.
+    outcome : array-like
+        Fully observed auxiliary outcome of length ``len(X)``. Non-numeric values are
+        deterministically factorized for the one-degree-of-freedom screening model.
     missing_values : list, optional
+        Extra sentinel values treated as missing in ``X``.
 
     Returns
     -------
-    list of tuple
-        Each tuple is ``(feature_name, LRT_statistic, p_value)``.
+    pandas.DataFrame
+        Columns are ``feature``, ``lrt_statistic``, ``p_value``, and ``n_obs``.
 
     Raises
     ------
     TypeError
-        If *X* is not a :class:`pandas.DataFrame`.
+        If ``X`` is not a DataFrame.
+    ValueError
+        If ``outcome`` has a different length from ``X`` or contains missing values.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"age": [20.0, np.nan, 40.0], "group": [0, 1, 1]})
+    >>> list(missingness_association_test(frame, [0, 1, 1]).columns)
+    ['feature', 'lrt_statistic', 'p_value', 'n_obs']
+
+    Notes
+    -----
+    The likelihood-ratio reference distribution is an approximation and this screen is
+    not a replacement for a pre-specified missing-data model. Treat p-values as
+    exploratory, especially when screening many features.
     """
     validate_dataframe(X, param="X")
     if missing_values is not None:
         X = X.replace(missing_values, np.nan)
 
-    if hasattr(Y, 'fillna'):
-        if pd.api.types.is_numeric_dtype(Y):
-            Y = Y.fillna(Y.mean())
-        else:
-            Y = Y.fillna(Y.mode().iloc[0] if len(Y.mode()) > 0 else 0)
-    Y = np.asarray(Y)
+    outcome_series = pd.Series(outcome)
+    if len(outcome_series) != len(X):
+        raise ValueError("outcome must have the same length as X.")
+    if outcome_series.isna().any():
+        raise ValueError(
+            "outcome must be fully observed for an observedness association screen."
+        )
+    if pd.api.types.is_numeric_dtype(outcome_series):
+        outcome_values = outcome_series.to_numpy(dtype=float)
+    else:
+        outcome_values = pd.factorize(outcome_series, sort=True)[0].astype(float)
 
-    D_matrix = (~X.isna()).astype(int)
+    observedness = (~X.isna()).astype(int)
     results = []
-
     for feature in X.columns:
-        D = D_matrix[feature].values
-        if np.all(D == 1) or np.all(D == 0):
+        response = observedness[feature].to_numpy()
+        if np.all(response == 1) or np.all(response == 0):
             continue
 
-        other_feats = [c for c in X.columns if c != feature]
-        X_other = X[other_feats].fillna(0).values
+        others = [column for column in X.columns if column != feature]
+        predictors = pd.get_dummies(X[others], dummy_na=True, dtype=float)
+        baseline_features = predictors.fillna(0.0).to_numpy(dtype=float)
+        if baseline_features.shape[1] == 0:
+            baseline_features = np.zeros((len(X), 1), dtype=float)
+        augmented_features = np.column_stack([baseline_features, outcome_values])
 
-        mar_model = LogisticRegression(penalty=None, fit_intercept=True, solver="lbfgs")
-        mar_model.fit(X_other, D)
+        # ``C=np.inf`` with the default L2 penalty is scikit-learn's supported
+        # replacement for the deprecated ``penalty=None`` configuration.
+        baseline = LogisticRegression(C=np.inf, fit_intercept=True, solver="lbfgs")
+        augmented = LogisticRegression(C=np.inf, fit_intercept=True, solver="lbfgs")
+        try:
+            baseline.fit(baseline_features, response)
+            augmented.fit(augmented_features, response)
+        except ValueError:
+            continue
 
-        mnar_model = LogisticRegression(penalty=None, fit_intercept=True, solver="lbfgs")
-        mnar_model.fit(np.column_stack([X_other, Y]), D)
-
-        LRT = 2 * (
-            _logistic_log_likelihood(mnar_model, np.column_stack([X_other, Y]), D)
-            - _logistic_log_likelihood(mar_model, X_other, D)
+        statistic = max(
+            2.0 * (
+                _logistic_log_likelihood(augmented, augmented_features, response)
+                - _logistic_log_likelihood(baseline, baseline_features, response)
+            ),
+            0.0,
         )
-        results.append((feature, LRT, float(1 - chi2.cdf(LRT, df=1))))
+        results.append({
+            "feature": feature,
+            "lrt_statistic": float(statistic),
+            "p_value": float(1.0 - chi2.cdf(statistic, df=1)),
+            "n_obs": int(len(response)),
+        })
 
-    return results
+    return pd.DataFrame(
+        results,
+        columns=["feature", "lrt_statistic", "p_value", "n_obs"],
+    )
+
+
+def mar_mnar_test(
+    X: pd.DataFrame,
+    Y,
+    missing_values: Optional[List] = None,
+) -> List:
+    """Deprecated wrapper for :func:`missingness_association_test`.
+
+    Parameters
+    ----------
+    X : pandas.DataFrame
+        DataFrame whose observedness indicators are screened.
+    Y : array-like
+        Fully observed auxiliary outcome retained for backward compatibility.
+    missing_values : list, optional
+        Extra sentinel values treated as missing in ``X``.
+
+    Returns
+    -------
+    list of tuple
+        Legacy ``(feature, lrt_statistic, p_value)`` tuples.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> mar_mnar_test(pd.DataFrame({"x": [1.0, np.nan, 3.0]}), [0, 1, 1])
+    []
+
+    Warnings
+    --------
+    FutureWarning
+        The name is deprecated because observed data cannot identify MAR versus MNAR.
+    """
+    warnings.warn(
+        "mar_mnar_test cannot identify MAR versus MNAR from observed data and is "
+        "deprecated; use missingness_association_test for an explicitly limited "
+        "observed-data association screen.",
+        FutureWarning,
+        stacklevel=2,
+    )
+    result = missingness_association_test(X, Y, missing_values)
+    return list(result[["feature", "lrt_statistic", "p_value"]].itertuples(
+        index=False,
+        name=None,
+    ))
 
 
 def diagnose_missing(
@@ -627,22 +726,12 @@ def diagnose_missing(
     tol: float = 1e-5,
     ridge: float = 1e-6,
 ) -> Dict:
-    """Diagnose the missing data mechanism and return actionable recommendations.
+    """Summarise observed-data evidence relevant to a missing-data plan.
 
-    Runs Little's MCAR test, inspects nullity correlations, and returns a
-    plain-English ``recommendation`` and a ``strategy_hint`` that maps
-    directly to missingly imputation functions.
-
-    Notes
-    -----
-    Decision logic:
-
-    1. Run Little's MCAR test on numeric columns.
-    2. p >= *significance* -> MCAR: simple imputers are appropriate.
-    3. p < *significance* -> not MCAR.  Check max nullity correlation:
-       - > 0.30 -> MAR: use model-based imputers (KNN, MICE, RF).
-       - <= 0.30 -> possible MNAR: flag and recommend domain review.
-    4. Columns with > 40% missingness are always flagged.
+    Runs Little's MCAR test when its numeric-data preconditions are met and reports
+    missingness prevalence plus descriptive nullity correlation. The result never
+    identifies MAR versus MNAR: those mechanisms cannot be distinguished from observed
+    data alone.
 
     Parameters
     ----------
@@ -657,9 +746,11 @@ def diagnose_missing(
     Returns
     -------
     dict
-        All keys from :func:`mcar_test` plus:
+        All keys from :func:`mcar_test` plus ``mcar_evidence``, legacy-compatible
         ``mechanism``, ``recommendation``, ``strategy_hint``,
-        ``high_missingness_cols``, ``max_nullity_corr``.
+        ``high_missingness_cols``, and descriptive ``max_nullity_corr``. The only
+        valid values of ``mcar_evidence`` are ``"MCAR_not_rejected"``,
+        ``"MCAR_rejected"``, and ``"insufficient_data"``.
 
     Raises
     ------
@@ -676,8 +767,15 @@ def diagnose_missing(
     ...     'income': [50000, 60000, np.nan, 80000, 55000],
     ... })
     >>> result = diagnose_missing(df)
-    >>> result['mechanism'] in ('MCAR', 'MAR', 'possible_MNAR', 'insufficient_data')
+    >>> result['mcar_evidence'] in ('MCAR_not_rejected', 'MCAR_rejected', 'insufficient_data')
     True
+
+    Notes
+    -----
+    A non-rejection of MCAR is not proof of MCAR. Nullity correlation describes joint
+    observedness patterns; it does not identify MAR or MNAR. Choose the imputation and
+    analysis model from substantive knowledge, then assess sensitivity to defensible
+    missing-data assumptions.
     """
     validate_dataframe(df, param="df")
     if missing_values is not None:
@@ -715,66 +813,48 @@ def diagnose_missing(
     p_val = test_result.get("p_value")
 
     if not can_test or p_val is None or np.isnan(p_val):
-        mechanism = "insufficient_data"
+        mcar_evidence = "insufficient_data"
         recommendation = (
             "Not enough numeric columns or rows to run Little's MCAR test. "
-            "Inspect the data manually. For small datasets, use "
-            "impute_mean or impute_median as a safe default."
+            "Document the intended analysis, inspect missingness patterns, and choose "
+            "a missing-data assumption from substantive knowledge."
         )
-        strategy_hint = "impute_mean() or impute_median()"
+        strategy_hint = "Specify an analysis model and run sensitivity analyses."
 
     elif p_val >= significance:
-        mechanism = "MCAR"
+        mcar_evidence = "MCAR_not_rejected"
         recommendation = (
-            f"Little's test p={p_val:.3f} >= {significance}: data are consistent "
-            "with Missing Completely At Random (MCAR). "
-            "Simple imputers (mean, median, mode) introduce minimal bias."
+            f"Little's test p={p_val:.3f} >= {significance}: MCAR was not rejected. "
+            "This is not proof of MCAR and does not justify single-value imputation "
+            "for inferential analyses."
             + (
                 f" However, {len(high_miss_cols)} column(s) have >40% missingness "
-                f"({high_miss_cols}); consider dropping them instead of imputing."
+                f"({high_miss_cols}); assess whether the intended analysis remains credible."
                 if high_miss_cols else ""
             )
         )
-        strategy_hint = "impute_mean() / impute_median() / impute_mode()"
-
-    elif max_corr is not None and max_corr > 0.30:
-        mechanism = "MAR"
-        recommendation = (
-            f"Little's test p={p_val:.3f} < {significance}: evidence against MCAR. "
-            f"Maximum nullity correlation is {max_corr:.2f} > 0.30, "
-            "suggesting MAR. Use model-based imputers."
-            + (
-                f" Caution: {len(high_miss_cols)} column(s) have >40% missingness "
-                f"({high_miss_cols})."
-                if high_miss_cols else ""
-            )
-        )
-        strategy_hint = (
-            "impute_knn() for moderate datasets; "
-            "impute_mice() for multivariate structure; "
-            "impute_rf() / impute_gb() for non-linear relationships."
-        )
+        strategy_hint = "Use multiple imputation or a model-based analysis when justified; run sensitivity analyses."
 
     else:
-        corr_str = f"{max_corr:.2f} <= 0.30" if max_corr is not None else "unavailable"
-        mechanism = "possible_MNAR"
+        mcar_evidence = "MCAR_rejected"
         recommendation = (
             f"Little's test p={p_val:.3f} < {significance}: evidence against MCAR. "
-            f"Maximum nullity correlation is {corr_str}, consistent with MNAR. "
-            "Standard imputers cannot correct MNAR bias without external assumptions."
+            "Observed data cannot distinguish MAR from MNAR, so the analysis requires "
+            "an explicit assumption and sensitivity analysis."
             + (
                 f" Flagged high-missingness columns: {high_miss_cols}."
                 if high_miss_cols else ""
             )
         )
         strategy_hint = (
-            "Domain review required. If you must impute: "
-            "impute_mice() with multiple seeds for sensitivity analysis."
+            "Specify a MAR analysis if scientifically defensible and assess MNAR "
+            "departures with a sensitivity analysis."
         )
 
     return {
         **test_result,
-        "mechanism": mechanism,
+        "mcar_evidence": mcar_evidence,
+        "mechanism": mcar_evidence,
         "recommendation": recommendation,
         "strategy_hint": strategy_hint,
         "high_missingness_cols": high_miss_cols,

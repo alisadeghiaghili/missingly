@@ -16,7 +16,7 @@ Public API
 
 **Diagnosis**::
 
-    mcar_test, mar_mnar_test, diagnose_missing
+    mcar_test, missingness_association_test, mar_mnar_test, diagnose_missing
 
 **Imputation**::
 
@@ -110,6 +110,7 @@ from missingly.diagnostics import (
     miss_scan_count,
     miss_summary,
     mcar_test,
+    missingness_association_test,
     mar_mnar_test,
     diagnose_missing,
     mice_convergence,
@@ -286,7 +287,7 @@ __all__ = [
     "miss_var_summary", "miss_case_summary", "summarise",
     "miss_scan_count", "miss_summary",
     # Diagnosis
-    "mcar_test", "mar_mnar_test", "diagnose_missing", "mice_convergence", "plot_mice_convergence",
+    "mcar_test", "missingness_association_test", "mar_mnar_test", "diagnose_missing", "mice_convergence", "plot_mice_convergence",
     # Imputation — simple
     "impute_mean", "impute_median", "impute_mode",
     # Imputation — model-based
