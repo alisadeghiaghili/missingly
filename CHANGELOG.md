@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acceptable.
 
 ### Added
+- Added a locked R 4.4.2/``naniar`` v1.1.0 workflow that regenerates and
+  validates scalar Little's MCAR oracle evidence with source/data SHA-256
+  identities, without publishing raw records.
 - Added a protected GitHub Pages deployment workflow for the Sphinx site and
   linked the package metadata and README documentation badge to the public URL.
 - Added typed, validated contracts for missingness schemas, imputation plans,
