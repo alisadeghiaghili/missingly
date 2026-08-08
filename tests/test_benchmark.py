@@ -23,6 +23,7 @@ def manifest() -> BenchmarkManifest:
         reference_tool="R naniar",
         reference_tool_version="1.1.0",
         reference_platform="R 4.4.2 on Ubuntu 24.04",
+        reference_script_sha256="a" * 64,
         method="naniar::mcar_test",
         missing_value_policy="R NA values retained; complete rows are not pre-dropped",
         estimand="Little MCAR chi-square and degrees of freedom",
@@ -75,7 +76,7 @@ def test_manifest_dict_only_contains_evidence_metadata(manifest):
     assert set(payload) == {
         "schema_version", "dataset_name", "dataset_license", "dataset_sha256",
         "dataset_source_url", "reference_tool", "reference_tool_version",
-        "reference_platform", "method", "missing_value_policy", "estimand", "seed",
+        "reference_platform", "reference_script_sha256", "method", "missing_value_policy", "estimand", "seed",
         "expected_metrics", "tolerances", "known_differences", "missingly_version",
     }
     assert not {"data", "rows", "records", "raw_data"} & set(payload)

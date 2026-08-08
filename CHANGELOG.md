@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acceptable.
 
 ### Added
+- Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,
+  platform, and generator-script SHA-256 provenance from the locked workflow.
 - Added a locked R 4.4.2/``naniar`` v1.1.0 workflow that regenerates and
   validates scalar Little's MCAR oracle evidence with source/data SHA-256
   identities, without publishing raw records.
