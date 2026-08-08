@@ -395,7 +395,16 @@ class MissinglyAccessor:
         -------
         dict
             Keys: ``chi_square``, ``df``, ``p_value``, ``missing_patterns``,
-            ``amount_missing``.
+            ``amount_missing``, and ``em_iterations``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import missingly  # noqa: F401
+        >>> frame = pd.DataFrame({"x": [1.0, np.nan, 3.0, 4.0], "y": [1.0, 2.0, np.nan, 4.0]})
+        >>> "p_value" in frame.miss.mcar_test()
+        True
         """
         return diagnostics.mcar_test(self._df)
 

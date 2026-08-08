@@ -129,7 +129,17 @@ class TestSummary:
 class TestStatisticalTests:
     def test_mcar_test_returns_dict(self, df_numeric):
         """mcar_test should return a dict with expected keys."""
-        result = df_numeric.miss.mcar_test()
+        frame = pd.DataFrame(
+            {
+                "age": [25.0, 27.0, 31.0, 38.0, 42.0, 29.0, 35.0, 44.0, 33.0, 39.0, 41.0, 28.0],
+                "income": [50_000.0, 55_000.0, 61_000.0, 75_000.0, 83_000.0, 58_000.0, 69_000.0, 88_000.0, 64_000.0, 79_000.0, 81_000.0, 53_000.0],
+                "score": [85.0, 82.0, 87.0, 91.0, 88.0, 84.0, 86.0, 93.0, 80.0, 89.0, 90.0, 83.0],
+            }
+        )
+        frame.loc[[1, 7], "age"] = np.nan
+        frame.loc[[2, 9], "income"] = np.nan
+        frame.loc[[4, 10], "score"] = np.nan
+        result = frame.miss.mcar_test()
         assert isinstance(result, dict)
         assert "chi_square" in result
         assert "df" in result
