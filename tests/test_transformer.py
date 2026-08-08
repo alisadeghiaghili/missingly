@@ -105,6 +105,56 @@ def test_no_leakage_mean(train_test_split):
     assert abs(train_result.loc[train_result.index[1], "age"] - train["age"].mean()) < 1e-6
 
 
+@pytest.mark.parametrize("strategy", ["logreg", "polyreg", "polr"])
+def test_non_inductive_regression_strategies_fail_loudly(strategy, numeric_df):
+    """A sklearn transformer must never refit a regression model on test rows."""
+    with pytest.raises(NotImplementedError, match="inductive"):
+        MissinglyImputer(strategy=strategy).fit(numeric_df)
+
+
+def test_mixed_knn_fails_loudly_in_inductive_mode(mixed_df):
+    """Mixed Gower KNN must not combine evaluation rows with training donors."""
+    with pytest.raises(NotImplementedError, match="transform rows as donors"):
+        MissinglyImputer(strategy="knn", metric="mixed").fit(mixed_df)
+
+
+@pytest.mark.parametrize("method", ["sequential", "weighted"])
+def test_non_inductive_hotdeck_variants_fail_loudly(method, numeric_df):
+    """Transformer hot-deck variants need an explicit test-donor policy."""
+    with pytest.raises(NotImplementedError, match="Only random hot-deck"):
+        MissinglyImputer(strategy="hotdeck", hotdeck_method=method).fit(numeric_df)
+
+
+def test_random_hotdeck_uses_training_donors_only():
+    """Extreme observed values in test data must never become hot-deck donors."""
+    train = pd.DataFrame({"value": [10.0, 20.0], "feature": [1.0, 2.0]})
+    test = pd.DataFrame({"value": [np.nan, 9999.0], "feature": [3.0, 4.0]})
+
+    result = MissinglyImputer(strategy="hotdeck", random_state=0).fit(train).transform(test)
+
+    assert result.loc[0, "value"] in {10.0, 20.0}
+
+
+def test_gb_transform_is_invariant_to_other_test_rows():
+    """GB feature filling must use training means, not aggregate test statistics."""
+    train = pd.DataFrame({
+        "target": [1.0, 2.0, 3.0, np.nan, 5.0, 6.0],
+        "feature": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    })
+    recipient = pd.DataFrame({"target": [np.nan], "feature": [np.nan]})
+    batch = pd.concat(
+        [recipient, pd.DataFrame({"target": [1000.0], "feature": [1_000_000.0]})],
+        ignore_index=True,
+    )
+    imputer = MissinglyImputer(strategy="gb", random_state=0)
+    imputer.fit(train)
+
+    alone = imputer.transform(recipient)
+    together = imputer.transform(batch)
+
+    assert alone.loc[0, "target"] == pytest.approx(together.loc[0, "target"])
+
+
 # ---------------------------------------------------------------------------
 # sklearn Pipeline compatibility
 # ---------------------------------------------------------------------------

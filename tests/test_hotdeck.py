@@ -175,30 +175,35 @@ class TestHotdeckWeighted:
 
 
 # ---------------------------------------------------------------------------
-# MissinglyImputer(strategy='hotdeck') — all three methods
+# MissinglyImputer(strategy='hotdeck') — inductive random donor policy
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("method", ["random", "sequential", "weighted"])
 class TestMissinglyImputerHotdeck:
-    def test_no_missing_after_fit_transform(self, method, mixed_df):
-        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method=method)
+    def test_no_missing_after_fit_transform(self, mixed_df):
+        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method="random")
         result = imp.fit_transform(mixed_df)
         assert result.isnull().sum().sum() == 0
 
-    def test_categorical_dtype_preserved(self, method, mixed_df):
-        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method=method)
+    def test_categorical_dtype_preserved(self, mixed_df):
+        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method="random")
         result = imp.fit_transform(mixed_df)
         assert isinstance(result["city"].dtype, pd.CategoricalDtype)
 
-    def test_returns_dataframe(self, method, mixed_df):
-        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method=method)
+    def test_returns_dataframe(self, mixed_df):
+        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method="random")
         assert isinstance(imp.fit_transform(mixed_df), pd.DataFrame)
 
-    def test_transform_uses_train_donors_only(self, method):
+    def test_transform_uses_train_donors_only(self):
         """Donors for transform() must come from training data, not test data."""
         train = pd.DataFrame({"a": [10.0, 20.0, 30.0]})
         test = pd.DataFrame({"a": [np.nan]})
-        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method=method)
+        imp = MissinglyImputer(strategy="hotdeck", hotdeck_method="random")
         imp.fit(train)
         result = imp.transform(test)
         assert result["a"].iloc[0] in {10.0, 20.0, 30.0}
+
+    @pytest.mark.parametrize("method", ["sequential", "weighted"])
+    def test_non_inductive_variants_raise(self, method, mixed_df):
+        """Variants without a train-only donor policy fail in sklearn mode."""
+        with pytest.raises(NotImplementedError, match="Only random hot-deck"):
+            MissinglyImputer(strategy="hotdeck", hotdeck_method=method).fit(mixed_df)

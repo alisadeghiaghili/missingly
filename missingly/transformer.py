@@ -32,16 +32,12 @@ Design decisions
 * ``estimator_kwargs`` is stored as a single ``Optional[dict]`` parameter
   (not ``**kwargs``) so that ``get_params()`` / ``set_params()`` /
   ``clone()`` work correctly per the sklearn estimator contract.
-* For ``logreg``, ``polyreg``, and ``polr`` strategies, ``fit`` stores the
-  training DataFrame and ``transform`` delegates to the stateless
-  ``impute_logreg`` / ``impute_polyreg`` / ``impute_polr`` functions,
-  re-fitting on the combined train+test data.  This is acceptable because
-  these methods re-fit per column on observed rows only — there is no
-  global state that would cause leakage beyond column-level statistics
-  already present in train.
-* For ``hotdeck`` strategy, ``fit`` stores the training DataFrame and
-  ``transform`` uses it as the donor pool.  ``hotdeck_method`` selects
-  between ``'random'``, ``'sequential'``, and ``'weighted'`` variants.
+* Strategies exposed through this transformer must be inductive: ``fit`` may
+  learn only from training rows and ``transform`` may not refit or use an
+  evaluation row as a donor.  Unsupported inductive variants fail loudly.
+* ``strategy="hotdeck"`` with ``hotdeck_method="random"`` samples only from
+  the training donor pool. Sequential and weighted hot-deck remain available
+  as standalone, transductive functions but are not sklearn-transformer modes.
 
 Examples
 --------
@@ -82,14 +78,6 @@ from sklearn.preprocessing import OrdinalEncoder
 from .impute import (
     _fill_nan_with_col_means,
     _restore_categorical_dtype,
-    impute_logreg,
-    impute_polyreg,
-    impute_polr,
-)
-from .hotdeck import (
-    impute_hotdeck_random,
-    impute_hotdeck_sequential,
-    impute_hotdeck_weighted,
 )
 
 
@@ -122,23 +110,26 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         * ``"mean"``      — fill numeric with mean, categorical with mode.
         * ``"median"``    — fill numeric with median, categorical with mode.
         * ``"mode"``      — fill all columns with most frequent value.
-        * ``"knn"``       — k-Nearest Neighbours (default k=5).
+        * ``"knn"``       — Euclidean k-Nearest Neighbours (default k=5).
         * ``"mice"``      — Multiple Imputation by Chained Equations.
         * ``"rf"``        — Random Forest.
         * ``"gb"``        — Gradient Boosting.
         * ``"pmm"``       — Predictive Mean Matching.
-        * ``"logreg"``    — Logistic Regression (binary columns).
-        * ``"polyreg"``   — Multinomial Logistic Regression (3+ levels).
-        * ``"polr"``      — Ordinal Logistic Regression (ordered categories).
-        * ``"hotdeck"``   — Hot-deck imputation; variant selected by
-          ``hotdeck_method``.
+        * ``"hotdeck"``   — Train-donor random hot-deck.
+
+        ``"logreg"``, ``"polyreg"``, ``"polr"``, mixed-metric KNN, and
+        sequential/weighted hot-deck are available as standalone transductive
+        functions, but intentionally raise :class:`NotImplementedError` here:
+        their current implementations do not yet have a safe inductive
+        train/transform contract.
 
         Default is ``"mean"``.
     n_neighbors : int, optional
         Number of neighbours for ``strategy="knn"``.  Default 5.
-    metric : str, optional
-        Distance metric for ``strategy="knn"``.  One of
-        ``"euclidean"`` (default) or ``"mixed"``.
+    metric : {"euclidean", "mixed"}, optional
+        Distance metric for ``strategy="knn"``. ``"mixed"`` is rejected in
+        this transformer until a train-only Gower donor implementation exists;
+        use the standalone transductive API when that behavior is intended.
     max_iter : int, optional
         Maximum EM/MICE/RF/GB iterations.  Default 10.
     random_state : int, optional
@@ -149,8 +140,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Stored as-is so that ``get_params()`` / ``set_params()`` /
         ``clone()`` behave correctly.
     hotdeck_method : {"random", "sequential", "weighted"}, optional
-        Hot-deck variant to use when ``strategy="hotdeck"``.
-        Default is ``"random"``.
+        Hot-deck variant. Only ``"random"`` is inductive and accepted here;
+        the other values raise :class:`NotImplementedError`.
     hotdeck_direction : {"forward", "backward", "nearest"}, optional
         Direction for ``hotdeck_method="sequential"``.
         Default is ``"nearest"``.
@@ -278,6 +269,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
         self._knn_train_df_: Optional[pd.DataFrame] = None
         self._train_df_: Optional[pd.DataFrame] = None
+        self._tree_feature_fill_values_: Optional[np.ndarray] = None
 
         strategy = self.strategy
 
@@ -289,6 +281,13 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self.imputer_ = SimpleImputer(strategy="most_frequent")
             self.imputer_.fit(X)
         elif strategy == "knn":
+            if self.metric == "mixed":
+                raise NotImplementedError(
+                    "MissinglyImputer(metric='mixed') is not available in "
+                    "inductive mode because the current Gower implementation "
+                    "would use transform rows as donors. Use metric='euclidean' "
+                    "or the standalone transductive function explicitly."
+                )
             self._fit_knn(X)
         elif strategy == "mice":
             self._fit_mice(X)
@@ -296,8 +295,19 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self._fit_pmm(X)
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
-        elif strategy in ("logreg", "polyreg", "polr", "hotdeck"):
-            # These methods use the training data as the donor/fit pool.
+        elif strategy in ("logreg", "polyreg", "polr"):
+            raise NotImplementedError(
+                f"MissinglyImputer(strategy={strategy!r}) has no inductive "
+                "implementation and would refit during transform. Use the "
+                "standalone function explicitly or choose an inductive strategy."
+            )
+        elif strategy == "hotdeck":
+            if self.hotdeck_method != "random":
+                raise NotImplementedError(
+                    "Only random hot-deck is available in MissinglyImputer "
+                    "because sequential and weighted variants need an explicit "
+                    "transductive donor policy."
+                )
             self._train_df_ = X.copy()
 
         self._is_fitted = True
@@ -372,6 +382,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self.encoder_.fit(X[self.cat_cols_])
 
         X_enc = self._encode_cats(X).values
+        fill_values = np.nanmean(X_enc, axis=0)
+        self._tree_feature_fill_values_ = np.where(
+            np.isfinite(fill_values), fill_values, 0.0
+        )
         col_index = {col: i for i, col in enumerate(X.columns)}
 
         for col in X.columns:
@@ -474,21 +488,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 result[col] = _restore_categorical_dtype(result[col], X[col].dtype)
 
         elif strategy == "knn":
-            if self.metric == "mixed":
-                from .impute import _impute_knn_gower
-                train_df = self._knn_train_df_
-                n_train = len(train_df)
-                combined = pd.concat([train_df, X], ignore_index=True)
-                imputed_combined = _impute_knn_gower(
-                    combined, n_neighbors=self.n_neighbors
-                )
-                result = imputed_combined.iloc[n_train:].copy()
-                result.index = X.index
-            else:
-                X_enc = self._encode_cats(X)
-                arr = self.imputer_.transform(X_enc)
-                df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
-                result = self._decode_cats(df_enc)
+            X_enc = self._encode_cats(X)
+            arr = self.imputer_.transform(X_enc)
+            df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
+            result = self._decode_cats(df_enc)
 
         elif strategy == "mice":
             X_enc = self._encode_cats(X)
@@ -502,21 +505,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy in ("rf", "gb"):
             result = self._transform_tree(X)
 
-        elif strategy == "logreg":
-            result = impute_logreg(
-                X, max_iter=self.max_iter, random_state=self.random_state
-            )
-
-        elif strategy == "polyreg":
-            result = impute_polyreg(
-                X, max_iter=self.max_iter, random_state=self.random_state
-            )
-
-        elif strategy == "polr":
-            result = impute_polr(
-                X, max_iter=self.max_iter, random_state=self.random_state
-            )
-
         elif strategy == "hotdeck":
             result = self._transform_hotdeck(X)
 
@@ -525,34 +513,29 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     def _transform_hotdeck(self, X: pd.DataFrame) -> pd.DataFrame:
         """Dispatch hot-deck transform to the appropriate variant.
 
-        Uses the training DataFrame stored during ``fit`` as the donor
-        pool: training donors are concatenated with the test rows, the
-        hot-deck function fills all NaN cells, and then the original
-        test rows (now imputed) are extracted.  This ensures that only
-        training-set values are used as donors for test-set recipients.
+        Samples every missing recipient only from observed values in the
+        training DataFrame stored during ``fit``. Evaluation rows are never
+        concatenated with the donor pool.
         """
-        train_df = self._train_df_
-        n_train = len(train_df)
-        combined = pd.concat([train_df, X], ignore_index=True)
-
-        method = self.hotdeck_method
-        if method == "sequential":
-            imputed = impute_hotdeck_sequential(
-                combined, direction=self.hotdeck_direction
+        if self._train_df_ is None:
+            raise RuntimeError("Random hot-deck transformer has no fitted donor pool.")
+        result = X.copy()
+        rng = np.random.default_rng(self.random_state)
+        for column in X.columns:
+            missing_mask = result[column].isna()
+            if not missing_mask.any():
+                continue
+            donors = self._train_df_[column].dropna()
+            if donors.empty:
+                raise ValueError(
+                    f"Column {column!r} has no observed training donors for hot-deck imputation."
+                )
+            result.loc[missing_mask, column] = rng.choice(
+                donors.to_numpy(), size=int(missing_mask.sum()), replace=True
             )
-        elif method == "weighted":
-            imputed = impute_hotdeck_weighted(
-                combined,
-                n_donors=self.hotdeck_n_donors,
-                random_state=self.random_state,
+            result[column] = _restore_categorical_dtype(
+                result[column], self.cat_dtypes_.get(column, X[column].dtype)
             )
-        else:  # default: random
-            imputed = impute_hotdeck_random(
-                combined, random_state=self.random_state
-            )
-
-        result = imputed.iloc[n_train:].copy()
-        result.index = X.index
         return result
 
     def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -572,7 +555,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             X_pred = X_enc[np.ix_(np.where(missing_mask)[0], feature_idx)]
 
             if is_gb:
-                X_pred = _fill_nan_with_col_means(X_pred)
+                X_pred = self._fill_tree_features_from_training(X_pred, feature_idx)
 
             if col in cat_set and col in self.rf_clf_models_:
                 clf = self.rf_clf_models_[col]
@@ -587,6 +570,42 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 reg = self.rf_reg_models_[col]
                 result.loc[missing_mask, col] = reg.predict(X_pred)
 
+        return result
+
+    def _fill_tree_features_from_training(
+        self,
+        features: np.ndarray,
+        feature_idx: List[int],
+    ) -> np.ndarray:
+        """Fill transform-time tree features using fit-time column means.
+
+        Parameters
+        ----------
+        features : numpy.ndarray
+            Encoded feature rows to predict.
+        feature_idx : list of int
+            Positions of the corresponding original feature columns.
+
+        Returns
+        -------
+        numpy.ndarray
+            Copy of ``features`` with NaNs replaced only by fit-time values.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> imputer = MissinglyImputer(strategy="gb")
+        >>> imputer._tree_feature_fill_values_ = np.array([1.0, 2.0])
+        >>> imputer._fill_tree_features_from_training(np.array([[np.nan]]), [1])
+        array([[2.]])
+        """
+        if self._tree_feature_fill_values_ is None:
+            raise RuntimeError("Tree feature fill values are unavailable before fit.")
+        result = features.copy()
+        for position, original_idx in enumerate(feature_idx):
+            result[np.isnan(result[:, position]), position] = (
+                self._tree_feature_fill_values_[original_idx]
+            )
         return result
 
     def _transform_pmm(

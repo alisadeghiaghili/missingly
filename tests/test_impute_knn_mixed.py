@@ -7,7 +7,7 @@ Scenarios
    nearest neighbours should share the same category — imputed value must
    match the majority category of the k closest rows.
 3. gower_distance sanity checks: diagonal=0, symmetry, range [0,1].
-4. MissinglyImputer with metric='mixed' produces no NaN.
+4. MissinglyImputer rejects mixed Gower KNN until an inductive donor policy exists.
 5. Large-n warning is emitted by gower_distance.
 """
 
@@ -148,13 +148,14 @@ def test_gower_range():
 
 
 # ---------------------------------------------------------------------------
-# 8. MissinglyImputer with metric='mixed' — no NaN
+# 8. MissinglyImputer with metric='mixed' — explicit inductive refusal
 # ---------------------------------------------------------------------------
 
-def test_transformer_mixed_no_nan(small_mixed_df):
+def test_transformer_mixed_requires_inductive_implementation(small_mixed_df):
+    """Do not let test rows become Gower donors inside a sklearn pipeline."""
     imp = MissinglyImputer(strategy="knn", n_neighbors=3, metric="mixed")
-    result = imp.fit_transform(small_mixed_df)
-    assert result.isnull().sum().sum() == 0
+    with pytest.raises(NotImplementedError, match="transform rows as donors"):
+        imp.fit_transform(small_mixed_df)
 
 
 # ---------------------------------------------------------------------------
