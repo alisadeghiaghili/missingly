@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reimplemented Little's MCAR test with an observed-data EM M-step, explicit
   convergence/error contracts, and an offline frozen `naniar` R oracle fixture.
+- Prevented `MissinglyImputer.transform` from refitting on evaluation data or
+  using evaluation rows as donors. Unsafe transductive transformer modes now
+  fail explicitly pending a train-only implementation.
 
 ### Added
 - Deterministic DataFrame and configured-analysis SHA-256 provenance manifests.
