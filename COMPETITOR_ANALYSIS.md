@@ -1,6 +1,6 @@
 # Missing-data competitor analysis and parity roadmap
 
-Last reviewed: 2026-08-03
+Last reviewed: 2026-08-08
 
 ## Executive conclusion
 
@@ -103,14 +103,24 @@ workflow.
 
 ### P3 — scale, usability, and ecosystem
 
-1. Benchmark chunked/parallel algorithms and control quadratic-distance memory.
-2. Complete sklearn estimator compliance and optional Polars/Arrow interchange.
-3. Publication-grade tables, notebook widgets, and an optional guided UI outside core.
-4. Stable plugin protocol for third-party imputation and diagnostic methods.
+1. Build a capability-based execution layer: pandas reference semantics, Arrow/DataFrame
+   Interchange boundaries, optional Polars LazyFrame streaming, and a chunked fallback.
+2. Classify every operation as exact-streaming, bounded-memory batch, approximate, or
+   materialising; enforce memory budgets before allocation and expose copy semantics.
+3. Benchmark 1M rows on pull requests and 10M-row narrow/wide Parquet workloads on
+   scheduled/release jobs. Record wall time, peak RSS, extra-memory ratio, output hash,
+   backend/version, and hardware alongside numerical-parity checks.
+4. Keep exact KNN, dense correlations, MICE, and forest methods honest: implement a
+   documented scalable variant or reject over-budget execution before materialisation.
+5. Complete sklearn estimator compliance and container interoperability without making
+   Polars, Arrow, or any distributed scheduler a mandatory core dependency.
+6. Add publication-grade tables, notebook widgets, an optional guided UI outside core,
+   and a stable plugin protocol for specialist engines.
 
 Exit criterion: measured advantage on at least one published safety, usability, memory,
-or speed metric while retaining numerical parity. Only then may that specific advantage
-be described as “better.”
+or speed metric while retaining numerical parity. Large-data readiness additionally
+requires deterministic failure/cancellation tests and bounded-memory 10M-row evidence.
+Only then may that specific advantage be described as “better.”
 
 ## Cross-tool benchmark manifest
 
@@ -142,4 +152,3 @@ Review this file for every release that changes an analytical claim. A status ma
 only in the same PR as its implementation, public documentation, benchmark evidence, and
 tests. Marketing text must link to the specific evidence and must not infer global
 superiority from one dataset or method.
-
