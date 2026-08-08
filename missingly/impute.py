@@ -550,12 +550,14 @@ def _run_mice_with_history(
                 est.set_params(random_state=int(rng.integers(0, 2**31)))
             try:
                 est.fit(X_train, y_train)
-                if use_sample_posterior and hasattr(est, "sample_y"):
-                    preds, _ = est.sample_y(X_pred_rows, n_samples=1, random_state=int(rng.integers(0, 2**31)))
-                    preds = preds.ravel()
+                if use_sample_posterior:
+                    predictive_mean, predictive_std = est.predict(
+                        X_pred_rows, return_std=True
+                    )
+                    preds = rng.normal(predictive_mean, predictive_std)
                 else:
                     preds = est.predict(X_pred_rows)
-            except Exception:
+            except (ValueError, np.linalg.LinAlgError, NotFittedError):
                 preds = np.full(orig_missing.sum(), float(np.mean(y_train)))
 
             X[orig_missing, j] = preds
@@ -841,6 +843,11 @@ def impute_mice(
 
         When ``n_imputations > 1`` and ``return_history=True`` the return
         value is ``(list_of_dfs, list_of_histories)``.
+
+        With the default Bayesian ridge estimator, each chain uses posterior
+        predictive draws. Histories therefore preserve between-chain
+        stochasticity and are suitable for diagnostic use; they are still not
+        proof that the imputation model or missing-data assumptions are valid.
 
     Returns
     -------
