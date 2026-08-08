@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acceptable.
 
 ### Added
+- Added a protected GitHub Pages deployment workflow for the Sphinx site and
+  linked the package metadata and README documentation badge to the public URL.
 - Added typed, validated contracts for missingness schemas, imputation plans,
   FCS kernels, MI data, and MI diagnostic results; existing imputation APIs
   retain their return contracts pending a deliberate migration.
