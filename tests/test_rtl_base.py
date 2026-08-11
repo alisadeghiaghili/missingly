@@ -539,7 +539,7 @@ class TestApplyRtlFont:
         """RTL labels must trigger the font resolution logic without crashing."""
         try:
             _base._apply_rtl_font(["\u0633\u0646", "\u062f\u0631\u0622\u0645\u062f"])
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - test reports any unexpected rendering failure.
             pytest.fail(f"_apply_rtl_font raised unexpectedly: {exc}")
 
     def test_warns_when_no_font_available(self):

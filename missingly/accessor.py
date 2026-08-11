@@ -48,7 +48,7 @@ from . import (
     manipulation,
     visualise,
 )
-from .exceptions import MissingColumnError
+from .exceptions import InvalidStrategyError, MissingColumnError
 from .impute import (
     impute_mean,
     impute_median,
@@ -237,6 +237,58 @@ class MissinglyAccessor:
     # ------------------------------------------------------------------
     # Imputation — return DataFrame for chaining
     # ------------------------------------------------------------------
+
+    def impute(self, strategy: str = "mean", **kwargs):
+        """Impute missing values with one named Missingly strategy.
+
+        Parameters
+        ----------
+        strategy : {"mean", "median", "mode", "knn", "mice", "rf", "gb"}, default "mean"
+            Imputation algorithm to apply to this accessor's DataFrame.
+        **kwargs
+            Keyword arguments forwarded unchanged to the selected imputation
+            function. For example, ``n_neighbors`` applies to ``"knn"`` and
+            ``max_iter`` applies to ``"mice"``.
+
+        Returns
+        -------
+        pandas.DataFrame or list of pandas.DataFrame or ImputationResult
+            The selected function's documented return value. Most strategies
+            return one DataFrame; multi-imputation MICE options may return a
+            list or typed result.
+
+        Raises
+        ------
+        InvalidStrategyError
+            If ``strategy`` is not supported by the generic accessor.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import missingly
+        >>> frame = pd.DataFrame({"score": [1.0, None, 3.0]})
+        >>> float(frame.miss.impute("median").loc[1, "score"])
+        2.0
+        """
+        strategies = {
+            "mean": impute_mean,
+            "median": impute_median,
+            "mode": impute_mode,
+            "knn": impute_knn,
+            "mice": impute_mice,
+            "rf": impute_rf,
+            "gb": impute_gb,
+        }
+        try:
+            imputer = strategies[strategy]
+        except KeyError as error:
+            raise InvalidStrategyError(
+                param="strategy",
+                got=strategy,
+                allowed=sorted(strategies),
+                example="mean",
+            ) from error
+        return imputer(self._df, **kwargs)
 
     def impute_mean(self, **kwargs) -> pd.DataFrame:
         """Impute missing values with column means.

@@ -58,6 +58,7 @@ from __future__ import annotations
 
 from missingly._version import __version__ as __version__
 from missingly.benchmark import BenchmarkManifest
+from missingly.config import MissinglyConfig, config
 from missingly.mi_contracts import (
     FCSKernel,
     ImputationPlan,
@@ -282,6 +283,7 @@ import missingly.accessor  # noqa: F401
 
 __all__ = [
     "__version__",
+    "MissinglyConfig", "config",
     # Visualisation
     "matrix", "bar", "miss_case", "miss_var_pct", "vis_miss", "miss_which",
     "upset", "miss_patterns", "miss_cooccurrence", "heatmap", "dendrogram",
