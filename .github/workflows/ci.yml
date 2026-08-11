@@ -8,6 +8,33 @@ on:
   workflow_dispatch:
 
 jobs:
+  quality:
+    name: Python quality baseline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install quality dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[quality]'
+
+      - name: Reject Python syntax and undefined-name defects
+        run: ruff check missingly tests
+
+      - name: Check the public benchmark contract types
+        run: mypy missingly/benchmark.py --follow-imports=skip --ignore-missing-imports
+
+      - name: Execute benchmark contract docstring examples
+        run: python -m doctest missingly/benchmark.py
+
   test:
     name: pytest (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
