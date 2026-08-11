@@ -567,6 +567,7 @@ def _run_mice_with_history(
     max_iter: int,
     seed: int,
     use_sample_posterior: bool,
+    visit_sequence: Optional[List[str]] = None,
 ) -> Tuple[np.ndarray, Dict[str, List[float]]]:
     """Run MICE manually iteration-by-iteration to capture per-iteration means.
 
@@ -589,6 +590,9 @@ def _run_mice_with_history(
         Random seed passed to the estimator where applicable.
     use_sample_posterior : bool
         Whether the estimator supports ``sample_posterior`` (BayesianRidge).
+    visit_sequence : list of str, optional
+        Ordered incomplete target columns to update in each sweep. ``None``
+        preserves the default left-to-right order.
 
     Returns
     -------
@@ -610,8 +614,10 @@ def _run_mice_with_history(
 
     history: Dict[str, List[float]] = {}
 
+    visit_cols = visit_sequence if visit_sequence is not None else cols
     for _ in range(max_iter):
-        for j, col in enumerate(cols):
+        for col in visit_cols:
+            j = cols.index(col)
             orig_missing = missing_mask_df[col].values
             if not orig_missing.any():
                 continue
@@ -884,6 +890,7 @@ def impute_mice(
     n_imputations: int = 1,
     return_history: bool = False,
     return_result: bool = False,
+    visit_sequence: Optional[List[str]] = None,
 ) -> Union[
     pd.DataFrame,
     List[pd.DataFrame],
@@ -932,6 +939,9 @@ def impute_mice(
         containing the original mask, chain seeds, completed datasets, and
         per-iteration histories. This opt-in mode is mutually exclusive with
         ``return_history`` because the result object already includes history.
+    visit_sequence : list of str, optional
+        Exact ordered set of columns with original missing values to update in
+        every FCS sweep. ``None`` uses the legacy left-to-right order.
 
     Returns
     -------
@@ -970,13 +980,24 @@ def impute_mice(
 
     _warn_if_large(df, "impute_mice")
     df_norm = _normalize_missing(df)
+    missing_targets = [column for column in df_norm.columns if df_norm[column].isna().any()]
+    if visit_sequence is not None:
+        if not isinstance(visit_sequence, list) or not all(
+            isinstance(column, str) for column in visit_sequence
+        ):
+            raise TypeError("visit_sequence must be a list of column names")
+        unknown = sorted(set(visit_sequence) - set(df_norm.columns))
+        if unknown:
+            raise ValueError(f"visit_sequence contains unknown columns: {unknown}")
+        if len(visit_sequence) != len(set(visit_sequence)) or set(visit_sequence) != set(missing_targets):
+            raise ValueError("visit_sequence must contain every missing target exactly once")
 
     def _single_chain(
         seed: int,
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, List[float]]]]:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
 
-        if return_history or return_result:
+        if return_history or return_result or visit_sequence is not None:
             # Use our manual per-iteration loop so we can capture history.
             missing_mask_df = df_work.isna()
             if estimator is None:
@@ -993,6 +1014,7 @@ def impute_mice(
                 max_iter=max_iter,
                 seed=seed,
                 use_sample_posterior=use_posterior,
+                visit_sequence=visit_sequence,
             )
             df_imputed = pd.DataFrame(
                 imputed_array, index=df_norm.index, columns=df_work.columns
