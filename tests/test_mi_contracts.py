@@ -47,6 +47,14 @@ def test_schema_and_plan_reject_ambiguous_or_unknown_contracts(original, schema)
         ImputationPlan({"missing": "pmm"}, 1, 3, (1,)).validate_schema(schema)
 
 
+def test_plan_accepts_a_column_named_after_its_method(schema):
+    """A valid column label must not be confused with a duplicate method name."""
+    plan = ImputationPlan({"mean": "mean"}, 1, 3, (1,))
+
+    plan.validate_schema(MissingnessSchema.from_dataframe(pd.DataFrame({"mean": [1.0]})))
+    assert plan.methods == {"mean": "mean"}
+
+
 def test_mi_data_preserves_observed_cells_and_result_validates_histories(original, schema, plan):
     """Completed chains retain observed values and traces align with chain count."""
     chain_a = pd.DataFrame({"age": [20.0, 30.0], "group": ["a", "b"]}, index=[10, 20])
