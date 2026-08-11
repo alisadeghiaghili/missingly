@@ -133,6 +133,35 @@ def test_random_hotdeck_uses_training_donors_only():
     assert result.loc[0, "value"] in {10.0, 20.0}
 
 
+def test_hotdeck_rejects_a_column_without_training_donors():
+    """Inductive hot-deck must fail rather than invent donors for a column."""
+    train = pd.DataFrame({"value": [np.nan], "feature": [1.0]})
+    serving = pd.DataFrame({"value": [np.nan], "feature": [2.0]})
+
+    with pytest.raises(ValueError, match="no observed training donors"):
+        MissinglyImputer(strategy="hotdeck", random_state=0).fit(train).transform(serving)
+
+
+def test_pmm_transform_draws_only_from_training_target_donors():
+    """PMM serving output must be a training donor, never a test-row value."""
+    train = pd.DataFrame({"target": [10.0, 20.0, 30.0], "feature": [1.0, 2.0, 3.0]})
+    serving = pd.DataFrame({"target": [np.nan], "feature": [2.0]})
+
+    result = MissinglyImputer(strategy="pmm", random_state=0).fit(train).transform(serving)
+
+    assert result.loc[0, "target"] in set(train["target"])
+
+
+def test_pmm_transform_uses_the_training_mean_for_a_single_numeric_column():
+    """PMM has a deterministic valid fallback when no predictors exist."""
+    train = pd.DataFrame({"target": [10.0, 20.0, 30.0]})
+    serving = pd.DataFrame({"target": [np.nan]})
+
+    result = MissinglyImputer(strategy="pmm", random_state=0).fit(train).transform(serving)
+
+    assert result.loc[0, "target"] == pytest.approx(20.0)
+
+
 def test_gb_transform_is_invariant_to_other_test_rows():
     """GB feature filling must use training means, not aggregate test statistics."""
     train = pd.DataFrame({

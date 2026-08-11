@@ -272,9 +272,29 @@ def _ordinal_target_categories(series: pd.Series) -> List:
 
 
 def _is_nan_scalar(v) -> bool:
-    """Return True if *v* is a NaN-like scalar (float NaN or pd.NA)."""
+    """Return whether a scalar represents a missing value.
+
+    Parameters
+    ----------
+    v : object
+        Scalar candidate to inspect.
+
+    Returns
+    -------
+    bool
+        ``True`` for Python ``None``, ``numpy.nan``, ``pandas.NA``, and other
+        scalar values recognised as missing by :func:`pandas.isna`.
+
+    Examples
+    --------
+    >>> _is_nan_scalar(pd.NA)
+    True
+    >>> _is_nan_scalar("observed")
+    False
+    """
     try:
-        return v is None or (isinstance(v, float) and np.isnan(v))
+        is_missing = pd.isna(v)
+        return bool(is_missing) if np.isscalar(is_missing) else False
     except (TypeError, ValueError):
         return False
 
