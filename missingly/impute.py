@@ -901,6 +901,7 @@ def impute_mice(
     return_result: bool = False,
     visit_sequence: Optional[List[str]] = None,
     predictor_matrix: Optional[pd.DataFrame] = None,
+    where: Optional[pd.DataFrame] = None,
 ) -> Union[
     pd.DataFrame,
     List[pd.DataFrame],
@@ -956,6 +957,10 @@ def impute_mice(
         Square boolean or 0/1 matrix indexed and columned by ``df.columns``.
         A ``True`` / ``1`` entry at ``[target, predictor]`` enables that
         predictor in the target's conditional model. The diagonal must be zero.
+    where : pandas.DataFrame, optional
+        Boolean mask aligned exactly to ``df``. ``True`` permits imputation of
+        an originally missing cell; ``False`` retains it as missing. Over-
+        imputation of originally observed cells is rejected.
 
     Returns
     -------
@@ -994,7 +999,21 @@ def impute_mice(
 
     _warn_if_large(df, "impute_mice")
     df_norm = _normalize_missing(df)
-    missing_targets = [column for column in df_norm.columns if df_norm[column].isna().any()]
+    original_missing_mask = df_norm.isna()
+    if where is None:
+        imputation_mask = original_missing_mask.copy()
+    else:
+        if not isinstance(where, pd.DataFrame):
+            raise TypeError("where must be a pandas DataFrame")
+        if not where.index.equals(df_norm.index) or tuple(where.columns) != tuple(df_norm.columns):
+            raise ValueError("where must align exactly with df index and columns")
+        if not all(pd.api.types.is_bool_dtype(dtype) for dtype in where.dtypes):
+            raise TypeError("where must contain only boolean columns")
+        if (where & ~original_missing_mask).any(axis=None):
+            raise ValueError("where cannot request imputation of observed cells")
+        imputation_mask = original_missing_mask & where
+    retained_missing_mask = original_missing_mask & ~imputation_mask
+    missing_targets = [column for column in df_norm.columns if imputation_mask[column].any()]
     if visit_sequence is not None:
         if not isinstance(visit_sequence, list) or not all(
             isinstance(column, str) for column in visit_sequence
@@ -1024,9 +1043,9 @@ def impute_mice(
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
         capture_history = return_history or return_result
 
-        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None:
+        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None or where is not None:
             # Use our manual per-iteration loop so we can capture history.
-            missing_mask_df = df_work.isna()
+            missing_mask_df = imputation_mask.loc[:, df_work.columns]
             if estimator is None:
                 base_est = BayesianRidge()
                 use_posterior = True
@@ -1053,6 +1072,7 @@ def impute_mice(
                     observed = df_norm[col].dropna()
                     if len(observed) > 0:
                         result[col] = result[col].fillna(observed.mode().iloc[0])
+            result = result.mask(retained_missing_mask.loc[:, result.columns])
             if capture_history:
                 return result, history
             return result
