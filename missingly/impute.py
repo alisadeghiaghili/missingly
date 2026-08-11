@@ -69,6 +69,7 @@ from missingly.exceptions import (
     InsufficientDataError,
     InvalidStrategyError,
 )
+from missingly.mi_contracts import ImputationPlan, ImputationResult, MIData, MissingnessSchema
 from missingly._validation import (
     validate_dataframe,
     validate_positive_int,
@@ -882,11 +883,13 @@ def impute_mice(
     estimator=None,
     n_imputations: int = 1,
     return_history: bool = False,
+    return_result: bool = False,
 ) -> Union[
     pd.DataFrame,
     List[pd.DataFrame],
     Tuple[pd.DataFrame, Dict[str, List[float]]],
     Tuple[List[pd.DataFrame], List[Dict[str, List[float]]]],
+    ImputationResult,
 ]:
     """Impute missing values using MICE (Multiple Imputation by Chained Equations).
 
@@ -924,10 +927,15 @@ def impute_mice(
         predictive draws. Histories therefore preserve between-chain
         stochasticity and are suitable for diagnostic use; they are still not
         proof that the imputation model or missing-data assumptions are valid.
+    return_result : bool, default False
+        Return an immutable :class:`~missingly.mi_contracts.ImputationResult`
+        containing the original mask, chain seeds, completed datasets, and
+        per-iteration histories. This opt-in mode is mutually exclusive with
+        ``return_history`` because the result object already includes history.
 
     Returns
     -------
-    pd.DataFrame or list of pd.DataFrame
+    pd.DataFrame, list of pd.DataFrame, or ImputationResult
         Imputed copy (or list of *m* copies) of *df*.  When
         ``return_history=True`` a tuple is returned instead — see above.
 
@@ -949,10 +957,16 @@ def impute_mice(
     >>> imputed, history = impute_mice(df, max_iter=5, return_history=True)
     >>> len(history["a"])  # one entry per iteration
     5
+
+    >>> typed = impute_mice(df, n_imputations=2, return_result=True)
+    >>> typed.data.n_imputations
+    2
     """
     validate_dataframe(df, param="df")
     validate_positive_int(n_imputations, param="n_imputations")
     validate_positive_int(max_iter, param="max_iter")
+    if return_history and return_result:
+        raise ValueError("return_result cannot be combined with return_history")
 
     _warn_if_large(df, "impute_mice")
     df_norm = _normalize_missing(df)
@@ -962,7 +976,7 @@ def impute_mice(
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, List[float]]]]:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
 
-        if return_history:
+        if return_history or return_result:
             # Use our manual per-iteration loop so we can capture history.
             missing_mask_df = df_work.isna()
             if estimator is None:
@@ -1017,6 +1031,24 @@ def impute_mice(
                     fallback = observed.mode().iloc[0]
                     result[col] = result[col].fillna(fallback)
         return result
+
+    if return_result:
+        results = [_single_chain(random_state + index) for index in range(n_imputations)]
+        frames, histories = zip(*results)
+        schema = MissingnessSchema.from_dataframe(df)
+        plan = ImputationPlan(
+            methods={column: "mice" for column in df.columns},
+            n_imputations=n_imputations,
+            max_iter=max_iter,
+            seed_sequence=tuple(random_state + index for index in range(n_imputations)),
+            provenance={"engine": "impute_mice", "history": "per_iteration_mean"},
+        )
+        data = MIData(df.copy(deep=True), schema, plan, tuple(frames))
+        contract_histories = tuple(
+            {column: tuple(float(value) for value in trace) for column, trace in history.items()}
+            for history in histories
+        )
+        return ImputationResult(data=data, histories=contract_histories)
 
     if n_imputations == 1:
         return _single_chain(random_state)
