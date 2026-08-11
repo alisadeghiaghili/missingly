@@ -1,0 +1,47 @@
+{
+  "dataset_license": "CC0-1.0 synthetic test fixture",
+  "dataset_name": "missingly synthetic numeric FCS fixture",
+  "dataset_sha256": "9469f77a9c2ae5c63f22e16e5e8a974070c65af4c9d84adb87759aacafc9bd1a",
+  "dataset_source_url": "https://github.com/alisadeghiaghili/missingly/tree/main/tests/fixtures/mice_numeric_fcs",
+  "estimand": "Per-chain completed-data means for each numeric column",
+  "expected_metrics": {
+    "chain_1_mean_outcome": 37.34707058318539,
+    "chain_1_mean_x1": 8.273518786601832,
+    "chain_1_mean_x2": 7.984086038756619,
+    "chain_1_mean_x3": 18.04444487325818,
+    "chain_2_mean_outcome": 37.108951726910675,
+    "chain_2_mean_x1": 8.552516958573557,
+    "chain_2_mean_x2": 8.337270483228107,
+    "chain_2_mean_x3": 18.35942363016938,
+    "chain_3_mean_outcome": 37.363339663851065,
+    "chain_3_mean_x1": 8.297583197745588,
+    "chain_3_mean_x2": 8.645235123951507,
+    "chain_3_mean_x3": 17.849296888119568
+  },
+  "known_differences": [
+    "This fixture validates repeatable R mice regeneration only; it does not compare any Missingly imputation output."
+  ],
+  "method": "mice::mice(method='norm', m=3, maxit=5)",
+  "missingly_version": "1.0.0",
+  "missing_value_policy": "Only native CSV missing cells are parsed as R NA; no rows are prefiltered.",
+  "reference_platform": "R 4.4.2 on x86_64-pc-linux-gnu (GitHub Actions Ubuntu 24.04)",
+  "reference_script_sha256": "90b9128af4cc4d50f7088ebab3065b4a83eb83a48aa02a1a4bd6844693ea4646",
+  "reference_tool": "R mice",
+  "reference_tool_version": "3.19.0",
+  "schema_version": 2,
+  "seed": 20260811,
+  "tolerances": {
+    "chain_1_mean_outcome": 1e-08,
+    "chain_1_mean_x1": 1e-08,
+    "chain_1_mean_x2": 1e-08,
+    "chain_1_mean_x3": 1e-08,
+    "chain_2_mean_outcome": 1e-08,
+    "chain_2_mean_x1": 1e-08,
+    "chain_2_mean_x2": 1e-08,
+    "chain_2_mean_x3": 1e-08,
+    "chain_3_mean_outcome": 1e-08,
+    "chain_3_mean_x1": 1e-08,
+    "chain_3_mean_x2": 1e-08,
+    "chain_3_mean_x3": 1e-08
+  }
+}

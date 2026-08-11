@@ -1,8 +1,8 @@
-"""Validate the self-describing schema of R ``mice`` evidence artifacts.
+"""Validate R ``mice`` evidence against reviewed, scoped scalar metrics.
 
-This validator intentionally verifies provenance and numerical hygiene only.
-It does not compare Missingly output with R ``mice`` and must not be used to
-claim algorithmic parity before a reviewed conformance manifest is added.
+The validator compares only R regeneration output with its committed R oracle.
+It does not compare a Missingly algorithm with R ``mice`` and must not be used
+to claim general algorithmic parity.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 import math
 from pathlib import Path
 import sys
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 
 _REQUIRED_KEYS = {
@@ -54,13 +54,19 @@ def _is_sha256(value: object) -> bool:
     )
 
 
-def validate_reference(reference: Mapping[str, Any]) -> None:
+def validate_reference(
+    reference: Mapping[str, Any],
+    manifest: Optional[Mapping[str, Any]] = None,
+) -> None:
     """Validate an evidence-only R ``mice`` artifact.
 
     Parameters
     ----------
     reference : mapping of str to Any
         Decoded JSON emitted by ``generate_mice_reference.R``.
+    manifest : mapping of str to Any, optional
+        Reviewed benchmark manifest. When supplied, provenance fields and every
+        scalar metric are checked against its recorded absolute tolerance.
 
     Returns
     -------
@@ -117,14 +123,84 @@ def validate_reference(reference: Mapping[str, Any]) -> None:
         if not math.isfinite(float(value)):
             raise ValueError(f"R mice evidence metric {name!r} must be finite")
 
+    if manifest is not None:
+        _validate_against_manifest(reference, manifest)
 
-def main(reference_path: Path) -> None:
+
+def _validate_against_manifest(
+    reference: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> None:
+    """Compare valid R evidence with a reviewed scalar oracle manifest.
+
+    Parameters
+    ----------
+    reference : mapping of str to Any
+        Schema-valid scalar evidence emitted by the R generator.
+    manifest : mapping of str to Any
+        Reviewed manifest containing identities, expected metrics, and absolute
+        tolerances.
+
+    Returns
+    -------
+    None
+        Returns normally only when all locked identities and metrics agree.
+
+    Raises
+    ------
+    ValueError
+        If provenance differs, metric keys differ, or a metric exceeds its
+        reviewed tolerance.
+
+    Examples
+    --------
+    >>> _validate_against_manifest(
+    ...     {"reference_tool": "R mice", "reference_tool_version": "1", "dataset_sha256": "a", "source_script_sha256": "b", "method": "m", "seed": 1, "metrics": {"x": 1.0}},
+    ...     {"reference_tool": "R mice", "reference_tool_version": "1", "dataset_sha256": "a", "reference_script_sha256": "b", "method": "m", "seed": 1, "expected_metrics": {"x": 1.0}, "tolerances": {"x": 0.0}},
+    ... )
+    """
+    identities = {
+        "reference_tool": "reference_tool",
+        "reference_tool_version": "reference_tool_version",
+        "dataset_sha256": "dataset_sha256",
+        "source_script_sha256": "reference_script_sha256",
+        "method": "method",
+        "seed": "seed",
+    }
+    for reference_key, manifest_key in identities.items():
+        if reference[reference_key] != manifest.get(manifest_key):
+            raise ValueError(
+                f"R mice evidence {reference_key} does not match benchmark manifest"
+            )
+
+    expected = manifest.get("expected_metrics")
+    tolerances = manifest.get("tolerances")
+    if not isinstance(expected, Mapping) or not isinstance(tolerances, Mapping):
+        raise ValueError("benchmark manifest must define expected metrics and tolerances")
+    if set(reference["metrics"]) != set(expected) or set(expected) != set(tolerances):
+        raise ValueError("R mice evidence metric keys must match benchmark manifest")
+    for name, target in expected.items():
+        actual = float(reference["metrics"][name])
+        tolerance = float(tolerances[name])
+        if not math.isfinite(float(target)) or not math.isfinite(tolerance) or tolerance < 0:
+            raise ValueError("benchmark manifest contains an invalid metric tolerance")
+        if abs(actual - float(target)) > tolerance:
+            raise ValueError(
+                f"R mice metric {name!r} differs from committed oracle: "
+                f"actual={actual}, expected={target}, tolerance={tolerance}"
+            )
+
+
+def main(reference_path: Path, manifest_path: Optional[Path] = None) -> None:
     """Validate the JSON artifact at ``reference_path``.
 
     Parameters
     ----------
     reference_path : pathlib.Path
         Path to the scalar JSON evidence file emitted by the R generator.
+    manifest_path : pathlib.Path, optional
+        Reviewed benchmark manifest. Omitting it performs schema-only evidence
+        validation, while CI supplies it for numerical oracle validation.
 
     Returns
     -------
@@ -136,10 +212,13 @@ def main(reference_path: Path) -> None:
     >>> isinstance(Path("mice_reference.json"), Path)
     True
     """
-    validate_reference(json.loads(reference_path.read_text(encoding="utf-8")))
+    manifest = None
+    if manifest_path is not None:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    validate_reference(json.loads(reference_path.read_text(encoding="utf-8")), manifest)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: validate_mice_reference.py <reference.json>")
-    main(Path(sys.argv[1]))
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("Usage: validate_mice_reference.py <reference.json> [manifest.json]")
+    main(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv) == 3 else None)

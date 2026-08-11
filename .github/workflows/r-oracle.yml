@@ -83,7 +83,7 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
-            cran::mice
+            cran::mice@3.19.0
             any::jsonlite
           dependencies: '"hard"'
 
@@ -102,7 +102,8 @@ jobs:
       - name: Validate R evidence schema
         run: |
           python tests/fixtures/mice_numeric_fcs/validate_mice_reference.py \
-            r-reference-artifact/mice_numeric_fcs_reference.json
+            r-reference-artifact/mice_numeric_fcs_reference.json \
+            tests/fixtures/mice_numeric_fcs/benchmark_manifest.json
 
       - name: Upload R mice evidence artifact
         uses: actions/upload-artifact@v4
