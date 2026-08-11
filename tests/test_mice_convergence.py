@@ -142,7 +142,19 @@ class TestMiceConvergence:
     def test_unknown_variable_ignored(self, three_chain_histories):
         result = mice_convergence(three_chain_histories, variables=["nonexistent"])
         assert result["rhat"] == {}
-        assert result["converged"] is True
+        assert result["converged"] is None
+
+    def test_tuple_histories_from_public_contract_are_accepted(self):
+        """Tuple iteration histories produce a real convergence diagnostic."""
+        histories = [
+            {"a": (1.0, 1.1, 1.2, 1.3)},
+            {"a": (8.0, 8.1, 8.2, 8.3)},
+        ]
+
+        result = mice_convergence(histories)
+
+        assert "a" in result["rhat"]
+        assert result["converged"] is False
 
     def test_trace_data_shape(self, three_chain_histories):
         result = mice_convergence(three_chain_histories)

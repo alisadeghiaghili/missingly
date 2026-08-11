@@ -142,6 +142,19 @@ class TestInputValidation:
                 np.ones((3, 3, 3)),
             )
 
+    @pytest.mark.parametrize(
+        ("covs", "message"),
+        [
+            (np.array([[[np.nan, 0.0], [0.0, 1.0]]] * 2), "finite"),
+            (np.array([[[1.0, 2.0], [0.0, 1.0]]] * 2), "symmetric"),
+            (np.array([[[-1.0, 0.0], [0.0, 1.0]]] * 2), "positive semidefinite"),
+        ],
+    )
+    def test_invalid_sampling_covariance_raises(self, covs, message):
+        """Pooling rejects covariance estimates that invalidate Rubin's rules."""
+        with pytest.raises(ValueError, match=message):
+            pool_linear_regression_results(np.ones((2, 2)), covs)
+
 
 # ---------------------------------------------------------------------------
 # Test 4 (integration): full MI workflow with impute_mice

@@ -171,11 +171,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         hotdeck_direction: str = "nearest",
         hotdeck_n_donors: int = 5,
     ) -> None:
-        if strategy not in _VALID_STRATEGIES:
-            raise ValueError(
-                f"strategy must be one of {sorted(_VALID_STRATEGIES)}; "
-                f"got {strategy!r}"
-            )
+        self._validate_strategy(strategy)
         self.strategy = strategy
         self.n_neighbors = n_neighbors
         self.metric = metric
@@ -186,6 +182,70 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.hotdeck_direction = hotdeck_direction
         self.hotdeck_n_donors = hotdeck_n_donors
         self._is_fitted: bool = False
+
+    @staticmethod
+    def _validate_strategy(strategy: str) -> None:
+        """Validate a public imputation strategy name.
+
+        Parameters
+        ----------
+        strategy : str
+            Requested imputation strategy.
+
+        Returns
+        -------
+        None
+            The function returns normally only for supported strategies.
+
+        Raises
+        ------
+        ValueError
+            If ``strategy`` is not a supported strategy.
+
+        Examples
+        --------
+        >>> MissinglyImputer._validate_strategy("mean")
+        >>> MissinglyImputer._validate_strategy("unknown")
+        Traceback (most recent call last):
+        ...
+        ValueError: strategy must be one of ...
+        """
+        if strategy not in _VALID_STRATEGIES:
+            raise ValueError(
+                f"strategy must be one of {sorted(_VALID_STRATEGIES)}; "
+                f"got {strategy!r}"
+            )
+
+    def set_params(self, **params: object) -> "MissinglyImputer":
+        """Set estimator parameters while preserving strategy validation.
+
+        Parameters
+        ----------
+        **params : object
+            Estimator parameters accepted by scikit-learn's ``BaseEstimator``.
+            When provided, ``strategy`` must be one of the documented
+            ``MissinglyImputer`` strategies.
+
+        Returns
+        -------
+        MissinglyImputer
+            This estimator, as required by the scikit-learn estimator API.
+
+        Raises
+        ------
+        ValueError
+            If ``strategy`` is unsupported or another parameter name is
+            unknown to ``BaseEstimator``.
+
+        Examples
+        --------
+        >>> imputer = MissinglyImputer().set_params(strategy="median")
+        >>> imputer.strategy
+        'median'
+        """
+        if "strategy" in params:
+            self._validate_strategy(params["strategy"])
+        return super().set_params(**params)
 
     # ------------------------------------------------------------------
     # sklearn fitted-state contract
