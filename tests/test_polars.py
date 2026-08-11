@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import pandas as pd
-import polars as pl
 import pytest
 
 from missingly.polars_adapter import polars_missing_summary
+
+pl = pytest.importorskip("polars")
 
 
 def test_polars_summary_preserves_eager_polars_type_and_null_policy() -> None:
