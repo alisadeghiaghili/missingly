@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime, time
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
 import pytest
 
 import missingly
-from missingly.provenance import analysis_provenance, dataframe_fingerprint
+from missingly.provenance import _canonical_json, analysis_provenance, dataframe_fingerprint
 
 
 @pytest.fixture()
@@ -115,3 +117,45 @@ def test_provenance_rejects_ambiguous_inputs(mixed_frame):
     with pytest.raises(TypeError, match="parameters must be a mapping"):
         dataframe_fingerprint(mixed_frame, parameters=[("m", 5)])
 
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (pd.NA, {"__missing__": True}),
+        (np.float64("nan"), {"__float__": "nan"}),
+        (float("inf"), {"__float__": "+inf"}),
+        (float("-inf"), {"__float__": "-inf"}),
+        (Decimal("1.20"), {"__decimal__": "1.20"}),
+        (pd.Timestamp("2026-01-01T00:00:00Z"), {"__timestamp__": "2026-01-01T00:00:00+00:00"}),
+        (pd.Timedelta("2 days"), {"__timedelta__": "P2DT0H0M0S"}),
+        (datetime(2026, 1, 1, 12, 0), {"__datetime__": "2026-01-01T12:00:00"}),
+        (date(2026, 1, 1), {"__date__": "2026-01-01"}),
+        (time(12, 0), {"__time__": "12:00:00"}),
+        (b"ab", {"__bytes_hex__": "6162"}),
+    ],
+)
+def test_canonical_json_encodes_supported_scalar_types(value, expected):
+    """Every documented scalar provenance type has a stable representation."""
+    assert _canonical_json(value) == expected
+
+
+def test_canonical_json_encodes_intervals_and_order_independent_containers():
+    """Composite provenance values preserve type while ignoring set/map order."""
+    interval = pd.Interval(1, 2, closed="both")
+
+    assert _canonical_json(interval)["__interval__"]["closed"] == "both"
+    assert _canonical_json({"b": 2, "a": 1}) == {"a": 1, "b": 2}
+    assert _canonical_json({2, 1}) == _canonical_json({1, 2})
+    assert _canonical_json(("x", 1)) == {"__tuple__": ["x", 1]}
+
+
+def test_canonical_json_rejects_unstable_custom_values():
+    """Opaque custom objects cannot accidentally enter a provenance digest."""
+    with pytest.raises(TypeError, match="Unsupported provenance value"):
+        _canonical_json(object())
+
+
+def test_analysis_provenance_rejects_blank_operation(mixed_frame):
+    """Replay manifests require a meaningful operation identity."""
+    with pytest.raises(ValueError, match="must not be empty"):
+        analysis_provenance(mixed_frame, "   ")
