@@ -1384,7 +1384,7 @@ def impute_logreg(
                     model.classes_[0],
                 )
                 result.loc[missing_mask, col] = imputed
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - estimator backends expose heterogeneous errors.
                 fallback = result[col].mode().iloc[0]
                 warnings.warn(
                     f"impute_logreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
@@ -1483,7 +1483,7 @@ def impute_polyreg(
                 model.fit(X_obs_clean, y_obs)
                 y_pred = model.predict(X_miss_clean)
                 result.loc[missing_mask, col] = y_pred
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - estimator backends expose heterogeneous errors.
                 fallback = result[col].mode().iloc[0]
                 warnings.warn(
                     f"impute_polyreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
@@ -1614,7 +1614,7 @@ def impute_polr(
                     y_pred = np.array(categories)[best_idx]
                     result.loc[missing_mask, col] = y_pred
                     imputed_ok = True
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - optional statsmodels backend errors require fallback.
                     warnings.warn(
                         f"impute_polr: OrderedModel failed for column {col!r} "
                         f"({type(exc).__name__}: {exc}). "
@@ -1629,7 +1629,7 @@ def impute_polr(
                     model.fit(X_obs_clean, y_obs)
                     y_pred = model.predict(X_miss_clean)
                     result.loc[missing_mask, col] = y_pred
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - estimator backends expose heterogeneous errors.
                     fallback = result[col].mode().iloc[0]
                     warnings.warn(
                         f"impute_polr: multinomial fallback also failed for column {col!r} "

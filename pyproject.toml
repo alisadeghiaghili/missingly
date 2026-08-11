@@ -104,7 +104,7 @@ filterwarnings = [
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E9", "F"]
+select = ["E9", "F", "BLE001"]
 
 [tool.coverage.run]
 source = ["missingly"]
