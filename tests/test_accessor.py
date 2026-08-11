@@ -189,6 +189,25 @@ class TestManipulation:
 
 
 class TestImputation:
+    def test_impute_dispatches_named_strategy(self, df_numeric):
+        """The generic accessor dispatches to a named imputation strategy."""
+        result = df_numeric.miss.impute("median")
+
+        assert result.isna().sum().sum() == 0
+
+    def test_impute_forwards_strategy_keywords(self, df_numeric):
+        """The generic accessor forwards supported strategy configuration."""
+        result = df_numeric.miss.impute("knn", n_neighbors=2)
+
+        assert result.isna().sum().sum() == 0
+
+    def test_impute_rejects_unknown_strategy(self, df_numeric):
+        """The generic accessor fails loudly for an unsupported strategy."""
+        from missingly.exceptions import InvalidStrategyError
+
+        with pytest.raises(InvalidStrategyError, match="strategy"):
+            df_numeric.miss.impute("unknown")
+
     def test_impute_mean(self, df_numeric):
         """impute_mean should fill missing values."""
         result = df_numeric.miss.impute_mean()
