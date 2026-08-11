@@ -194,6 +194,82 @@ def _encode_features(X: np.ndarray) -> np.ndarray:
     return X_out
 
 
+def _encode_feature_pair(
+    X_observed: np.ndarray,
+    X_missing: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Encode observed and incomplete feature rows in one shared code space.
+
+    Conditional categorical imputers fit on ``X_observed`` and predict on
+    ``X_missing``.  Encoding the two arrays independently changes the numeric
+    coordinate assigned to a category that occurs in only one subset.  This
+    helper derives every per-column mapping once from their union, then splits
+    the encoded rows back into their original groups.
+
+    Parameters
+    ----------
+    X_observed : np.ndarray
+        Raw feature rows associated with observed target values, with shape
+        ``(n_observed, n_features)``.
+    X_missing : np.ndarray
+        Raw feature rows associated with missing target values, with shape
+        ``(n_missing, n_features)``.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        ``(X_observed_encoded, X_missing_encoded)`` in one shared float64
+        coordinate system.
+
+    Raises
+    ------
+    ValueError
+        If the arrays do not have the same number of feature columns.
+
+    Examples
+    --------
+    >>> observed = np.array([["a"], ["e"]], dtype=object)
+    >>> missing = np.array([["e"]], dtype=object)
+    >>> X_observed, X_missing = _encode_feature_pair(observed, missing)
+    >>> X_observed[1, 0] == X_missing[0, 0]
+    np.True_
+    """
+    if X_observed.ndim != 2 or X_missing.ndim != 2:
+        raise ValueError("Feature arrays must both be two-dimensional.")
+    if X_observed.shape[1] != X_missing.shape[1]:
+        raise ValueError("Feature arrays must have the same number of columns.")
+
+    n_observed = X_observed.shape[0]
+    encoded = _encode_features(np.concatenate([X_observed, X_missing], axis=0))
+    return encoded[:n_observed], encoded[n_observed:]
+
+
+def _ordinal_target_categories(series: pd.Series) -> List:
+    """Return the category order used by an ordinal conditional model.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Observed and missing values of one ordinal target.  An ordered pandas
+        categorical supplies its declared substantive order; all other dtypes
+        use deterministic lexical ordering for backward compatibility.
+
+    Returns
+    -------
+    list
+        Ordered target categories, excluding missing values.
+
+    Examples
+    --------
+    >>> values = pd.Series(pd.Categorical(["low", "high"], categories=["low", "high"], ordered=True))
+    >>> _ordinal_target_categories(values)
+    ['low', 'high']
+    """
+    if isinstance(series.dtype, pd.CategoricalDtype) and series.dtype.ordered:
+        return series.cat.categories.tolist()
+    return sorted(series.dropna().unique(), key=str)
+
+
 def _is_nan_scalar(v) -> bool:
     """Return True if *v* is a NaN-like scalar (float NaN or pd.NA)."""
     try:
@@ -1004,12 +1080,10 @@ def impute_pmm(
 
     Notes
     -----
-    PMM is preferred over direct regression imputation because it:
-
-    - Preserves the distribution of observed values.
-    - Does not create impossible values (e.g., negative ages).
-    - Handles non-linear relationships through the matching step.
-    - Is the gold standard method in R's mice package.
+    This is an experimental, single-dataset chained-equations approximation.
+    It redraws donor matches on each sweep, but does not yet draw regression
+    coefficients from their posterior.  Use a validated multiple-imputation
+    workflow and sensitivity analysis for publication-critical inference.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -1026,10 +1100,11 @@ def impute_pmm(
 
     rng = np.random.default_rng(random_state)
     result = df_norm.copy()
+    missing_masks = {col: df_norm[col].isna() for col in num_cols}
 
     for _ in range(max_iter):
         for col in num_cols:
-            missing_mask = result[col].isna()
+            missing_mask = missing_masks[col]
             if not missing_mask.any():
                 continue
 
@@ -1075,9 +1150,9 @@ def impute_logreg(
 ) -> pd.DataFrame:
     """Impute missing values using Logistic Regression (for binary variables).
 
-    This method is equivalent to R's mice ``logreg`` method. It fits a
-    logistic regression model for each binary variable with missing values,
-    then samples from the predicted Bernoulli probability.
+    This experimental chained-equations approximation fits a logistic
+    regression model for each binary variable with missing values, then samples
+    from the predicted Bernoulli probability.
 
     Parameters
     ----------
@@ -1127,10 +1202,11 @@ def impute_logreg(
         col for col in df_norm.columns
         if len(df_norm[col].dropna().unique()) == 2
     ]
+    missing_masks = {col: df_norm[col].isna() for col in binary_cols}
 
     for _ in range(max_iter):
         for col in binary_cols:
-            missing_mask = result[col].isna()
+            missing_mask = missing_masks[col]
             if not missing_mask.any():
                 continue
 
@@ -1142,8 +1218,7 @@ def impute_logreg(
             observed_mask = ~missing_mask
             X_obs_raw = result.loc[observed_mask, feature_cols].values
             X_miss_raw = result.loc[missing_mask, feature_cols].values
-            X_obs_enc = _encode_features(X_obs_raw)
-            X_miss_enc = _encode_features(X_miss_raw)
+            X_obs_enc, X_miss_enc = _encode_feature_pair(X_obs_raw, X_miss_raw)
             X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs_enc, X_miss_enc)
 
             y_obs = result.loc[observed_mask, col].values
@@ -1178,9 +1253,9 @@ def impute_polyreg(
 ) -> pd.DataFrame:
     """Impute missing values using Multinomial Logistic Regression.
 
-    This method is equivalent to R's mice ``polyreg`` method. It fits a
-    multinomial logistic regression model for each categorical variable
-    with more than 2 levels.
+    This experimental chained-equations approximation fits a multinomial
+    logistic regression model for each categorical variable with more than
+    two levels.
 
     Parameters
     ----------
@@ -1231,10 +1306,11 @@ def impute_polyreg(
             and not pd.api.types.is_numeric_dtype(df_norm[col])
         )
     ]
+    missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
     for _ in range(max_iter):
         for col in cat_cols:
-            missing_mask = result[col].isna()
+            missing_mask = missing_masks[col]
             if not missing_mask.any():
                 continue
 
@@ -1246,15 +1322,12 @@ def impute_polyreg(
             observed_mask = ~missing_mask
             X_obs_raw = result.loc[observed_mask, feature_cols].values
             X_miss_raw = result.loc[missing_mask, feature_cols].values
-            X_obs_enc = _encode_features(X_obs_raw)
-            X_miss_enc = _encode_features(X_miss_raw)
+            X_obs_enc, X_miss_enc = _encode_feature_pair(X_obs_raw, X_miss_raw)
             X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs_enc, X_miss_enc)
 
             y_obs = result.loc[observed_mask, col].values
 
-            model = LogisticRegression(
-                random_state=random_state, max_iter=1000, multi_class="multinomial"
-            )
+            model = LogisticRegression(random_state=random_state, max_iter=1000)
             try:
                 model.fit(X_obs_clean, y_obs)
                 y_pred = model.predict(X_miss_clean)
@@ -1279,8 +1352,8 @@ def impute_polr(
 ) -> pd.DataFrame:
     """Impute missing values using Ordinal Logistic Regression.
 
-    This method is equivalent to R's mice ``polr`` method. It fits an
-    ordinal logistic regression model for each ordered categorical variable.
+    This experimental chained-equations approximation fits an ordinal logistic
+    regression model for each ordered categorical variable.
     Falls back to multinomial logistic regression when statsmodels is
     unavailable or the ordinal model fails to converge.
 
@@ -1338,6 +1411,7 @@ def impute_polr(
             and not pd.api.types.is_numeric_dtype(df_norm[col])
         )
     ]
+    missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
     try:
         from statsmodels.miscmodels.ordinal_model import OrderedModel as _OrderedModel
@@ -1354,7 +1428,7 @@ def impute_polr(
 
     for _ in range(max_iter):
         for col in cat_cols:
-            missing_mask = result[col].isna()
+            missing_mask = missing_masks[col]
             if not missing_mask.any():
                 continue
 
@@ -1366,17 +1440,20 @@ def impute_polr(
             observed_mask = ~missing_mask
             X_obs_raw = result.loc[observed_mask, feature_cols].values
             X_miss_raw = result.loc[missing_mask, feature_cols].values
-            X_obs_enc = _encode_features(X_obs_raw)
-            X_miss_enc = _encode_features(X_miss_raw)
+            X_obs_enc, X_miss_enc = _encode_feature_pair(X_obs_raw, X_miss_raw)
             X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs_enc, X_miss_enc)
 
             y_obs = result.loc[observed_mask, col].values
-            categories = sorted(df_norm[col].dropna().unique(), key=str)
+            categories = _ordinal_target_categories(df_norm[col])
 
             imputed_ok = False
             if _HAS_STATSMODELS:
                 try:
-                    ord_model = _OrderedModel(y_obs, X_obs_clean, distr="logit")
+                    category_to_code = {category: index for index, category in enumerate(categories)}
+                    y_obs_codes = np.asarray(
+                        [category_to_code[value] for value in y_obs], dtype=np.int64
+                    )
+                    ord_model = _OrderedModel(y_obs_codes, X_obs_clean, distr="logit")
                     fit_result = ord_model.fit(method="bfgs", disp=False)
                     proba = fit_result.predict(X_miss_clean)
                     if hasattr(proba, "values"):
@@ -1396,9 +1473,7 @@ def impute_polr(
                     )
 
             if not imputed_ok:
-                model = LogisticRegression(
-                    random_state=random_state, max_iter=1000, multi_class="multinomial"
-                )
+                model = LogisticRegression(random_state=random_state, max_iter=1000)
                 try:
                     model.fit(X_obs_clean, y_obs)
                     y_pred = model.predict(X_miss_clean)
