@@ -136,6 +136,31 @@ class TestSingleImputation:
         with pytest.raises(ValueError, match="diagonal"):
             impute_mice(small_mixed_df, predictor_matrix=self_predictor)
 
+    def test_where_mask_imputes_only_explicitly_enabled_missing_cells(self):
+        """where can retain structural missingness without altering observed cells."""
+        frame = pd.DataFrame(
+            {"a": [1.0, np.nan, 3.0, 4.0], "b": [2.0, 3.0, np.nan, 5.0]}
+        )
+        where = frame.isna()
+        where.loc[1, "a"] = False
+
+        result = impute_mice(frame, max_iter=2, random_state=0, where=where)
+
+        assert pd.isna(result.loc[1, "a"])
+        assert not pd.isna(result.loc[2, "b"])
+        assert result.loc[0, "a"] == frame.loc[0, "a"]
+
+    def test_where_mask_rejects_misaligned_or_observed_cells(self, small_mixed_df):
+        """where must align exactly and cannot request over-imputation."""
+        bad_shape = pd.DataFrame(False, index=small_mixed_df.index, columns=["age"])
+        with pytest.raises(ValueError, match="align"):
+            impute_mice(small_mixed_df, where=bad_shape)
+
+        overimpute = small_mixed_df.isna()
+        overimpute.loc[0, "age"] = True
+        with pytest.raises(ValueError, match="observed"):
+            impute_mice(small_mixed_df, where=overimpute)
+
 
 # ---------------------------------------------------------------------------
 # Test 2 — n_imputations=3: returns a list of DataFrames
