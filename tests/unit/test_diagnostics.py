@@ -286,6 +286,22 @@ class TestDiagnose:
         assert result["mcar_evidence"] == "MCAR_rejected"
         assert result["p_value"] < 0.05
 
+    def test_reports_mcar_test_failure_separately_from_data_shortage(self):
+        """An EM failure remains inspectable rather than being silently relabeled."""
+        rng = np.random.default_rng(20260811)
+        n_rows = 160
+        x = rng.normal(size=n_rows)
+        z = 0.4 * x + rng.normal(size=n_rows)
+        y = -0.3 * x + 0.2 * z + rng.normal(size=n_rows)
+        y[x > 0.7] = np.nan
+        df = pd.DataFrame({"x": x, "z": z, "y": y})
+
+        result = diagnose_missing(df, max_iter=1)
+
+        assert result["mcar_evidence"] == "insufficient_data"
+        assert result["mcar_test_error"].startswith("RuntimeError:")
+        assert "could not be completed" in result["recommendation"]
+
     def test_rejects_non_dataframe(self):
         with pytest.raises(TypeError):
             diagnose_missing("not a df")

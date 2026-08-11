@@ -818,9 +818,13 @@ def diagnose_missing(
     dict
         All keys from :func:`mcar_test` plus ``mcar_evidence``, legacy-compatible
         ``mechanism``, ``recommendation``, ``strategy_hint``,
-        ``high_missingness_cols``, and descriptive ``max_nullity_corr``. The only
-        valid values of ``mcar_evidence`` are ``"MCAR_not_rejected"``,
-        ``"MCAR_rejected"``, and ``"insufficient_data"``.
+        ``high_missingness_cols``, descriptive ``max_nullity_corr``, and
+        ``mcar_test_error``. The latter is ``None`` when Little's test was not
+        attempted because of insufficient data or when it succeeds; otherwise
+        it records the caught validation, numerical, or convergence failure.
+        The only valid values of ``mcar_evidence`` are
+        ``"MCAR_not_rejected"``, ``"MCAR_rejected"``, and
+        ``"insufficient_data"``.
 
     Raises
     ------
@@ -854,8 +858,10 @@ def diagnose_missing(
     miss_pct = df.isnull().mean()
     high_miss_cols: List[str] = miss_pct[miss_pct > 0.40].index.tolist()
 
+    # Little's test uses observed values in complete columns to distinguish
+    # missingness patterns.  Dropping those columns turns a valid multivariate
+    # diagnostic into a one-column, automatically ineligible input.
     num_df = df.select_dtypes(include=[np.number])
-    num_df = num_df.loc[:, num_df.isnull().any()]
 
     max_corr: Optional[float] = None
     if num_df.shape[1] >= 2:
@@ -872,23 +878,32 @@ def diagnose_missing(
             index={"sum": "Number Missing", "mean": "Percent Missing"}
         ),
     }
+    mcar_test_error: Optional[str] = None
     can_test = num_df.shape[1] >= 2 and num_df.shape[0] >= 4
 
     if can_test:
         try:
             test_result = mcar_test(num_df, max_iter=max_iter, tol=tol, ridge=ridge)
-        except (ValueError, RuntimeError, LinAlgError, ArithmeticError):
+        except (ValueError, RuntimeError, LinAlgError, ArithmeticError) as error:
             can_test = False
+            mcar_test_error = f"{type(error).__name__}: {error}"
 
     p_val = test_result.get("p_value")
 
     if not can_test or p_val is None or np.isnan(p_val):
         mcar_evidence = "insufficient_data"
-        recommendation = (
-            "Not enough numeric columns or rows to run Little's MCAR test. "
-            "Document the intended analysis, inspect missingness patterns, and choose "
-            "a missing-data assumption from substantive knowledge."
-        )
+        if mcar_test_error is None:
+            recommendation = (
+                "Not enough numeric columns or rows to run Little's MCAR test. "
+                "Document the intended analysis, inspect missingness patterns, and choose "
+                "a missing-data assumption from substantive knowledge."
+            )
+        else:
+            recommendation = (
+                "Little's MCAR test could not be completed "
+                f"({mcar_test_error}). Do not interpret this as evidence for MCAR; "
+                "inspect the data and use a sensitivity analysis."
+            )
         strategy_hint = "Specify an analysis model and run sensitivity analyses."
 
     elif p_val >= significance:
@@ -929,6 +944,7 @@ def diagnose_missing(
         "strategy_hint": strategy_hint,
         "high_missingness_cols": high_miss_cols,
         "max_nullity_corr": max_corr,
+        "mcar_test_error": mcar_test_error,
     }
 
 
@@ -975,7 +991,7 @@ def _validate_mice_histories(
     available: set = set()
     for hist in histories:
         for key, value in hist.items():
-            if isinstance(value, list) and len(value) >= 2:
+            if isinstance(value, (list, tuple)) and len(value) >= 2:
                 available.add(key)
 
     if variables is None:
@@ -1051,6 +1067,8 @@ def mice_convergence(
         One history dict per chain as returned by
         ``impute_mice(..., n_imputations=m, return_history=True)``.
         Each dict maps ``column_name -> [mean_iter_1, ..., mean_iter_k]``.
+        Tuple histories are accepted as well as lists, matching the public
+        ``ImputationResult`` history contract.
     variables : list of str, optional
         Specific variables to diagnose.  If None, all variables found in
         the histories with at least 2 iterations are used.
@@ -1067,7 +1085,8 @@ def mice_convergence(
         - ``"rhat"``: Gelman-Rubin R-hat per variable (dict).
         - ``"trace_data"``: per-chain iteration means per variable (dict of dict).
         - ``"converged_by_variable"``: bool per variable (dict).
-        - ``"converged"``: overall convergence flag (bool).
+        - ``"converged"``: overall convergence flag (bool), or ``None``
+          when no requested variable has a usable diagnostic trace.
         - ``"n_chains"``: number of chains used (int).
         - ``"n_iter_used"``: minimum iterations used per variable (dict).
 
@@ -1108,7 +1127,7 @@ def mice_convergence(
             "rhat": {},
             "trace_data": {},
             "converged_by_variable": {},
-            "converged": True,
+            "converged": None,
             "n_chains": len(histories),
             "n_iter_used": {},
         }
@@ -1122,7 +1141,7 @@ def mice_convergence(
         chains_for_var = []
         for hist in histories:
             values = hist.get(var, [])
-            if isinstance(values, list) and len(values) >= 2:
+            if isinstance(values, (list, tuple)) and len(values) >= 2:
                 chains_for_var.append(np.asarray(values, dtype=float))
 
         if len(chains_for_var) < 2:
@@ -1143,7 +1162,7 @@ def mice_convergence(
             for idx in range(aligned.shape[0])
         }
 
-    converged = all(converged_by_variable.values()) if converged_by_variable else True
+    converged = all(converged_by_variable.values()) if converged_by_variable else None
 
     return {
         "rhat": rhat_dict,

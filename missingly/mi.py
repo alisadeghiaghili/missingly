@@ -241,7 +241,9 @@ def pool_linear_regression_results(
     ------
     ValueError
         If *coefs* and *covs* have incompatible shapes or fewer than
-        2 imputations are provided.
+        2 imputations are provided, or if coefficients/covariances are
+        non-finite, non-symmetric, or the sampling covariance is not
+        positive semidefinite.
 
     Notes
     -----
@@ -300,6 +302,17 @@ def pool_linear_regression_results(
         raise ValueError(
             f"At least 2 imputations are required for pooling; got {m}."
         )
+    if not np.isfinite(coefs).all():
+        raise ValueError("coefs must contain only finite values.")
+    if not np.isfinite(covs).all():
+        raise ValueError("covs must contain only finite values.")
+    if not np.allclose(covs, np.swapaxes(covs, 1, 2), rtol=1e-10, atol=1e-12):
+        raise ValueError("Each covs matrix must be symmetric.")
+
+    covariance_scale = np.maximum(np.max(np.abs(covs), axis=(1, 2)), 1.0)
+    eigenvalue_tolerance = np.finfo(float).eps * 100 * covariance_scale
+    if np.any(np.linalg.eigvalsh(covs) < -eigenvalue_tolerance[:, None]):
+        raise ValueError("Each covs matrix must be positive semidefinite.")
 
     # Pooled coefficient vector
     coef_bar = coefs.mean(axis=0)                        # shape (p,)
