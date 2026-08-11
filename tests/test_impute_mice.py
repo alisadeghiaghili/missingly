@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from missingly.mi_contracts import ImputationResult
 from missingly.impute import impute_mice
 
 
@@ -121,6 +122,31 @@ class TestMultipleImputation:
         assert first_histories == second_histories
         for first, second in zip(first_results, second_results):
             pd.testing.assert_frame_equal(first, second)
+
+    def test_opt_in_result_contract_preserves_complete_mi_provenance(self, small_mixed_df):
+        """Opt-in MICE output carries schema, seeds, chains, and tuple histories."""
+        result = impute_mice(
+            small_mixed_df,
+            n_imputations=2,
+            max_iter=3,
+            random_state=17,
+            return_result=True,
+        )
+
+        assert isinstance(result, ImputationResult)
+        assert result.data.plan.seed_sequence == (17, 18)
+        assert result.data.n_imputations == 2
+        assert set(result.data.plan.methods) == {"age", "score", "category"}
+        assert len(result.histories) == 2
+        assert all(isinstance(trace, tuple) for history in result.histories for trace in history.values())
+        for imputed in result.data.imputations:
+            assert not imputed.isna().any(axis=None)
+            pd.testing.assert_series_equal(imputed.loc[0], small_mixed_df.loc[0])
+
+    def test_result_contract_and_legacy_history_modes_are_exclusive(self, small_mixed_df):
+        """The typed result already contains histories, so ambiguous output is rejected."""
+        with pytest.raises(ValueError, match="return_result"):
+            impute_mice(small_mixed_df, return_history=True, return_result=True)
 
 
 # ---------------------------------------------------------------------------
