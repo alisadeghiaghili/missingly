@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - "tests/fixtures/little_mcar/**"
+      - "tests/fixtures/mice_numeric_fcs/**"
       - ".github/workflows/r-oracle.yml"
   push:
     branches: [main]
     paths:
       - "tests/fixtures/little_mcar/**"
+      - "tests/fixtures/mice_numeric_fcs/**"
       - ".github/workflows/r-oracle.yml"
   workflow_dispatch:
 
@@ -62,4 +64,49 @@ jobs:
         with:
           name: naniar-little-mcar-reference
           path: r-reference-artifact/naniar_little_mcar_reference.json
+          if-no-files-found: error
+
+  mice-numeric-fcs-evidence:
+    name: Generate R mice numeric FCS evidence
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.4.2"
+
+      - name: Install locked oracle dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            cran::mice
+            any::jsonlite
+          dependencies: '"hard"'
+
+      - name: Record fixture and script identities
+        run: |
+          echo "DATASET_SHA256=$(sha256sum tests/fixtures/mice_numeric_fcs/numeric_fcs.csv | cut -d ' ' -f1)" >> "$GITHUB_ENV"
+          echo "REFERENCE_SCRIPT_SHA256=$(sha256sum tests/fixtures/mice_numeric_fcs/generate_mice_reference.R | cut -d ' ' -f1)" >> "$GITHUB_ENV"
+
+      - name: Generate R mice evidence
+        run: |
+          mkdir -p r-reference-artifact
+          Rscript tests/fixtures/mice_numeric_fcs/generate_mice_reference.R \
+            tests/fixtures/mice_numeric_fcs/numeric_fcs.csv \
+            r-reference-artifact/mice_numeric_fcs_reference.json
+
+      - name: Validate R evidence schema
+        run: |
+          python tests/fixtures/mice_numeric_fcs/validate_mice_reference.py \
+            r-reference-artifact/mice_numeric_fcs_reference.json
+
+      - name: Upload R mice evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mice-numeric-fcs-reference
+          path: r-reference-artifact/mice_numeric_fcs_reference.json
           if-no-files-found: error
