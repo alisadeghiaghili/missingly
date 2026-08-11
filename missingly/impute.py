@@ -1048,7 +1048,18 @@ def impute_mice(
             {column: tuple(float(value) for value in trace) for column, trace in history.items()}
             for history in histories
         )
-        return ImputationResult(data=data, histories=contract_histories)
+        return ImputationResult(
+            data=data,
+            histories=contract_histories,
+            warnings=(
+                "Convergence has not been assessed. Run mice_convergence on the "
+                "returned histories before interpreting chain stability.",
+            ),
+            validation={
+                "structural_validation_passed": True,
+                "convergence_assessed": False,
+            },
+        )
 
     if n_imputations == 1:
         return _single_chain(random_state)
