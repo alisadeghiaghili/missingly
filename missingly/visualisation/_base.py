@@ -28,7 +28,8 @@ import sys
 import unicodedata
 import urllib.request
 from pathlib import Path
-from typing import List, Optional, Sequence
+from types import ModuleType
+from typing import List, Sequence
 
 import matplotlib as mpl
 import matplotlib.font_manager as fm
@@ -544,7 +545,7 @@ def _pct_labels(
 # Plotly lazy-import helper
 # ---------------------------------------------------------------------------
 
-def _require_plotly() -> "types.ModuleType":  # type: ignore[name-defined]
+def _require_plotly() -> ModuleType:
     """Lazily import and return ``plotly.graph_objects``.
 
     This helper is called by every Plotly backend function instead of a

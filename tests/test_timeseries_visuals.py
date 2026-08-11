@@ -120,4 +120,4 @@ class TestVisMissOverTime:
 
     def test_custom_window(self, ts_df):
         ax = vis_miss_over_time(ts_df, window=5)
-        assert f"window=5" in ax.get_ylabel()
+        assert "window=5" in ax.get_ylabel()

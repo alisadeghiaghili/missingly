@@ -9,7 +9,6 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import seaborn as sns
 
 from ._deprecation import deprecated_api
 

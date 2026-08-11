@@ -56,9 +56,7 @@ Public API
 
 from __future__ import annotations
 
-import warnings as _warnings
-
-from missingly._version import __version__
+from missingly._version import __version__ as __version__
 from missingly.benchmark import BenchmarkManifest
 from missingly.mi_contracts import (
     FCSKernel,
@@ -283,6 +281,7 @@ _test_pattern_monotone = pattern_monotone_test
 import missingly.accessor  # noqa: F401
 
 __all__ = [
+    "__version__",
     # Visualisation
     "matrix", "bar", "miss_case", "miss_var_pct", "vis_miss", "miss_which",
     "upset", "miss_patterns", "miss_cooccurrence", "heatmap", "dendrogram",

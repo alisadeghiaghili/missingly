@@ -99,8 +99,6 @@ def test_no_leakage_mean(train_test_split):
     imputer.fit(train)
     result = imputer.transform(test)
     _assert_no_missing(result)
-    # The imputed value for income NaN in train must equal train income mean
-    train_income_mean = train["income"].mean()
     train_result = imputer.transform(train)
     assert abs(train_result.loc[train_result.index[1], "age"] - train["age"].mean()) < 1e-6
 

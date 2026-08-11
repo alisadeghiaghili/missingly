@@ -14,7 +14,7 @@ All functions return a :class:`plotly.graph_objects.Figure`.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,9 @@ from missingly.visualisation._base import (
     _rtl_safe,
     _safe_labels,
 )
+
+if TYPE_CHECKING:
+    from plotly import graph_objects as go
 
 
 def _vis_miss_plotly(

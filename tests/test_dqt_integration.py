@@ -12,6 +12,7 @@ These tests verify that:
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import inspect
 import sys
 import warnings
@@ -22,11 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-try:
-    import data_quality_toolkit
-    HAS_DQT = True
-except ImportError:
-    HAS_DQT = False
+HAS_DQT = importlib.util.find_spec("data_quality_toolkit") is not None
 
 pytestmark = pytest.mark.skipif(
     not HAS_DQT,

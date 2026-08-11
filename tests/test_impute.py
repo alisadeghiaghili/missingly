@@ -105,7 +105,6 @@ def test_simple_imputers_cat_only(fn, cat_only_df):
 
 def test_categorical_dtype_preserved():
     """CategoricalDtype must survive imputation for all imputers."""
-    import pandas.api.types as pdtypes
     from missingly.impute import impute_knn, impute_rf, impute_gb
 
     methods = [

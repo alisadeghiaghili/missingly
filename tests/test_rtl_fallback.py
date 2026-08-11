@@ -28,8 +28,6 @@ Additional coverage
 
 from __future__ import annotations
 
-import importlib
-import re
 import warnings
 from unittest import mock
 from unittest.mock import MagicMock

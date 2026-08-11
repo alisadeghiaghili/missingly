@@ -6,11 +6,8 @@ of whether ``arabic-reshaper`` and ``python-bidi`` are installed.
 """
 from __future__ import annotations
 
-import importlib
 import logging
-import sys
 import warnings
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np

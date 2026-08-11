@@ -15,19 +15,17 @@ before being passed to matplotlib.
 from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from matplotlib.figure import Figure
 
 from missingly.visualisation._base import (
     _apply_rtl_font,
     _is_rtl,
-    _nullity,
     _rtl_safe,
     _rtl_safe_labels,
 )
