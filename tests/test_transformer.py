@@ -315,6 +315,14 @@ def test_invalid_strategy_raises():
         MissinglyImputer(strategy="interpolate")
 
 
+def test_set_params_rejects_invalid_strategy():
+    """set_params validates strategy before a later fit can silently no-op."""
+    imputer = MissinglyImputer()
+
+    with pytest.raises(ValueError, match="strategy"):
+        imputer.set_params(strategy="interpolate")
+
+
 # ---------------------------------------------------------------------------
 # Mutation safety
 # ---------------------------------------------------------------------------

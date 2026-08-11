@@ -271,6 +271,21 @@ class TestDiagnose:
         result = diagnose_missing(df)
         assert result["mcar_evidence"] == "insufficient_data"
 
+    def test_uses_fully_observed_numeric_predictors_for_mcar_test(self):
+        """A complete numeric covariate remains available to Little's test."""
+        rng = np.random.default_rng(20260811)
+        n_rows = 160
+        x = rng.normal(size=n_rows)
+        z = 0.4 * x + rng.normal(size=n_rows)
+        y = -0.3 * x + 0.2 * z + rng.normal(size=n_rows)
+        y[x > 0.7] = np.nan
+        df = pd.DataFrame({"x": x, "z": z, "y": y})
+
+        result = diagnose_missing(df)
+
+        assert result["mcar_evidence"] == "MCAR_rejected"
+        assert result["p_value"] < 0.05
+
     def test_rejects_non_dataframe(self):
         with pytest.raises(TypeError):
             diagnose_missing("not a df")
