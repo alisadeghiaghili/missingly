@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple
+from typing import Any, Mapping, Protocol, Sequence, Tuple
 
 import numpy as np
 import pandas as pd

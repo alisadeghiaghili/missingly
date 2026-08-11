@@ -9,7 +9,6 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from missingly import compare
 from missingly.compare import _method_name, compare_imputations, cv_compare_imputations
 from missingly import impute as _impute
 

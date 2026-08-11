@@ -27,7 +27,7 @@ import numpy as np
 
 from jinja2 import Environment, FileSystemLoader
 
-from .diagnostics import miss_var_summary, miss_case_summary, n_miss, pct_miss, mcar_test
+from .diagnostics import miss_case_summary, n_miss, pct_miss, mcar_test
 from .visualise import matrix, bar, heatmap, vis_miss, upset
 
 

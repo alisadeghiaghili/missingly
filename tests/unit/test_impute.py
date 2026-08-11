@@ -16,10 +16,8 @@ from missingly.impute import (
     make_imputer,
 )
 from missingly.exceptions import (
-    ImputationError,
     InsufficientDataError,
     InvalidStrategyError,
-    MissinglyError,
 )
 
 
