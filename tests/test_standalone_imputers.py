@@ -81,6 +81,9 @@ def test_pmm_honours_max_iter(monkeypatch):
         """Minimal deterministic regressor that records PMM prediction sweeps."""
 
         predict_calls = 0
+        coef_ = np.array([0.0])
+        sigma_ = np.zeros((1, 1))
+        intercept_ = 0.0
 
         def fit(self, X, y):
             """Accept a fitted conditional-regression dataset.
