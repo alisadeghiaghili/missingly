@@ -193,7 +193,8 @@ class ImputationPlan:
         if not isinstance(self.methods, Mapping) or not self.methods:
             raise ValueError("methods must be a nonempty mapping")
         for column, method in self.methods.items():
-            _require_nonempty_strings((column, method), "methods entries")
+            _require_nonempty_strings((column,), "method column names")
+            _require_nonempty_strings((method,), "method identifiers")
         for name, value in (("n_imputations", self.n_imputations), ("max_iter", self.max_iter)):
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
