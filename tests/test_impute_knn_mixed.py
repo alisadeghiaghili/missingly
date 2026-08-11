@@ -81,6 +81,24 @@ def test_mixed_no_nan_remains(small_mixed_df):
     assert result.isnull().sum().sum() == 0, "mixed: NaN values remain after imputation"
 
 
+def test_mixed_knn_duplicate_index_never_overwrites_observed_values():
+    """Mixed KNN must assign by position when the index has duplicate labels."""
+    df = pd.DataFrame(
+        {
+            "value": [1.0, np.nan, 3.0, 100.0],
+            "group": ["x", "y", "x", "y"],
+        },
+        index=["duplicate", "duplicate", "third", "fourth"],
+    )
+
+    result = impute_knn(df, n_neighbors=1, metric="mixed")
+
+    assert result.iloc[0]["value"] == 1.0
+    assert result.iloc[1]["value"] == 100.0
+    assert result.iloc[2]["value"] == 3.0
+    assert result.iloc[3]["value"] == 100.0
+
+
 # ---------------------------------------------------------------------------
 # 3. Obvious-neighbour test — mixed metric uses category correctly
 # ---------------------------------------------------------------------------
@@ -145,6 +163,22 @@ def test_gower_range():
     D = gower_distance(df)
     assert D.min() >= 0.0
     assert D.max() <= 1.0 + 1e-12
+
+
+def test_gower_supports_nullable_string_columns_with_missing_values():
+    """Nullable pandas strings must be valid categorical Gower inputs."""
+    df = pd.DataFrame(
+        {
+            "category": pd.Series(["a", pd.NA, "b"], dtype="string"),
+            "value": [1.0, 2.0, 3.0],
+        }
+    )
+
+    distance = gower_distance(df)
+
+    assert distance.shape == (3, 3)
+    assert np.isfinite(distance).all()
+    np.testing.assert_allclose(distance, distance.T)
 
 
 # ---------------------------------------------------------------------------

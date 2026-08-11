@@ -173,6 +173,20 @@ class TestHotdeckWeighted:
         result = impute_hotdeck_weighted(mixed_df, random_state=0)
         pd.testing.assert_index_equal(result.index, mixed_df.index)
 
+    def test_categorical_matchers_restrict_the_weighted_donor_pool(self):
+        """A categorical match must outweigh earlier rows from another group."""
+        df = pd.DataFrame(
+            {
+                "group": ["A", "A", "A", "A", "B", "B", "B", "B"],
+                "value": [1.0, 1.0, 1.0, np.nan, 100.0, 100.0, 100.0, np.nan],
+            }
+        )
+
+        result = impute_hotdeck_weighted(df, n_donors=1, random_state=0)
+
+        assert result.loc[3, "value"] == 1.0
+        assert result.loc[7, "value"] == 100.0
+
 
 # ---------------------------------------------------------------------------
 # MissinglyImputer(strategy='hotdeck') — inductive random donor policy

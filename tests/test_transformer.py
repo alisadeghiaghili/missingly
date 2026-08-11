@@ -155,6 +155,63 @@ def test_gb_transform_is_invariant_to_other_test_rows():
     assert alone.loc[0, "target"] == pytest.approx(together.loc[0, "target"])
 
 
+@pytest.mark.parametrize("strategy", ["knn", "mice", "rf", "gb", "hotdeck"])
+def test_single_row_all_missing_categorical_column_is_served(strategy):
+    """A single all-missing categorical serving row must not crash."""
+    train = pd.DataFrame(
+        {
+            "number": [1.0, 2.0, 3.0, 4.0],
+            "category": ["a", "b", "a", "b"],
+        }
+    )
+    serving = pd.DataFrame({"number": [1.5], "category": [np.nan]})
+
+    result = MissinglyImputer(strategy=strategy, random_state=0).fit(train).transform(serving)
+
+    assert result.loc[0, "number"] == 1.5
+    assert result.loc[0, "category"] in {"a", "b"}
+
+
+@pytest.mark.parametrize("strategy", ["rf", "gb"])
+def test_tree_transform_is_invariant_to_input_column_order(strategy):
+    """Tree models must use the feature order learned during fit."""
+    rng = np.random.default_rng(12)
+    feature = np.linspace(-2.0, 2.0, 80)
+    nuisance = rng.normal(size=80)
+    target = 10.0 * feature + rng.normal(scale=0.1, size=80)
+    train = pd.DataFrame({"target": target, "feature": feature, "nuisance": nuisance})
+    train.loc[::5, "target"] = np.nan
+    imputer = MissinglyImputer(strategy=strategy, random_state=0).fit(train)
+
+    canonical = pd.DataFrame({"target": [np.nan], "feature": [1.0], "nuisance": [0.0]})
+    reordered = canonical[["nuisance", "feature", "target"]]
+
+    canonical_result = imputer.transform(canonical)
+    reordered_result = imputer.transform(reordered)
+
+    assert reordered_result.loc[0, "target"] == pytest.approx(
+        canonical_result.loc[0, "target"]
+    )
+    assert reordered_result.columns.tolist() == train.columns.tolist()
+
+
+@pytest.mark.parametrize("strategy", ["knn", "mice"])
+def test_observed_unseen_categories_are_not_imputed_as_missing(strategy):
+    """An observed category outside the training vocabulary must be preserved."""
+    train = pd.DataFrame(
+        {
+            "number": [1.0, 2.0, 3.0, 4.0],
+            "category": ["a", "b", "a", "b"],
+        }
+    )
+    serving = pd.DataFrame({"number": [10.0, 11.0], "category": ["unseen", "a"]})
+
+    result = MissinglyImputer(strategy=strategy, random_state=0).fit(train).transform(serving)
+
+    assert result.loc[0, "category"] == "unseen"
+    assert result.loc[1, "category"] == "a"
+
+
 # ---------------------------------------------------------------------------
 # sklearn Pipeline compatibility
 # ---------------------------------------------------------------------------
