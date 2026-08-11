@@ -81,6 +81,9 @@ def test_pmm_honours_max_iter(monkeypatch):
         """Minimal deterministic regressor that records PMM prediction sweeps."""
 
         predict_calls = 0
+        coef_ = np.array([0.0])
+        sigma_ = np.zeros((1, 1))
+        intercept_ = 0.0
 
         def fit(self, X, y):
             """Accept a fitted conditional-regression dataset.
@@ -122,3 +125,54 @@ def test_pmm_honours_max_iter(monkeypatch):
 
     assert not result["y"].isna().any()
     assert CountingBayesianRidge.predict_calls == 3
+
+
+def test_pmm_matches_predicted_donor_scores_not_observed_values(monkeypatch):
+    """PMM chooses donors by predictive distance, not distance to raw outcomes."""
+    class ScoreBayesianRidge:
+        """Deterministic posterior model whose score is the sole feature value."""
+
+        coef_ = np.array([1.0])
+        sigma_ = np.zeros((1, 1))
+        intercept_ = 0.0
+
+        def fit(self, X, y):
+            """Accept a conditional-regression training set.
+
+            Parameters
+            ----------
+            X : np.ndarray
+                Observed predictor values.
+            y : np.ndarray
+                Observed target values.
+
+            Returns
+            -------
+            ScoreBayesianRidge
+                This deterministic test double.
+            """
+            return self
+
+        def predict(self, X):
+            """Return the conditional predictive mean for each row.
+
+            Parameters
+            ----------
+            X : np.ndarray
+                Predictor values.
+
+            Returns
+            -------
+            np.ndarray
+                The first predictor column as PMM matching scores.
+            """
+            return X[:, 0]
+
+    monkeypatch.setattr("missingly.impute.BayesianRidge", ScoreBayesianRidge)
+    frame = pd.DataFrame(
+        {"x": [0.0, 1.0, 2.0, 2.0], "y": [100.0, 200.0, 300.0, np.nan]}
+    )
+
+    result = impute_pmm(frame, max_iter=1, n_nearest_donors=1, random_state=0)
+
+    assert result.loc[3, "y"] == 300.0

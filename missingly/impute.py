@@ -1081,8 +1081,9 @@ def impute_pmm(
     Notes
     -----
     This is an experimental, single-dataset chained-equations approximation.
-    It redraws donor matches on each sweep, but does not yet draw regression
-    coefficients from their posterior.  Use a validated multiple-imputation
+    It uses type-1 PMM matching: donor predictive means use the fitted
+    regression coefficients, while incomplete-row means use a draw from the
+    BayesianRidge coefficient posterior.  Use a validated multiple-imputation
     workflow and sensitivity analysis for publication-critical inference.
     """
     validate_dataframe(df, param="df")
@@ -1122,13 +1123,19 @@ def impute_pmm(
 
             model = BayesianRidge()
             model.fit(X_obs_clean, y_obs)
-            y_pred = model.predict(X_miss_clean)
+            donor_scores = model.predict(X_obs_clean)
+            coefficient_draw = rng.multivariate_normal(model.coef_, model.sigma_)
+            recipient_scores = X_miss_clean @ coefficient_draw + model.intercept_
 
-            distances = np.abs(y_obs[np.newaxis, :] - y_pred[:, np.newaxis])
+            # Type-1 PMM: match a posterior-drawn recipient score to a donor
+            # score from the fitted model, then copy the donor's observed y.
+            distances = np.abs(
+                donor_scores[np.newaxis, :] - recipient_scores[:, np.newaxis]
+            )
             k = min(n_nearest_donors, len(y_obs))
             donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
-            rand_col = rng.integers(0, k, size=len(y_pred))
-            chosen_idx = donor_idx[np.arange(len(y_pred)), rand_col]
+            rand_col = rng.integers(0, k, size=len(recipient_scores))
+            chosen_idx = donor_idx[np.arange(len(recipient_scores)), rand_col]
             imputed_vals = y_obs[chosen_idx]
 
             miss_indices = missing_mask[missing_mask].index
