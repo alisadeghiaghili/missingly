@@ -161,6 +161,56 @@ class TestSingleImputation:
         with pytest.raises(ValueError, match="observed"):
             impute_mice(small_mixed_df, where=overimpute)
 
+    def test_numeric_bounds_clip_only_imputed_cells(self):
+        """Declared bounds constrain draws without changing observed data."""
+        class HighRegressor(BaseEstimator, RegressorMixin):
+            """Return an out-of-domain prediction to exercise bound clipping."""
+
+            def fit(self, X, y):
+                """Fit the deterministic test double.
+
+                Parameters
+                ----------
+                X : np.ndarray
+                    Predictor matrix.
+                y : np.ndarray
+                    Observed target values.
+
+                Returns
+                -------
+                HighRegressor
+                    This fitted test double.
+                """
+                return self
+
+            def predict(self, X):
+                """Return a deliberately out-of-range draw.
+
+                Parameters
+                ----------
+                X : np.ndarray
+                    Predictor matrix.
+
+                Returns
+                -------
+                np.ndarray
+                    One high value per prediction row.
+                """
+                return np.full(X.shape[0], 99.0)
+
+        frame = pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0], "age": [20.0, np.nan, 40.0, 50.0]})
+        result = impute_mice(frame, estimator=HighRegressor(), bounds={"age": (0.0, 80.0)})
+
+        assert result.loc[1, "age"] == 80.0
+        assert result.loc[0, "age"] == 20.0
+
+    def test_numeric_bounds_reject_unknown_or_invalid_intervals(self, small_mixed_df):
+        """Bounds must name numeric schema columns and have finite ascending limits."""
+        with pytest.raises(ValueError, match="unknown"):
+            impute_mice(small_mixed_df, bounds={"unknown": (0.0, 1.0)})
+        with pytest.raises(ValueError, match="lower"):
+            impute_mice(small_mixed_df, bounds={"age": (2.0, 1.0)})
+
 
 # ---------------------------------------------------------------------------
 # Test 2 — n_imputations=3: returns a list of DataFrames
