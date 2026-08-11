@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import BaseEstimator, RegressorMixin
 
 from missingly.mi_contracts import ImputationResult
 from missingly.impute import impute_mice
@@ -68,6 +69,72 @@ class TestSingleImputation:
             impute_mice(small_mixed_df, visit_sequence=["age", "unknown"])
         with pytest.raises(ValueError, match="exactly once"):
             impute_mice(small_mixed_df, visit_sequence=["age", "score"])
+
+    def test_predictor_matrix_limits_manual_fcs_features(self):
+        """A target row in predictor_matrix selects only its enabled columns."""
+        class RecordingRegressor(BaseEstimator, RegressorMixin):
+            """Record the number of selected FCS predictors in each fit."""
+
+            fitted_widths: list[int] = []
+
+            def fit(self, X, y):
+                """Record the selected predictor width.
+
+                Parameters
+                ----------
+                X : np.ndarray
+                    Conditional-model features.
+                y : np.ndarray
+                    Observed target values.
+
+                Returns
+                -------
+                RecordingRegressor
+                    This fitted deterministic estimator.
+                """
+                type(self).fitted_widths.append(X.shape[1])
+                return self
+
+            def predict(self, X):
+                """Return deterministic conditional predictions.
+
+                Parameters
+                ----------
+                X : np.ndarray
+                    Conditional-model features.
+
+                Returns
+                -------
+                np.ndarray
+                    One zero prediction per row.
+                """
+                return np.zeros(X.shape[0])
+
+        frame = pd.DataFrame(
+            {"x": [1.0, 2.0, 3.0, 4.0], "z": [5.0, 6.0, 7.0, 8.0], "y": [1.0, np.nan, 3.0, 4.0]}
+        )
+        matrix = pd.DataFrame(
+            [[0, 0, 0], [0, 0, 0], [1, 0, 0]],
+            index=["x", "z", "y"],
+            columns=["x", "z", "y"],
+            dtype=bool,
+        )
+
+        result = impute_mice(frame, max_iter=2, estimator=RecordingRegressor(), predictor_matrix=matrix)
+
+        assert not result["y"].isna().any()
+        assert RecordingRegressor.fitted_widths == [1, 1]
+
+    def test_predictor_matrix_rejects_misaligned_or_self_predictors(self, small_mixed_df):
+        """Predictor matrices require exact labels and a zero diagonal."""
+        misaligned = pd.DataFrame([[False]], index=["age"], columns=["age"])
+        with pytest.raises(ValueError, match="labels"):
+            impute_mice(small_mixed_df, predictor_matrix=misaligned)
+
+        labels = list(small_mixed_df.columns)
+        self_predictor = pd.DataFrame(True, index=labels, columns=labels)
+        with pytest.raises(ValueError, match="diagonal"):
+            impute_mice(small_mixed_df, predictor_matrix=self_predictor)
 
 
 # ---------------------------------------------------------------------------

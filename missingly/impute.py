@@ -568,6 +568,7 @@ def _run_mice_with_history(
     seed: int,
     use_sample_posterior: bool,
     visit_sequence: Optional[List[str]] = None,
+    predictor_matrix: Optional[pd.DataFrame] = None,
 ) -> Tuple[np.ndarray, Dict[str, List[float]]]:
     """Run MICE manually iteration-by-iteration to capture per-iteration means.
 
@@ -593,6 +594,9 @@ def _run_mice_with_history(
     visit_sequence : list of str, optional
         Ordered incomplete target columns to update in each sweep. ``None``
         preserves the default left-to-right order.
+    predictor_matrix : pandas.DataFrame, optional
+        Square validated 0/1 or boolean matrix whose target rows select feature
+        columns. ``None`` uses every non-target column.
 
     Returns
     -------
@@ -622,7 +626,12 @@ def _run_mice_with_history(
             if not orig_missing.any():
                 continue
 
-            feature_idx = [k for k in range(len(cols)) if k != j]
+            if predictor_matrix is None:
+                feature_idx = [k for k in range(len(cols)) if k != j]
+            else:
+                feature_idx = np.flatnonzero(
+                    predictor_matrix.loc[col, cols].to_numpy(dtype=bool)
+                ).tolist()
             X_train = X[~orig_missing][:, feature_idx]
             y_train = X[~orig_missing, j]
             X_pred_rows = X[orig_missing][:, feature_idx]
@@ -891,6 +900,7 @@ def impute_mice(
     return_history: bool = False,
     return_result: bool = False,
     visit_sequence: Optional[List[str]] = None,
+    predictor_matrix: Optional[pd.DataFrame] = None,
 ) -> Union[
     pd.DataFrame,
     List[pd.DataFrame],
@@ -942,6 +952,10 @@ def impute_mice(
     visit_sequence : list of str, optional
         Exact ordered set of columns with original missing values to update in
         every FCS sweep. ``None`` uses the legacy left-to-right order.
+    predictor_matrix : pandas.DataFrame, optional
+        Square boolean or 0/1 matrix indexed and columned by ``df.columns``.
+        A ``True`` / ``1`` entry at ``[target, predictor]`` enables that
+        predictor in the target's conditional model. The diagonal must be zero.
 
     Returns
     -------
@@ -991,13 +1005,26 @@ def impute_mice(
             raise ValueError(f"visit_sequence contains unknown columns: {unknown}")
         if len(visit_sequence) != len(set(visit_sequence)) or set(visit_sequence) != set(missing_targets):
             raise ValueError("visit_sequence must contain every missing target exactly once")
+    if predictor_matrix is not None:
+        if not isinstance(predictor_matrix, pd.DataFrame):
+            raise TypeError("predictor_matrix must be a pandas DataFrame")
+        expected_labels = tuple(df_norm.columns)
+        if tuple(predictor_matrix.index) != expected_labels or tuple(predictor_matrix.columns) != expected_labels:
+            raise ValueError("predictor_matrix labels must exactly match df.columns")
+        values = predictor_matrix.to_numpy()
+        if pd.isna(values).any() or not np.isin(values, [False, True, 0, 1]).all():
+            raise ValueError("predictor_matrix values must be boolean or 0/1")
+        if np.any(np.diag(values.astype(bool))):
+            raise ValueError("predictor_matrix diagonal must contain only zero values")
+        predictor_matrix = predictor_matrix.astype(bool)
 
     def _single_chain(
         seed: int,
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, List[float]]]]:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
+        capture_history = return_history or return_result
 
-        if return_history or return_result or visit_sequence is not None:
+        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None:
             # Use our manual per-iteration loop so we can capture history.
             missing_mask_df = df_work.isna()
             if estimator is None:
@@ -1015,6 +1042,7 @@ def impute_mice(
                 seed=seed,
                 use_sample_posterior=use_posterior,
                 visit_sequence=visit_sequence,
+                predictor_matrix=predictor_matrix,
             )
             df_imputed = pd.DataFrame(
                 imputed_array, index=df_norm.index, columns=df_work.columns
@@ -1025,7 +1053,9 @@ def impute_mice(
                     observed = df_norm[col].dropna()
                     if len(observed) > 0:
                         result[col] = result[col].fillna(observed.mode().iloc[0])
-            return result, history
+            if capture_history:
+                return result, history
+            return result
 
         # Fast path: delegate to sklearn's IterativeImputer (no history).
         if estimator is None:
