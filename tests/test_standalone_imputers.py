@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from missingly.impute import impute_logreg, impute_pmm, impute_polyreg
+from missingly.impute import impute_logreg, impute_pmm, impute_polr, impute_polyreg
 
 
 def _categorical_predictor_frame(outcome: str) -> pd.DataFrame:
@@ -55,6 +55,24 @@ def test_polyreg_runs_on_current_sklearn_and_reuses_feature_encoding():
     result = impute_polyreg(_categorical_predictor_frame("multiclass"), random_state=0)
 
     assert result.loc[result.index[-5:], "target"].tolist() == ["blue"] * 5
+
+
+def test_polr_uses_declared_ordinal_category_order():
+    """polr fits OrderedModel on ordered categories rather than object labels."""
+    frame = pd.DataFrame(
+        {
+            "score": [0.0] * 20 + [1.0] * 20 + [2.0] * 25,
+            "grade": pd.Categorical(
+                ["low"] * 20 + ["medium"] * 20 + ["high"] * 20 + [pd.NA] * 5,
+                categories=["low", "medium", "high"],
+                ordered=True,
+            ),
+        }
+    )
+
+    result = impute_polr(frame, max_iter=1, random_state=0)
+
+    assert result.loc[result.index[-5:], "grade"].tolist() == ["high"] * 5
 
 
 def test_pmm_honours_max_iter(monkeypatch):
