@@ -139,6 +139,9 @@ class TestMultipleImputation:
         assert set(result.data.plan.methods) == {"age", "score", "category"}
         assert len(result.histories) == 2
         assert all(isinstance(trace, tuple) for history in result.histories for trace in history.values())
+        assert result.validation["structural_validation_passed"] is True
+        assert result.validation["convergence_assessed"] is False
+        assert any("mice_convergence" in warning for warning in result.warnings)
         for imputed in result.data.imputations:
             assert not imputed.isna().any(axis=None)
             pd.testing.assert_series_equal(imputed.loc[0], small_mixed_df.loc[0])
