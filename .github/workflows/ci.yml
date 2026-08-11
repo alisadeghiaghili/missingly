@@ -8,6 +8,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  polars:
+    name: Native Polars adapter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install native Polars adapter dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[test,polars]'
+
+      - name: Test eager and lazy native Polars behavior
+        run: pytest tests/test_polars.py -v
+
+      - name: Execute Polars adapter docstring examples
+        run: python -m doctest missingly/polars_adapter.py
+
   quality:
     name: Python quality baseline
     runs-on: ubuntu-latest
