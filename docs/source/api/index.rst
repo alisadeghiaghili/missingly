@@ -16,3 +16,4 @@ This page contains the full API documentation for `missingly`.
    provenance
    benchmark
    mi_contracts
+   polars

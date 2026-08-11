@@ -60,6 +60,9 @@ quality = [
 interactive = [
     "plotly>=5.0.0",
 ]
+polars = [
+    "polars>=1.0.0",
+]
 rtl = [
     "arabic-reshaper>=3.0.0",
     "python-bidi>=0.4.2",
