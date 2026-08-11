@@ -13,6 +13,7 @@ import pytest
 from missingly.manipulation import (
     add_any_miss_var,
     bind_shadow_matrix,
+    miss_as_feature,
     replace_with_na,
     replace_with_na_all,
 )
@@ -203,6 +204,16 @@ def test_replace_with_na_callable():
     assert not pd.isna(result.loc[0, "a"])
 
 
+def test_replace_with_na_list_preserves_original_input():
+    """List-based replacement handles every configured sentinel without mutation."""
+    df = pd.DataFrame({"a": [1, -99, -88], "b": ["ok", "N/A", "ok"]})
+
+    result = replace_with_na(df, replace={"a": [-99, -88], "b": ["N/A"]})
+
+    assert result.isna().sum().to_dict() == {"a": 2, "b": 1}
+    assert df.loc[1, "a"] == -99
+
+
 # ---------------------------------------------------------------------------
 # replace_with_na_all (smoke)
 # ---------------------------------------------------------------------------
@@ -214,6 +225,23 @@ def test_replace_with_na_all():
     assert pd.isna(result.loc[0, "b"])
     assert pd.isna(result.loc[2, "b"])
     assert result.loc[0, "a"] == 1
+
+
+def test_miss_as_feature_auto_detects_sentinels_and_can_drop_originals():
+    """Feature indicators preserve order and support a compact indicator-only view."""
+    df = pd.DataFrame({"a": [1.0, np.nan], "b": [0, -99], "c": [1, 2]})
+
+    with pytest.warns(FutureWarning):
+        result = miss_as_feature(df, missing_values=[-99], keep_original=False)
+
+    assert list(result.columns) == ["a_NA", "b_NA", "c"]
+    assert result.to_dict("list") == {"a_NA": [0, 1], "b_NA": [0, 1], "c": [1, 2]}
+
+
+def test_miss_as_feature_rejects_unknown_requested_columns(simple_df):
+    """Explicit feature selection fails loudly when a requested column is absent."""
+    with pytest.warns(FutureWarning), pytest.raises(KeyError, match="Columns not found"):
+        miss_as_feature(simple_df, columns=["missing"])
 
 
 # ---------------------------------------------------------------------------
