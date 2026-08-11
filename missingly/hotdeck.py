@@ -98,41 +98,53 @@ def _gower_distances_to_donors(
         Gower distance in [0, 1] for each donor row.
     """
     n_donors, n_features = X_donors.shape
-    contributions = np.zeros((n_donors, n_features), dtype=np.float64)
-    weights = np.zeros(n_features, dtype=np.float64)
+    numerator = np.zeros(n_donors, dtype=np.float64)
+    denominator = np.zeros(n_donors, dtype=np.float64)
 
     for j in range(n_features):
         r_j = row_miss[j]
         d_j = X_donors[:, j]
 
         # Skip features where the recipient itself is missing
-        if np.isnan(r_j):
+        if bool(pd.isna(r_j)):
             continue
 
-        donor_observed = ~np.isnan(d_j)
+        donor_observed = np.fromiter(
+            (not bool(pd.isna(value)) for value in d_j),
+            dtype=bool,
+            count=n_donors,
+        )
         if not donor_observed.any():
             continue
 
-        weights[j] = 1.0
         if col_is_numeric[j]:
             rng = col_ranges[j]
             if rng == 0.0:
-                contributions[:, j] = 0.0
+                contribution = np.zeros(n_donors, dtype=np.float64)
             else:
-                diff = np.abs(d_j - r_j)
-                contributions[:, j] = np.where(donor_observed, diff / rng, 0.5)
+                donor_numeric = pd.to_numeric(
+                    pd.Series(d_j), errors="coerce"
+                ).to_numpy(dtype=np.float64)
+                contribution = np.abs(donor_numeric - float(r_j)) / rng
         else:
-            # Categorical: 0 if equal, 1 if different, 0.5 if donor missing
-            contributions[:, j] = np.where(
-                donor_observed,
-                (d_j != r_j).astype(np.float64),
-                0.5,
+            contribution = np.fromiter(
+                (0.0 if value == r_j else 1.0 for value in d_j),
+                dtype=np.float64,
+                count=n_donors,
             )
 
-    total_weight = weights.sum()
-    if total_weight == 0.0:
-        return np.zeros(n_donors, dtype=np.float64)
-    return contributions.sum(axis=1) / total_weight
+        # Missing-value handling is pairwise: donors that do not have this
+        # matcher must not receive a fixed penalty or share a denominator with
+        # donors for which it is observed.
+        numerator[donor_observed] += contribution[donor_observed]
+        denominator[donor_observed] += 1.0
+
+    return np.divide(
+        numerator,
+        denominator,
+        out=np.ones(n_donors, dtype=np.float64),
+        where=denominator > 0.0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -429,36 +441,13 @@ def impute_hotdeck_weighted(
         feat_is_num = col_is_numeric[feat_idx]
         feat_ranges = col_ranges[feat_idx]
 
-        # Convert numeric sub-arrays to float for distance computation
-        X_donors_f = np.empty_like(X_donors, dtype=np.float64)
-        for fj in range(X_donors_f.shape[1]):
-            if feat_is_num[fj]:
-                X_donors_f[:, fj] = pd.to_numeric(
-                    pd.Series(X_donors[:, fj]), errors="coerce"
-                ).to_numpy(dtype=np.float64)
-            else:
-                X_donors_f[:, fj] = np.nan  # placeholder; handled in distance fn
-
         orig_dtype = df[col].dtype
         imputed_vals = []
 
         for miss_row in missing_rows:
             row_feat = X[miss_row, feat_idx].copy()
-            row_feat_f = np.empty(len(feat_idx), dtype=np.float64)
-            for fj in range(len(feat_idx)):
-                if feat_is_num[fj]:
-                    try:
-                        row_feat_f[fj] = float(row_feat[fj])
-                    except (TypeError, ValueError):
-                        row_feat_f[fj] = np.nan
-                else:
-                    row_feat_f[fj] = np.nan  # categorical handled in gower fn
-
-            # Build a unified float matrix for numeric cols; pass object for cat
-            # We use a simplified Gower that handles numeric+categorical via
-            # pre-computed indicator.
             dists = _gower_distances_to_donors(
-                row_feat_f, X_donors_f, feat_is_num, feat_ranges
+                row_feat, X_donors, feat_is_num, feat_ranges
             )
 
             k = min(n_donors, len(donor_rows))

@@ -1592,9 +1592,9 @@ def _impute_knn_gower(
             nn_idx = observed_idx[np.argsort(row_dists)[:k]]
             donors = df.iloc[nn_idx][col]
             if pd.api.types.is_numeric_dtype(df[col]):
-                result.at[df.index[i], col] = donors.mean()
+                result.iloc[i, result.columns.get_loc(col)] = donors.mean()
             else:
-                result.at[df.index[i], col] = donors.mode().iloc[0]
+                result.iloc[i, result.columns.get_loc(col)] = donors.mode().iloc[0]
 
     return result
 

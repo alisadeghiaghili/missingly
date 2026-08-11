@@ -59,7 +59,8 @@ def gower_distance(
     Parameters
     ----------
     df : pd.DataFrame
-        Input DataFrame.  May contain ``np.nan`` / ``None`` in any column.
+        Input DataFrame.  May contain ``np.nan``, ``None``, or ``pd.NA`` in any
+        column.
         The index is ignored; rows are treated positionally.
     cat_cols : list of str or None, default None
         Column names to treat as categorical.  If *None*, columns with
@@ -140,12 +141,14 @@ def gower_distance(
             for col in cat_cols:
                 xi = cat_arrays[col][i]
                 xj = cat_arrays[col][j]
-                # Treat None / nan-like as missing
-                xi_miss = xi is None or (isinstance(xi, float) and np.isnan(xi))
-                xj_miss = xj is None or (isinstance(xj, float) and np.isnan(xj))
+                # ``pd.isna`` handles pandas extension scalars such as ``pd.NA``.
+                # Calling ``xi == xj`` before this check is unsafe because
+                # ``pd.NA == value`` has no truth value.
+                xi_miss = bool(pd.isna(xi))
+                xj_miss = bool(pd.isna(xj))
                 if xi_miss or xj_miss:
                     continue
-                total_s += 0.0 if xi == xj else 1.0
+                total_s += 0.0 if bool(xi == xj) else 1.0
                 valid_k += 1
 
             d = (total_s / valid_k) if valid_k > 0 else 1.0
