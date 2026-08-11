@@ -212,6 +212,29 @@ def test_observed_unseen_categories_are_not_imputed_as_missing(strategy):
     assert result.loc[1, "category"] == "a"
 
 
+@pytest.mark.parametrize("strategy", ["knn", "mice"])
+def test_observed_unseen_categorical_dtype_is_preserved(strategy):
+    """Restoring an unseen category must retain a valid categorical dtype."""
+    train = pd.DataFrame(
+        {
+            "number": [1.0, 2.0, 3.0, 4.0],
+            "category": pd.Categorical(["a", "b", "a", "b"]),
+        }
+    )
+    serving = pd.DataFrame(
+        {
+            "number": [10.0, 11.0],
+            "category": pd.Categorical(["unseen", "a"], categories=["a", "b", "unseen"]),
+        }
+    )
+
+    result = MissinglyImputer(strategy=strategy, random_state=0).fit(train).transform(serving)
+
+    assert isinstance(result["category"].dtype, pd.CategoricalDtype)
+    assert "unseen" in result["category"].cat.categories
+    assert result.loc[0, "category"] == "unseen"
+
+
 # ---------------------------------------------------------------------------
 # sklearn Pipeline compatibility
 # ---------------------------------------------------------------------------

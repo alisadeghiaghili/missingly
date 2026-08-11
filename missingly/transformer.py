@@ -209,14 +209,100 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
         return result
 
+    def _coerce_transform_categoricals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Represent fitted categorical columns as objects before encoding.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Schema-validated transform input in fit-time column order.
+
+        Returns
+        -------
+        pd.DataFrame
+            Copy with categorical columns represented as ``object`` so an
+            all-missing serving batch cannot select sklearn's numeric branch.
+
+        Examples
+        --------
+        A one-row ``float64`` all-missing categorical column is converted before
+        it reaches the fitted ``OrdinalEncoder``.
+        """
+        result = df.copy()
+        for column in self.cat_cols_:
+            if pd.api.types.is_numeric_dtype(result[column]):
+                result[column] = result[column].astype(object)
+        return result
+
     def _encode_cats(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ordinal-encode categorical columns using the fitted encoder."""
+        """Ordinal-encode fitted categorical columns using object input.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input with the fitted schema and column order.
+
+        Returns
+        -------
+        pd.DataFrame
+            Numeric feature matrix suitable for sklearn estimators.
+
+        Examples
+        --------
+        Missing categorical values remain encoded as ``np.nan``; observed
+        unseen values receive the encoder's configured unknown representation.
+        """
         df_work = df.copy()
         if self.cat_cols_ and self.encoder_ is not None:
-            df_work[self.cat_cols_] = self.encoder_.transform(
-                df[self.cat_cols_]
-            )
+            categorical = df_work[self.cat_cols_].astype(object)
+            categorical = categorical.where(categorical.notna(), other=np.nan)
+            df_work[self.cat_cols_] = self.encoder_.transform(categorical)
         return df_work.astype(float)
+
+    def _restore_observed_unknown_categories(
+        self,
+        result: pd.DataFrame,
+        original: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Restore observed categories outside the fitted training vocabulary.
+
+        Parameters
+        ----------
+        result : pd.DataFrame
+            Decoded imputation result produced from encoded features.
+        original : pd.DataFrame
+            Canonicalized transform input before encoding.
+
+        Returns
+        -------
+        pd.DataFrame
+            Result in which observed unknown categories are preserved rather
+            than treated as values requiring imputation.
+
+        Examples
+        --------
+        If training observed ``"a"`` and ``"b"`` while a serving row contains
+        ``"unseen"``, the returned row still contains ``"unseen"``.
+        """
+        if not self.cat_cols_ or self.encoder_ is None:
+            return result
+
+        restored = result.copy()
+        for position, column in enumerate(self.cat_cols_):
+            source = original[column]
+            known_values = pd.Index(self.encoder_.categories_[position])
+            unknown_mask = source.notna() & ~source.isin(known_values)
+            if not unknown_mask.any():
+                continue
+
+            if isinstance(restored[column].dtype, pd.CategoricalDtype):
+                additions = pd.Index(source.loc[unknown_mask].unique()).difference(
+                    restored[column].cat.categories
+                )
+                if len(additions):
+                    restored[column] = restored[column].cat.add_categories(additions)
+            restored.loc[unknown_mask, column] = source.loc[unknown_mask]
+        return restored
 
     def _decode_cats(self, df: pd.DataFrame) -> pd.DataFrame:
         """Inverse-transform ordinal-encoded categorical columns."""
@@ -466,7 +552,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 f"{sorted(extra_cols)}"
             )
 
+        X = X.loc[:, self.feature_names_in_]
         X = self._normalize(X)
+        X = self._coerce_transform_categoricals(X)
         result = X.copy()
         strategy = self.strategy
 
@@ -492,12 +580,14 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             arr = self.imputer_.transform(X_enc)
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
             result = self._decode_cats(df_enc)
+            result = self._restore_observed_unknown_categories(result, X)
 
         elif strategy == "mice":
             X_enc = self._encode_cats(X)
             arr = self.imputer_.transform(X_enc)
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
             result = self._decode_cats(df_enc)
+            result = self._restore_observed_unknown_categories(result, X)
 
         elif strategy == "pmm":
             result = self._transform_pmm(X)
