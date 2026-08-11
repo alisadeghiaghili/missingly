@@ -6,7 +6,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from missingly.polars import polars_missing_summary
+from missingly.polars_adapter import polars_missing_summary
 
 
 def test_polars_summary_preserves_eager_polars_type_and_null_policy() -> None:
