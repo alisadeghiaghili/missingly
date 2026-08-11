@@ -569,6 +569,7 @@ def _run_mice_with_history(
     use_sample_posterior: bool,
     visit_sequence: Optional[List[str]] = None,
     predictor_matrix: Optional[pd.DataFrame] = None,
+    bounds: Optional[Dict[str, Tuple[float, float]]] = None,
 ) -> Tuple[np.ndarray, Dict[str, List[float]]]:
     """Run MICE manually iteration-by-iteration to capture per-iteration means.
 
@@ -597,6 +598,9 @@ def _run_mice_with_history(
     predictor_matrix : pandas.DataFrame, optional
         Square validated 0/1 or boolean matrix whose target rows select feature
         columns. ``None`` uses every non-target column.
+    bounds : dict of str to tuple of float, optional
+        Inclusive lower and upper bounds applied only to newly imputed numeric
+        target values.
 
     Returns
     -------
@@ -651,6 +655,10 @@ def _run_mice_with_history(
                     preds = est.predict(X_pred_rows)
             except (ValueError, np.linalg.LinAlgError, NotFittedError):
                 preds = np.full(orig_missing.sum(), float(np.mean(y_train)))
+
+            if bounds is not None and col in bounds:
+                lower, upper = bounds[col]
+                preds = np.clip(preds, lower, upper)
 
             X[orig_missing, j] = preds
             history.setdefault(col, []).append(float(np.mean(preds)))
@@ -902,6 +910,7 @@ def impute_mice(
     visit_sequence: Optional[List[str]] = None,
     predictor_matrix: Optional[pd.DataFrame] = None,
     where: Optional[pd.DataFrame] = None,
+    bounds: Optional[Dict[str, Tuple[float, float]]] = None,
 ) -> Union[
     pd.DataFrame,
     List[pd.DataFrame],
@@ -961,6 +970,9 @@ def impute_mice(
         Boolean mask aligned exactly to ``df``. ``True`` permits imputation of
         an originally missing cell; ``False`` retains it as missing. Over-
         imputation of originally observed cells is rejected.
+    bounds : dict of str to tuple of float, optional
+        Inclusive numeric bounds per target column. Bounds are applied only to
+        newly imputed values and must use finite ascending limits.
 
     Returns
     -------
@@ -1036,6 +1048,22 @@ def impute_mice(
         if np.any(np.diag(values.astype(bool))):
             raise ValueError("predictor_matrix diagonal must contain only zero values")
         predictor_matrix = predictor_matrix.astype(bool)
+    if bounds is not None:
+        if not isinstance(bounds, dict):
+            raise TypeError("bounds must be a dictionary of column intervals")
+        unknown_bounds = sorted(set(bounds) - set(df_norm.columns))
+        if unknown_bounds:
+            raise ValueError(f"bounds contains unknown columns: {unknown_bounds}")
+        for column, interval in bounds.items():
+            if not pd.api.types.is_numeric_dtype(df_norm[column]):
+                raise ValueError(f"bounds column {column!r} must be numeric")
+            if not isinstance(interval, tuple) or len(interval) != 2:
+                raise TypeError("each bounds interval must be a (lower, upper) tuple")
+            lower, upper = interval
+            if not all(isinstance(value, (int, float)) and np.isfinite(value) for value in interval):
+                raise ValueError("bounds must contain finite numeric limits")
+            if lower > upper:
+                raise ValueError("bounds lower limit must not exceed upper limit")
 
     def _single_chain(
         seed: int,
@@ -1043,7 +1071,7 @@ def impute_mice(
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
         capture_history = return_history or return_result
 
-        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None or where is not None:
+        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None or where is not None or bounds is not None:
             # Use our manual per-iteration loop so we can capture history.
             missing_mask_df = imputation_mask.loc[:, df_work.columns]
             if estimator is None:
@@ -1062,6 +1090,7 @@ def impute_mice(
                 use_sample_posterior=use_posterior,
                 visit_sequence=visit_sequence,
                 predictor_matrix=predictor_matrix,
+                bounds=bounds,
             )
             df_imputed = pd.DataFrame(
                 imputed_array, index=df_norm.index, columns=df_work.columns
