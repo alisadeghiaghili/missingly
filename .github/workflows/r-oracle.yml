@@ -99,15 +99,36 @@ jobs:
             tests/fixtures/mice_numeric_fcs/numeric_fcs.csv \
             r-reference-artifact/mice_numeric_fcs_reference.json
 
+      - name: Set up Python for cross-tool comparison
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Missingly comparison dependencies
+        run: pip install -e '.[test]'
+
+      - name: Generate Missingly comparison evidence
+        run: |
+          python tests/fixtures/mice_numeric_fcs/generate_missingly_reference.py \
+            tests/fixtures/mice_numeric_fcs/numeric_fcs.csv \
+            r-reference-artifact/missingly_numeric_fcs_reference.json
+
       - name: Validate R evidence schema
         run: |
           python tests/fixtures/mice_numeric_fcs/validate_mice_reference.py \
             r-reference-artifact/mice_numeric_fcs_reference.json \
             tests/fixtures/mice_numeric_fcs/benchmark_manifest.json
 
+      - name: Validate scoped Missingly versus R comparison
+        run: |
+          python tests/fixtures/mice_numeric_fcs/validate_cross_tool_comparison.py \
+            r-reference-artifact/mice_numeric_fcs_reference.json \
+            r-reference-artifact/missingly_numeric_fcs_reference.json \
+            tests/fixtures/mice_numeric_fcs/cross_tool_contract.json
+
       - name: Upload R mice evidence artifact
         uses: actions/upload-artifact@v4
         with:
           name: mice-numeric-fcs-reference
-          path: r-reference-artifact/mice_numeric_fcs_reference.json
+          path: r-reference-artifact/
           if-no-files-found: error
