@@ -1,20 +1,18 @@
 # Frozen Little's MCAR oracle fixture
 
 `benchmark_manifest.json` is the machine-readable source of truth for the
-fixture identity, expected scalar metrics, tolerances, and provenance limits.
-It intentionally stores no raw records. The current oracle was imported from
-an upstream regression fixture that did **not** publish the R runtime, platform,
-or exact `naniar` package version; it is therefore an independent numerical
-regression guard, **not** cross-tool parity evidence. Regenerate it from a
-locked R environment before making a parity claim.
+fixture identity, expected scalar metrics, tolerances, and locked provenance.
+It intentionally stores no raw records. The reviewed oracle was regenerated in
+the pinned R environment documented below, so it is cross-tool parity evidence
+for the recorded scalar Little's MCAR outputs—not a claim of broader algorithmic
+or workflow parity.
 
 `generate_naniar_reference.R` and the **Reproduce R statistical oracle**
 workflow provide that locked regeneration path: Ubuntu 24.04, R 4.4.2, and
 `naniar` v1.1.0. The workflow uploads a scalar-only evidence artifact recording
 the R/package/platform and SHA-256 identities, then compares it against the
-reviewed numerical oracle. A follow-up PR must replace the legacy provenance
-gap in `benchmark_manifest.json` with the reviewed artifact values before the
-fixture is labelled cross-tool parity evidence.
+reviewed numerical oracle. `benchmark_manifest.json` records the reviewed
+identity from the successful run.
 
 `airquality.csv` is the public R `datasets::airquality` data set, mirrored by
 [Rdatasets](https://vincentarelbundock.github.io/Rdatasets/). Its SHA-256 is

@@ -36,11 +36,13 @@ def test_airquality_fixture_hash_matches_its_benchmark_manifest(benchmark_manife
     assert sha256(_AIRQUALITY.read_bytes()).hexdigest() == benchmark_manifest.dataset_sha256
 
 
-def test_imported_oracle_manifest_is_explicit_about_its_provenance_gap(benchmark_manifest):
-    """Do not silently present an unversioned imported regression value as parity proof."""
-    assert "not published" in benchmark_manifest.reference_tool_version
-    assert "not published" in benchmark_manifest.reference_platform
-    assert any("before claiming cross-tool parity" in item for item in benchmark_manifest.known_differences)
+def test_oracle_manifest_records_locked_r_provenance(benchmark_manifest):
+    """The reviewed fixture records exact R/package/platform/script identities."""
+    assert benchmark_manifest.reference_tool_version == "1.1.0"
+    assert benchmark_manifest.reference_platform.startswith("R 4.4.2 on x86_64-pc-linux-gnu")
+    assert benchmark_manifest.reference_script_sha256 == (
+        "34881286f33410c28370114a077834b90726eea8af95a95466a30c92c5091d11"
+    )
 
 
 def test_little_mcar_matches_frozen_naniar_oracle(airquality, benchmark_manifest):

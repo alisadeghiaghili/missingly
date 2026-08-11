@@ -19,7 +19,7 @@ from missingly._version import __version__
 
 __all__ = ["BenchmarkManifest"]
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _MANIFEST_KEYS = {
     "schema_version",
@@ -30,6 +30,7 @@ _MANIFEST_KEYS = {
     "reference_tool",
     "reference_tool_version",
     "reference_platform",
+    "reference_script_sha256",
     "method",
     "missing_value_policy",
     "estimand",
@@ -90,6 +91,8 @@ class BenchmarkManifest:
         Exact version of the reference tool or package.
     reference_platform : str
         Operating system and runtime/platform used for the reference output.
+    reference_script_sha256 : str
+        Lowercase SHA-256 of the script that produced the reference output.
     method : str
         Fully qualified reference method and material configuration summary.
     missing_value_policy : str
@@ -128,6 +131,7 @@ class BenchmarkManifest:
     ...     reference_tool="R naniar",
     ...     reference_tool_version="1.1.0",
     ...     reference_platform="R 4.4 on Linux",
+    ...     reference_script_sha256="b" * 64,
     ...     method="naniar::mcar_test",
     ...     missing_value_policy="NA values retained",
     ...     estimand="Little MCAR chi-square",
@@ -147,6 +151,7 @@ class BenchmarkManifest:
     reference_tool: str
     reference_tool_version: str
     reference_platform: str
+    reference_script_sha256: str
     method: str
     missing_value_policy: str
     estimand: str
@@ -175,6 +180,12 @@ class BenchmarkManifest:
             raise TypeError("dataset_sha256 must be a lowercase hexadecimal string")
         if not _SHA256_PATTERN.fullmatch(self.dataset_sha256):
             raise ValueError("dataset_sha256 must be a lowercase 64-character SHA-256")
+        if not isinstance(self.reference_script_sha256, str):
+            raise TypeError("reference_script_sha256 must be a lowercase hexadecimal string")
+        if not _SHA256_PATTERN.fullmatch(self.reference_script_sha256):
+            raise ValueError(
+                "reference_script_sha256 must be a lowercase 64-character SHA-256"
+            )
         if self.seed is not None and (
             isinstance(self.seed, bool) or not isinstance(self.seed, int)
         ):
@@ -199,7 +210,7 @@ class BenchmarkManifest:
         --------
         >>> manifest = BenchmarkManifest(
         ...     "toy", "CC0", "b" * 64, "https://example.test/toy",
-        ...     "reference", "1.0", "Linux", "method", "NA", "mean",
+        ...     "reference", "1.0", "Linux", "b" * 64, "method", "NA", "mean",
         ...     {"estimate": 1.0}, {"estimate": 0.01},
         ... )
         >>> sorted(manifest.to_dict())[0]
@@ -222,7 +233,7 @@ class BenchmarkManifest:
         --------
         >>> manifest = BenchmarkManifest(
         ...     "toy", "CC0", "c" * 64, "https://example.test/toy",
-        ...     "reference", "1.0", "Linux", "method", "NA", "mean",
+        ...     "reference", "1.0", "Linux", "c" * 64, "method", "NA", "mean",
         ...     {"estimate": 1.0}, {"estimate": 0.01},
         ... )
         >>> manifest.to_json() == manifest.to_json()
@@ -245,7 +256,7 @@ class BenchmarkManifest:
         --------
         >>> manifest = BenchmarkManifest(
         ...     "toy", "CC0", "d" * 64, "https://example.test/toy",
-        ...     "reference", "1.0", "Linux", "method", "NA", "mean",
+        ...     "reference", "1.0", "Linux", "d" * 64, "method", "NA", "mean",
         ...     {"estimate": 1.0}, {"estimate": 0.01},
         ... )
         >>> len(manifest.sha256())
@@ -279,7 +290,7 @@ class BenchmarkManifest:
         --------
         >>> manifest = BenchmarkManifest(
         ...     "toy", "CC0", "e" * 64, "https://example.test/toy",
-        ...     "reference", "1.0", "Linux", "method", "NA", "mean",
+        ...     "reference", "1.0", "Linux", "e" * 64, "method", "NA", "mean",
         ...     {"estimate": 1.0}, {"estimate": 0.01},
         ... )
         >>> BenchmarkManifest.from_dict(manifest.to_dict()) == manifest
