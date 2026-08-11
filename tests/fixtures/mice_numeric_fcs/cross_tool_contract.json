@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "reference_tool": "R mice",
+  "reference_tool_version": "3.19.0",
+  "seed": 20260811,
+  "dataset_sha256": "9469f77a9c2ae5c63f22e16e5e8a974070c65af4c9d84adb87759aacafc9bd1a",
+  "estimand": "Pooled mean of each completed numeric column across three imputations",
+  "tolerances": {
+    "pooled_mean_x1": 0.2,
+    "pooled_mean_x2": 0.2,
+    "pooled_mean_x3": 0.5,
+    "pooled_mean_outcome": 0.2
+  }
+}
