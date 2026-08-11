@@ -47,6 +47,7 @@ metrics <- unlist(lapply(seq_along(completed), function(chain) {
   stats::setNames(
     vapply(completed[[chain]], mean, numeric(1L)),
     paste0("chain_", chain, "_mean_", names(completed[[chain]]))
+  )
 }), use.names = TRUE)
 
 reference <- list(
