@@ -46,6 +46,29 @@ class TestSingleImputation:
         result = impute_mice(small_mixed_df, n_imputations=1, max_iter=2)
         assert isinstance(result, pd.DataFrame)
 
+    def test_visit_sequence_controls_manual_fcs_sweep_order(self):
+        """A requested FCS visit sequence determines the history insertion order."""
+        frame = pd.DataFrame(
+            {"a": [1.0, np.nan, 3.0, 4.0], "b": [2.0, 3.0, np.nan, 5.0], "c": [1.0, 2.0, 3.0, 4.0]}
+        )
+
+        _, history = impute_mice(
+            frame,
+            max_iter=2,
+            random_state=0,
+            return_history=True,
+            visit_sequence=["b", "a"],
+        )
+
+        assert list(history) == ["b", "a"]
+
+    def test_visit_sequence_rejects_unknown_or_incomplete_targets(self, small_mixed_df):
+        """An FCS visit sequence must contain every missing target exactly once."""
+        with pytest.raises(ValueError, match="unknown"):
+            impute_mice(small_mixed_df, visit_sequence=["age", "unknown"])
+        with pytest.raises(ValueError, match="exactly once"):
+            impute_mice(small_mixed_df, visit_sequence=["age", "score"])
+
 
 # ---------------------------------------------------------------------------
 # Test 2 — n_imputations=3: returns a list of DataFrames
