@@ -9,8 +9,70 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from missingly.impute import impute_logreg, impute_pmm, impute_polr, impute_polyreg
+from missingly.impute import (
+    _decode,
+    _encode_feature_pair,
+    _fill_feature_matrix,
+    _is_nan_scalar,
+    _restore_categorical_dtype,
+    impute_logreg,
+    impute_pmm,
+    impute_polr,
+    impute_polyreg,
+)
+
+
+def test_feature_pair_validates_shape_and_uses_shared_category_codes():
+    """Conditional models must reject incompatible shapes and share codes."""
+    with pytest.raises(ValueError, match="two-dimensional"):
+        _encode_feature_pair(
+            np.array(["a"], dtype=object), np.array([["a"]], dtype=object)
+        )
+    with pytest.raises(ValueError, match="same number of columns"):
+        _encode_feature_pair(
+            np.array([["a"]], dtype=object),
+            np.array([["a", "b"]], dtype=object),
+        )
+
+    observed, missing = _encode_feature_pair(
+        np.array([["a"], ["e"]], dtype=object),
+        np.array([["e"]], dtype=object),
+    )
+
+    assert observed[1, 0] == missing[0, 0]
+
+
+def test_missing_helpers_preserve_nullable_missing_and_safe_fallbacks():
+    """Nullable missing scalars and all-missing feature columns stay safe."""
+    observed, missing = _fill_feature_matrix(
+        np.array([[np.nan], [np.nan]]), np.array([[np.nan]])
+    )
+    assert np.array_equal(observed, np.zeros((2, 1)))
+    assert np.array_equal(missing, np.zeros((1, 1)))
+    assert _is_nan_scalar(pd.NA)
+
+    restored = _restore_categorical_dtype(
+        pd.Series(["not-an-integer"]), np.dtype("int64")
+    )
+    assert restored.tolist() == ["not-an-integer"]
+
+
+def test_decode_uses_a_stable_categorical_fallback_for_nan_codes():
+    """Decoding NaN category codes must yield a valid declared category."""
+    frame = pd.DataFrame({"category": [np.nan, np.nan]})
+    category_dtype = pd.CategoricalDtype(["a", "b"], ordered=True)
+
+    decoded = _decode(
+        frame,
+        ["category"],
+        type("Encoder", (), {"categories_": [np.array(["a", "b"])]})(),
+        {"category": category_dtype},
+    )
+
+    assert decoded["category"].tolist() == ["a", "a"]
+    assert decoded["category"].dtype == category_dtype
 
 
 def _categorical_predictor_frame(outcome: str) -> pd.DataFrame:
