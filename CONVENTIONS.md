@@ -16,6 +16,62 @@ comparison, and reporting on those.
 
 ---
 
+## [2026-08-11] Verified critical-recovery program
+
+### Evidence status
+
+An independent source review and local reproductions confirmed that a passing test suite
+is not sufficient evidence of release readiness.  At the time of this entry, ``pytest
+tests -q`` reports 1,045 passing tests, but total line coverage is 81% (``impute.py``
+57%, ``naniar.py`` 11%), doctest collection fails, and several untested paths can
+silently corrupt observed data or return statistically misleading output.
+
+The local ``main`` ref was found to point to an unrelated historical project.  Its old
+tip is preserved as ``backup/local-main-before-origin-sync``; local ``main`` now tracks
+``origin/main``.  This is repository hygiene, not a claim that the release blockers are
+resolved.
+
+### Non-negotiable execution rules
+
+- Every defect starts with a minimal failing regression test.  A passing smoke test is
+  never evidence that a statistical method is correct.
+- Each bounded change uses a dedicated branch, a Conventional Commit with the accurate
+  type (``test:``, ``fix:``, ``feat:``, ``docs:``, or ``ci:``), a focused PR, and a
+  linked issue.  Do not label ordinary code or documentation commits as ``ci:``.
+- A PR may merge only after its required checks pass, its acceptance criteria are
+  verified against source, and this document is updated when it changes roadmap status.
+- No unexplained failure, warning, skip, xfail, or unsupported public claim is accepted
+  as release-ready.  Temporary exclusions require an issue, rationale, and expiry.
+- Every completed phase reports its measured parity or remaining gap relative to the
+  named competitor capability; feature-count claims are not leadership claims.
+
+### Recovery sequence
+
+| Phase | Scope | Exit evidence |
+|---|---|---|
+| R0 | Repository/release truth: branch safety, issue/PR traceability, factual public claims | Canonical refs verified; unsupported claims marked experimental or removed; roadmap status matches source |
+| R1 | TDD correctness firewall | Reproducers for every confirmed P0/P1 defect are committed before implementation |
+| R2 | Serving data integrity | No observed value is overwritten; schema/order/dtype and unseen-category policies are deterministic |
+| R3 | Diagnostics and pooling guardrails | Invalid/inconclusive diagnostics cannot report success; invalid variance inputs fail loudly |
+| R4 | FCS/PMM statistical engine | Iterative conditional models, uncertainty draws, constraints, and locked cross-tool conformance evidence |
+| R5 | sklearn and public API contract | Estimator checks, Pipeline/GridSearchCV, installed-package examples, and explicit container exclusions |
+| R6 | Documentation and quality governance | Config/API/docs agree with source; doctest, lint, typing, docstring, and coverage gates are enforced |
+| R7 | Large-data execution | Measured pandas/Arrow/Polars capability adapters with bounded-memory and numerical-parity tests |
+| R8 | Competitor parity and release candidate | Published benchmark manifests, statistical conformance, security/offline audit, and versioned release decision |
+
+### Active issue map
+
+- #43 — P0 data integrity and serving-transform regressions.
+- #44 — P0 statistical correctness and diagnostic guardrails.
+- #45 — P1 public contracts, documentation, and enforceable quality gates.
+- #36 — locked R oracle provenance and reproducibility.
+- #40 — release preparation; it remains blocked by the applicable recovery phases.
+
+The PR for R-oracle provenance is intentionally independent of the recovery work.  Do
+not mix benchmark provenance changes with correctness fixes in the same pull request.
+
+---
+
 ## Session Log
 
 ### [2026-08-03] Unrelated-branch reconciliation and statistical credibility
@@ -460,16 +516,22 @@ R2 benchmark and evidence platform → R3 unified MI architecture →
 R4 algorithmic parity tracks → R5 ecosystem/scale → R6 measured leadership claims
 ```
 
-**R0 acceptance:** CI is green, public documentation is live, release/checklist state
-is reconciled, and unsupported statistical claims are removed or clearly marked
-experimental.
+**R0 acceptance:** CI is green, public documentation is live and executable, release/
+checklist state is reconciled with source, and unsupported statistical claims are
+removed or clearly marked experimental. **Current status: `[~] IN PROGRESS`**. The
+2026-08-11 review found stale public APIs, a broken configuration export, and quality
+gates below this policy; track remediation in #45.
 
 **R1 acceptance:** independent fixtures validate every shipped statistical result;
 no API claims to identify MAR versus MNAR; no sklearn strategy leaks transform data;
 and MICE chains/diagnostics have end-to-end stochastic regression tests.
 
-**R1 status:** complete in merged PRs #27, #28, and #31. R2 evidence infrastructure
-begins with issue #32; FCS/PMM parity remains R3/R4 work and is not implied by R1.
+**R1 status:** earlier work in merged PRs #27, #28, and #31 resolved the specific
+mechanism, MCAR-oracle, and anti-leakage failures they covered. **It is not a blanket
+correctness sign-off.** The 2026-08-11 reproductions reopen untested serving,
+hot-deck, diagnostic, pooling, and standalone-MI paths under #43 and #44. R2 evidence
+infrastructure begins with issue #36; FCS/PMM parity remains R4 work and is not implied
+by prior R1 work.
 
 **R3 status:** issue #37 introduces the typed MI contracts before any legacy imputer
 is migrated. The compatibility boundary is deliberate: contracts must be stable and
@@ -496,10 +558,14 @@ large-data policy above without weakening pandas semantics or statistical validi
 
 ## P0 — Critical (correctness & production safety)
 
-### [x] C1. Explicit error handling
-- All `except` blocks use specific exception types throughout the codebase.
-- No broad `except Exception` / `except BaseException` anywhere.
-- **Acceptance:** `ruff` rule `BLE001` enabled and passing with no `# noqa`.
+### [~] C1. Explicit error handling
+- Broad ``except Exception`` remains in imputation and visualisation paths, including
+  fallbacks that can hide estimator failures.  Existing ``# noqa: BLE001`` markers do
+  not satisfy this task.
+- **Acceptance:** `ruff` rule `BLE001` is enabled in the declared development tooling,
+  runs in CI, and passes with no broad-exception suppression outside a documented,
+  narrowly scoped boundary.
+- **Tracking:** #44 for imputation failures and #45 for the enforced gate.
 
 ### [x] C2. Input validation layer
 - `_validation.py` and `exceptions.py` complete and wired in. Five exception classes present.
@@ -564,10 +630,15 @@ missingly/
 ### [x] A2. Public API surface
 - `__all__` clean. `test_*` removed. `py.typed` added. `conftest.py` deleted.
 
-### [ ] A3. sklearn interoperability contract
+### [~] A3. sklearn interoperability contract
 - Run `check_estimator` and document each skipped check.
 - Integration test: `MissinglyImputer` inside `Pipeline` with `GridSearchCV`.
-- **Prerequisite: A1 done ✓. Proceed after C4.**
+- Implement standard `feature_names_in_`, `n_features_in_`, and
+  `get_feature_names_out(input_features=None)` semantics; preserve fit-time column
+  order and define unknown-category behavior.
+- **Current state:** no leakage was verified for supported inductive strategies, but
+  single-row categorical transforms crash, tree predictions depend on transform-time
+  column order, and `set_params` can bypass strategy validation. Track in #43/#44.
 
 ---
 
@@ -585,21 +656,33 @@ missingly/
 - Deprecation path via `_deprecation.py`.
 - **Acceptance:** All public methods follow naming rule. `df.miss.impute(strategy="mean")` works.
 
-### [x] C4. Configuration externalization
+### [~] C4. Configuration externalization
 
-**Completed — verified in session 7 (2026-07-11).**
+`config.py` contains the intended dataclass and singleton, and internal imputation code
+uses it.  The public contract is incomplete: `import missingly; missingly.config`
+currently resolves to the module rather than the documented singleton, and
+`MissinglyConfig` is not exported from the package root.
 
 - `config.py` exists with `MissinglyConfig` dataclass.
 - Fields: `large_df_threshold=50_000`, `knn_cat_neighbors_threshold=5`, `strict_mode=False`.
-- Package singleton `config` exported in `__all__`.
+- Package singleton `config` and `MissinglyConfig` must be exported from `__init__.py`
+  and included in package `__all__`.
 - `impute.py` imports and uses `_config` at all three call sites.
 - No hardcoded threshold remains in imputation logic.
-- `grep -r "missingly.config" missingly/` returns matches that resolve to real code. ✓
+- **Acceptance:** documented mutations of `missingly.config` change the same singleton
+  read by imputation code; an installed-package regression test proves it.
+- **Tracking:** #45.
 
-### [ ] C5. Encode/decode pipeline correctness
-- Replace hand-rolled `_split_encode` / `_decode` with sklearn-standard pattern.
+### [~] C5. Encode/decode pipeline correctness
+- Replace ad-hoc, independently fitted feature encodings with a fitted, reusable
+  sklearn-standard representation.
+- Coerce categorical serving columns before encoding; preserve observed unseen values
+  rather than turning them into missing data; exclude missing values from decoder
+  categories.
 - After replacing: evaluate `_distance.py`; delete if redundant.
-- **Acceptance:** Round-trip tests for all edge cases. `_distance.py` decision documented.
+- **Acceptance:** round-trip, single-row, nullable-string, unseen-level, column-order,
+  duplicate-index, and mixed-dtype tests pass. `_distance.py` decision documented.
+- **Tracking:** #43 and #44.
 
 ---
 
@@ -609,18 +692,24 @@ missingly/
 - Restructure tests into `unit/`, `integration/`, `fixtures/`.
 - Required fixtures: `df_no_missing`, `df_all_missing_col`, `df_single_row`,
   `df_mixed_dtypes`, `df_large`, `df_high_cardinality_cat`.
-- Coverage target: ≥ 85%.
+- Current measured coverage is 81% (`impute.py` 57%, `naniar.py` 11%). Coverage must
+  first reach ≥ 85% without exclusions that hide public paths, then ratchet toward the
+  project-wide 90% target.
 - **Prerequisite: A1 done ✓. `manual_tests/` must also be deleted here.**
 - **Acceptance:** `pytest tests/` runs cleanly. Coverage ≥ 85%. `manual_tests/` does not exist.
 
 ### [ ] T2. Docstring and typing policy
 - Google-style docstrings. English only. `mypy --strict` passes.
-- **Prerequisite: C4 done ✓** (mypy --strict fails while missingly.config refs exist).
-- **Acceptance:** `pydoclint --style=google missingly/` exits 0. `mypy --strict` exits 0.
+- **Acceptance:** `pydoclint --style=google missingly/` exits 0, `mypy --strict` exits
+  0, and doctest collection plus all public examples pass from an installed package.
 
 ### [ ] T3. CI pipeline
-- GitHub Actions: `lint`, `typecheck`, `test`. Matrix: Python 3.9, 3.11, 3.12.
-- Coverage gate: `--cov-fail-under=85`.
+- GitHub Actions: `lint`, `typecheck`, `docstrings`, `doctest`, `test`, package build,
+  dependency audit, and docs build. Matrix: supported Python versions and Windows,
+  macOS, and Linux coverage as defined by release policy.
+- Coverage gate: `--cov-fail-under=85`, then a non-decreasing ratchet to 90.
+- No unexplained warning, skip, xfail, or optional dependency degradation can produce a
+  green release check.
 
 ### [ ] T4. Logging infrastructure
 - No `print()` for operational events. Logger naming follows module hierarchy.
