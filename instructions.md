@@ -13,7 +13,7 @@ Testing Philosophy
 
 Write property-based tests, not just smoke tests
 Test edge cases: all-missing columns, no missing data, mixed dtypes, high-cardinality categoricals
-Use the authoritative Python 3.12 CI baseline (90.25%, 3601/3990) when
+Use the authoritative Python 3.12 CI baseline (90.41%, 3619/4003) when
 reporting coverage; do not claim the tracked 98% target is met until CI
 measures it.
 Use pytest fixtures for reusable test data
@@ -97,7 +97,7 @@ Has sklearn transformer MissinglyImputer
 Has HTML reporting with Jinja2
 Has time series support
 Has simulation capabilities
-Authoritative measured coverage is 90.25% (3601/3990) in the Python 3.12 CI
+Authoritative measured coverage is 90.41% (3619/4003) in the Python 3.12 CI
 artifact. The 98% quality target remains tracked work.
 Historical review leads must be reproduced before being treated as current bugs.
 Your Personality
