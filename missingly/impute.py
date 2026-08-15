@@ -135,6 +135,7 @@ def _resolve_strict_mode(strict_mode: Optional[bool]) -> bool:
         )
     return value
 
+
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
     """Emit a UserWarning when *df* exceeds the large-DataFrame threshold."""
     if len(df) > _config.large_df_threshold:
@@ -1472,7 +1473,8 @@ def impute_logreg(
                     ) from exc
                 fallback = result[col].mode().iloc[0]
                 warnings.warn(
-                    f"impute_logreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
+                    f"impute_logreg: column {col!r} model failed "
+                    f"({type(exc).__name__}: {exc}). "
                     f"Falling back to mode={fallback!r}. Set strict_mode=True to raise.",
                     UserWarning,
                     stacklevel=2,
