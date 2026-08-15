@@ -819,7 +819,6 @@ def impute_mean(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
-
     Examples
     --------
     >>> import pandas as pd, numpy as np
@@ -926,6 +925,8 @@ def impute_mode(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    InsufficientDataError
+        If a column requiring imputation has no observed values.
 
     Examples
     --------
@@ -935,12 +936,16 @@ def impute_mode(
     ['Berlin', 'Berlin', 'Berlin']
     """
     validate_dataframe(df, param="df")
-    df = _normalize_missing(df)
-    imputer = SimpleImputer(strategy="most_frequent")
-    imputed = imputer.fit_transform(df)
-    result = pd.DataFrame(imputed, index=df.index, columns=df.columns)
-    for col in df.columns:
-        result[col] = _restore_categorical_dtype(result[col], df[col].dtype)
+    df_norm = _normalize_missing(df)
+    result = df_norm.copy()
+    for col in result.columns:
+        missing_mask = result[col].isna()
+        if not missing_mask.any():
+            continue
+        observed = result.loc[~missing_mask, col]
+        if observed.empty:
+            raise InsufficientDataError(column=col, n_observed=0, n_required=1)
+        result.loc[missing_mask, col] = observed.mode().iloc[0]
     return result
 
 
@@ -1318,7 +1323,8 @@ def impute_pmm(
     4. Randomly selecting one donor as the imputed value.
 
     This preserves the distribution of the observed data better than direct
-    regression imputation.
+    regression imputation. When a numeric target has no numeric predictors,
+    PMM uses a reproducible random hot-deck draw from its observed values.
 
     Parameters
     ----------
@@ -1343,6 +1349,8 @@ def impute_pmm(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    InsufficientDataError
+        If a column requiring imputation has no observed donor values.
 
     Examples
     --------
@@ -1367,6 +1375,17 @@ def impute_pmm(
     _warn_if_large(df, "impute_pmm")
     df_norm = _normalize_missing(df)
 
+    for col in df_norm.columns:
+        missing_mask = df_norm[col].isna()
+        if missing_mask.any():
+            n_observed = int((~missing_mask).sum())
+            if n_observed == 0:
+                raise InsufficientDataError(
+                    column=col,
+                    n_observed=0,
+                    n_required=1,
+                )
+
     num_cols = df_norm.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df_norm.select_dtypes(exclude=[np.number]).columns.tolist()
 
@@ -1385,7 +1404,13 @@ def impute_pmm(
 
             feature_cols = [c for c in num_cols if c != col]
             if not feature_cols:
-                result.loc[missing_mask, col] = result[col].mean()
+                observed_values = result.loc[~missing_mask, col].to_numpy()
+                imputed_values = rng.choice(
+                    observed_values,
+                    size=int(missing_mask.sum()),
+                    replace=True,
+                )
+                result.loc[missing_mask, col] = imputed_values
                 continue
 
             observed_mask = ~missing_mask
@@ -2028,7 +2053,8 @@ class FittedImputer:
 
     Learns per-column fill values (mean, median, or mode) from a training
     DataFrame and applies them to any subsequent DataFrame.  This prevents
-    data leakage when imputing test data inside a cross-validation loop.
+    data leakage when imputing test data inside a cross-validation loop. Input
+    schemas use unique labels; transform accepts a reordering of those labels.
 
     .. note::
         Only ``{mean, median, mode}`` are supported — strategies whose
@@ -2104,9 +2130,36 @@ class FittedImputer:
         -------
         FittedImputer
             self (for method chaining).
+
+        Raises
+        ------
+        TypeError
+            If ``df`` is not a :class:`pandas.DataFrame`.
+        ValueError
+            If ``df`` is empty or has duplicate column labels.
+        InsufficientDataError
+            If a training column has no observed value from which to learn a fill.
+
+        Examples
+        --------
+        >>> train = pd.DataFrame({"score": [1.0, np.nan, 3.0]})
+        >>> imputer = FittedImputer("mean").fit(train)
+        >>> imputer._is_fitted
+        True
         """
         validate_dataframe(df, param="df")
-        self._fit_df = _normalize_missing(df).copy()
+        if not df.columns.is_unique:
+            raise ValueError("fit df columns must be unique")
+        df_norm = _normalize_missing(df)
+        for col in df_norm.columns:
+            n_observed = int(df_norm[col].notna().sum())
+            if n_observed == 0:
+                raise InsufficientDataError(
+                    column=col,
+                    n_observed=0,
+                    n_required=1,
+                )
+        self._fit_df = df_norm.copy()
         self._is_fitted = True
         return self
 
@@ -2128,6 +2181,18 @@ class FittedImputer:
         ------
         RuntimeError
             If ``transform`` is called before ``fit``.
+        TypeError
+            If ``df`` is not a :class:`pandas.DataFrame`.
+        ValueError
+            If ``df`` is empty, has duplicate labels, or its columns do not
+            match the training schema.
+
+        Examples
+        --------
+        >>> train = pd.DataFrame({"score": [1.0, 3.0]})
+        >>> test = pd.DataFrame({"score": [np.nan, 5.0]})
+        >>> FittedImputer("mean").fit(train).transform(test)["score"].tolist()
+        [2.0, 5.0]
         """
         if not self._is_fitted or self._fit_df is None:
             raise RuntimeError(
@@ -2135,7 +2200,20 @@ class FittedImputer:
                 "Call .fit(train_df) first."
             )
         validate_dataframe(df, param="df")
+        if not df.columns.is_unique:
+            raise ValueError("transform df columns must be unique")
         df = _normalize_missing(df)
+        training_columns = tuple(self._fit_df.columns)
+        input_columns = tuple(df.columns)
+        missing_columns = [col for col in training_columns if col not in input_columns]
+        unexpected_columns = [
+            col for col in input_columns if col not in training_columns
+        ]
+        if missing_columns or unexpected_columns:
+            raise ValueError(
+                "transform df columns must match the training columns; "
+                f"missing={missing_columns}, unexpected={unexpected_columns}"
+            )
         result = df.copy()
 
         for col in df.columns:
@@ -2180,6 +2258,12 @@ class FittedImputer:
         -------
         pd.DataFrame
             Imputed copy of *df* using fill values learned from *df* itself.
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({"score": [1.0, np.nan, 3.0]})
+        >>> FittedImputer("median").fit_transform(df)["score"].tolist()
+        [1.0, 2.0, 3.0]
         """
         return self.fit(df).transform(df)
 
