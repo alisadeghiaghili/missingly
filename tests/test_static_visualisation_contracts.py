@@ -101,6 +101,65 @@ def test_heatmap_honours_significance_mask_and_preserves_constant_nullity(
     assert np.all(_quadmesh_mask(constant_ax))
 
 
+@pytest.mark.parametrize(
+    "frame",
+    [
+        pd.DataFrame({"complete": [1.0, 2.0]}),
+        pd.DataFrame({"complete": [1.0, 2.0], "partial": [np.nan, 2.0]}),
+    ],
+)
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"method": "kendall"}, "method must be either"),
+        (
+            {"mask_insignificant": True, "significance": 0.0},
+            "significance must be in the interval",
+        ),
+    ],
+)
+def test_heatmap_validates_public_options_before_shape_shortcuts(
+    frame,
+    kwargs,
+    message,
+) -> None:
+    """Invalid heatmap options must fail before data-dependent early returns."""
+    with pytest.raises(ValueError, match=message):
+        static.heatmap(frame, **kwargs)
+
+
+def test_heatmap_forwards_validated_semantics_to_plotly_backend(monkeypatch) -> None:
+    """Interactive heatmap output must preserve the static option contract."""
+    captured: dict[str, object] = {}
+    sentinel = object()
+
+    def return_plotly_sentinel(frame, **kwargs):
+        """Capture forwarded public options without importing Plotly."""
+        captured["frame"] = frame
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(static, "_require_plotly", lambda: None)
+    monkeypatch.setattr(
+        "missingly.visualisation.interactive._heatmap_plotly",
+        return_plotly_sentinel,
+    )
+    frame = pd.DataFrame({"a": [1.0, np.nan], "b": [np.nan, 2.0]})
+
+    result = static.heatmap(
+        frame,
+        backend="plotly",
+        method="phi",
+        mask_insignificant=True,
+        significance=0.1,
+    )
+
+    assert result is sentinel
+    assert captured["method"] == "phi"
+    assert captured["mask_insignificant"] is True
+    assert captured["significance"] == 0.1
+
+
 @pytest.mark.parametrize("plotter", [static.heatmap, static.dendrogram])
 def test_insufficient_nullity_plots_reuse_caller_axes(plotter) -> None:
     """Empty/nullity-insufficient visualisations must honour the supplied axes."""
@@ -141,6 +200,12 @@ def test_upset_empty_states_keep_the_documented_axes_schema(
     assert set(result) == {"intersections", "matrix", "totals"}
     assert all(isinstance(axis, Axes) for axis in result.values())
     assert "No missingness patterns" in result["intersections"].texts[0].get_text()
+
+
+def test_upset_rejects_unknown_static_options_before_empty_shortcut() -> None:
+    """UpSet option validation must not depend on whether patterns exist."""
+    with pytest.raises(TypeError, match="Unsupported UpSet keyword arguments: unknown"):
+        static.upset(pd.DataFrame({"complete": [1.0, 2.0]}), unknown=True)
 
 
 @pytest.mark.parametrize("function_name", ["vis_miss", "miss_cluster"])
