@@ -499,6 +499,11 @@ def upset(
         from missingly.visualisation.interactive import _upset_plotly
         return _upset_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    show_pct = bool(kwargs.pop("show_pct", False))
+    if kwargs:
+        unknown = ", ".join(sorted(kwargs))
+        raise TypeError(f"Unsupported UpSet keyword arguments: {unknown}")
+
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     if not null_mat.any(axis=None):
@@ -515,11 +520,6 @@ def upset(
     )
     if patterns.empty:
         return _empty_upset_axes(figsize, "No missingness patterns to display")
-
-    show_pct = bool(kwargs.pop("show_pct", False))
-    if kwargs:
-        unknown = ", ".join(sorted(kwargs))
-        raise TypeError(f"Unsupported UpSet keyword arguments: {unknown}")
 
     figure = plt.figure(figsize=figsize or (9, 5), constrained_layout=True)
     grid = figure.add_gridspec(
@@ -790,10 +790,20 @@ def heatmap(
     >>> heatmap(frame, annot=False).get_title()
     ''
     """
+    if method not in {"pearson", "phi"}:
+        raise ValueError("method must be either 'pearson' or 'phi'")
+    if mask_insignificant and not 0 < significance <= 1:
+        raise ValueError("significance must be in the interval (0, 1]")
+
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _heatmap_plotly
-        return _heatmap_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _heatmap_plotly(
+            _apply_sentinels(df, missing_values),
+            method=method,
+            mask_insignificant=mask_insignificant,
+            significance=significance,
+        )
 
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
@@ -807,9 +817,6 @@ def heatmap(
                   ha="center", va="center", transform=ax_.transAxes)
         return ax_
 
-    if method not in {"pearson", "phi"}:
-        raise ValueError("method must be either 'pearson' or 'phi'")
-
     sub = null_mat[cols_with_missing].astype(float)
     # Pearson correlation between two binary indicators is the phi
     # coefficient, so both public names intentionally use this calculation.
@@ -817,8 +824,6 @@ def heatmap(
     diag_mask: NDArray[np.bool_] = np.eye(len(cols_with_missing), dtype=bool)
     final_mask = diag_mask | corr.isna().to_numpy()
     if mask_insignificant:
-        if not 0 < significance <= 1:
-            raise ValueError("significance must be in the interval (0, 1]")
         from scipy.stats import pearsonr
 
         p_values: NDArray[np.float64] = np.ones(corr.shape, dtype=float)
