@@ -29,11 +29,12 @@ Key design decisions
 Error handling
 --------------
 All public functions validate their inputs eagerly and raise specific
-:mod:`missingly.exceptions` exceptions on failure.  No exception is
-swallowed silently.  When ``strict_mode=True`` (see :mod:`missingly.config`
-or the global :data:`missingly.config.strict_mode` setting)
-the column-by-column imputer raises :class:`~missingly.exceptions.ImputationError`
-rather than falling back to a column mean.
+:mod:`missingly.exceptions` exceptions on failure. No exception is swallowed
+silently. When ``strict_mode=True`` (see :mod:`missingly.config` or the
+global :data:`missingly.config.strict_mode` setting), ``impute_logreg``,
+``impute_rf``, and ``impute_gb`` raise
+:class:`~missingly.exceptions.ImputationError` rather than falling back to a
+column mean or mode.
 
 Large-data warnings
 -------------------
@@ -66,6 +67,7 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.exceptions import NotFittedError
 
 from missingly.exceptions import (
+    ConfigurationError,
     ImputationError,
     InsufficientDataError,
     InvalidStrategyError,
@@ -92,6 +94,46 @@ _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _resolve_strict_mode(strict_mode: Optional[bool]) -> bool:
+    """Resolve and validate a strict-mode override or package default.
+
+    Parameters
+    ----------
+    strict_mode : bool or None
+        Per-call strict-mode override. ``None`` selects
+        :attr:`missingly.config.strict_mode`.
+
+    Returns
+    -------
+    bool
+        The validated strict-mode value used for the current imputation call.
+
+    Raises
+    ------
+    ConfigurationError
+        If the override or selected package default is not exactly ``True``
+        or ``False``. Integers such as ``1`` are rejected.
+
+    Examples
+    --------
+    >>> _resolve_strict_mode(False)
+    False
+    """
+    if strict_mode is None:
+        value = _config.strict_mode
+        parameter = "missingly.config.strict_mode"
+    else:
+        value = strict_mode
+        parameter = "strict_mode"
+
+    if type(value) is not bool:
+        raise ConfigurationError(
+            param=parameter,
+            got=value,
+            reason="must be exactly True or False",
+        )
+    return value
 
 def _warn_if_large(df: pd.DataFrame, method_name: str) -> None:
     """Emit a UserWarning when *df* exceeds the large-DataFrame threshold."""
@@ -469,14 +511,20 @@ def _impute_column_by_column(
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
-        If None, falls back to :attr:`missingly.config.strict_mode`.
+        If None, falls back to :attr:`missingly.config.strict_mode`. Values
+        must be exactly ``True`` or ``False``.
 
     Returns
     -------
     pd.DataFrame
         Imputed copy of *df*.
+
+    Raises
+    ------
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
     """
-    effective_strict = _config.strict_mode if strict_mode is None else strict_mode
+    effective_strict = _resolve_strict_mode(strict_mode)
 
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     all_cols = list(df_work.columns)
@@ -1339,7 +1387,8 @@ def impute_logreg(
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a binary conditional model cannot fit or predict. If ``False``,
         fill with the observed mode and emit a :class:`UserWarning`. If
-        ``None``, use :attr:`missingly.config.strict_mode`.
+        ``None``, use :attr:`missingly.config.strict_mode`. Values must be
+        exactly ``True`` or ``False``.
 
     Returns
     -------
@@ -1354,6 +1403,8 @@ def impute_logreg(
         If *df* is empty.
     ImputationError
         If the conditional estimator fails and ``strict_mode=True``.
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
 
     Examples
     --------
@@ -1372,9 +1423,9 @@ def impute_logreg(
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
 
+    effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_logreg")
     df_norm = _normalize_missing(df)
-    effective_strict = _config.strict_mode if strict_mode is None else strict_mode
 
     rng = np.random.default_rng(random_state)
     result = df_norm.copy()
@@ -1698,6 +1749,7 @@ def impute_rf(
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
         If None, uses the global :attr:`missingly.config.strict_mode` setting.
+        Values must be exactly ``True`` or ``False``.
     **rf_kwargs
         Additional keyword arguments forwarded to
         :class:`~sklearn.ensemble.RandomForestRegressor` and
@@ -1718,6 +1770,8 @@ def impute_rf(
         If an estimator fails and ``strict_mode=True``.
     InsufficientDataError
         If a column has no observed values.
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
 
     Examples
     --------
@@ -1766,6 +1820,7 @@ def impute_gb(
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
         If None, uses the global :attr:`missingly.config.strict_mode` setting.
+        Values must be exactly ``True`` or ``False``.
     **gb_kwargs
         Additional keyword arguments forwarded to
         :class:`~sklearn.ensemble.GradientBoostingRegressor` and
@@ -1786,6 +1841,8 @@ def impute_gb(
         If an estimator fails and ``strict_mode=True``.
     InsufficientDataError
         If a column has no observed values.
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
 
     Examples
     --------
