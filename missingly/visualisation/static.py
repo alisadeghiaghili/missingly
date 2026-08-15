@@ -249,7 +249,11 @@ def bar(
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _bar_plotly
-        return _bar_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _bar_plotly(
+            _apply_sentinels(df, missing_values),
+            sort=sort,
+            **kwargs,
+        )
 
     df = _apply_sentinels(df, missing_values)
     pct = _pct_missing(df)
@@ -310,7 +314,11 @@ def miss_case(
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _miss_case_plotly
-        return _miss_case_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _miss_case_plotly(
+            _apply_sentinels(df, missing_values),
+            sort=sort,
+            **kwargs,
+        )
 
     df = _apply_sentinels(df, missing_values)
     counts = df.isnull().sum(axis=1)
@@ -365,7 +373,11 @@ def miss_var_pct(
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _miss_var_pct_plotly
-        return _miss_var_pct_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _miss_var_pct_plotly(
+            _apply_sentinels(df, missing_values),
+            sort=sort,
+            **kwargs,
+        )
 
     df = _apply_sentinels(df, missing_values)
     pct = df.isnull().mean() * 100
@@ -497,7 +509,11 @@ def upset(
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _upset_plotly
-        return _upset_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _upset_plotly(
+            _apply_sentinels(df, missing_values),
+            min_subset_size=min_subset_size,
+            **kwargs,
+        )
 
     show_pct = bool(kwargs.pop("show_pct", False))
     if kwargs:
@@ -952,7 +968,12 @@ def vis_miss(
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _vis_miss_plotly
-        return _vis_miss_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _vis_miss_plotly(
+            _apply_sentinels(df, missing_values),
+            sort=sort,
+            cluster=cluster,
+            **kwargs,
+        )
 
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
