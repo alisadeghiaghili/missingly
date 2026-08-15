@@ -242,9 +242,44 @@ def bar(
 ) -> Any:
     """Bar chart of per-column missing-value counts.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missing values are counted by column.
+    figsize : tuple of float, optional
+        Figure size for a newly-created Matplotlib axes.
+    color : str, default "#4C72B0"
+        Bar colour for the Matplotlib backend.
+    log : bool, default False
+        Whether to use a logarithmic count axis in the Matplotlib backend.
+    labels : bool, default True
+        Whether to display column labels in the Matplotlib backend.
+    fontsize : int, default 12
+        Font size for Matplotlib axis labels.
+    sort : bool, default False
+        Whether to sort counts descending while preserving caller order for ties.
+    ax : matplotlib.axes.Axes, optional
+        Existing Matplotlib axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Backend-specific options forwarded to the Plotly implementation.
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        A chart whose bar heights are the number of missing values per column.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> axis = bar(pd.DataFrame({"a": [1.0, None], "b": [2.0, 3.0]}))
+    >>> [int(patch.get_height()) for patch in axis.patches]
+    [1, 0]
     """
     if backend == "plotly" or interactive:
         _require_plotly()
@@ -256,11 +291,11 @@ def bar(
         )
 
     df = _apply_sentinels(df, missing_values)
-    pct = _pct_missing(df)
+    counts = df.isnull().sum()
     if sort:
-        pct = pct.sort_values(ascending=False, kind="stable")
+        counts = counts.sort_values(ascending=False, kind="stable")
 
-    n = len(pct)
+    n = len(counts)
     if figsize is None:
         figsize = (min(12, max(4, n * 0.6)), 4)
 
@@ -269,9 +304,9 @@ def bar(
     else:
         fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
 
-    col_labels = _rtl_safe_labels(list(pct.index), ax=ax)
+    col_labels = _rtl_safe_labels(list(counts.index), ax=ax)
     x = np.arange(n)
-    ax.bar(x, pct.values, color=color)
+    ax.bar(x, counts.values, color=color)
 
     if labels:
         ax.set_xticks(x)
@@ -279,11 +314,11 @@ def bar(
     else:
         ax.set_xticks([])
 
-    ax.set_ylabel("% Missing", fontsize=fontsize)
-    ax.set_ylim(0, 100)
+    ax.set_ylabel("Number of Missing Values", fontsize=fontsize)
     if log:
         ax.set_yscale("log")
-    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
+    else:
+        ax.set_ylim(0, max(1, counts.max() * 1.1))
     _clean_ax(ax)
     return ax
 
