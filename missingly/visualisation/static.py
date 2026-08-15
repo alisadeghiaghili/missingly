@@ -803,6 +803,7 @@ def heatmap(
             method=method,
             mask_insignificant=mask_insignificant,
             significance=significance,
+            **kwargs,
         )
 
     df = _apply_sentinels(df, missing_values)
