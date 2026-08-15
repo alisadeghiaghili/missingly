@@ -40,6 +40,44 @@ def test_impute_mice_rejects_columns_without_observed_donors(
     pd.testing.assert_frame_equal(frame, original)
 
 
+@pytest.mark.parametrize(
+    ("options", "error_type", "message"),
+    [
+        pytest.param(
+            {"visit_sequence": ("unknown",)},
+            TypeError,
+            "visit_sequence",
+            id="visit-sequence-type",
+        ),
+        pytest.param(
+            {"predictor_matrix": object()},
+            TypeError,
+            "predictor_matrix",
+            id="predictor-matrix-type",
+        ),
+        pytest.param(
+            {"bounds": []},
+            TypeError,
+            "bounds",
+            id="bounds-type",
+        ),
+    ],
+)
+def test_impute_mice_validates_options_before_no_donor_preflight(
+    options: dict[str, object],
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    """Invalid configuration has priority over the data-dependent donor error."""
+    frame = pd.DataFrame({"unknown": [np.nan, np.nan], "known": [1.0, 2.0]})
+    original = frame.copy(deep=True)
+
+    with pytest.raises(error_type, match=message):
+        impute_mice(frame, max_iter=2, random_state=7, **options)
+
+    pd.testing.assert_frame_equal(frame, original)
+
+
 def test_impute_mice_handles_nullable_strings_deterministically() -> None:
     """Nullable strings encode safely, retain their dtype, and preserve observations."""
     frame = pd.DataFrame(
