@@ -16,7 +16,7 @@ updated: 2026-08-15
 
 ## 1. What Is missingly?
 
-`missingly` is a production-grade Python package for **missing data analysis, imputation, diagnostics, simulation, and reporting**. Its core dependencies include `pandas`, `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `matplotlib`, `seaborn`, and `jinja2`; `upsetplot` is an optional extra.
+`missingly` is a Python package under active development for **missing data analysis, imputation, diagnostics, simulation, and reporting**. Its core dependencies include `pandas`, `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `matplotlib`, `seaborn`, and `jinja2`; `upsetplot` is an optional extra. Treat release readiness and competitive superiority as evidence-based goals, not current capability claims.
 
 - **Target Python**: 3.9+
 - **Current large-data support**: pandas operations warn above the configured
@@ -37,7 +37,7 @@ missingly/
 ├── accessor.py           # pandas .miss accessor (df.miss.n_miss(), etc.)
 ├── compare.py            # Compare missingness across datasets/groups
 ├── config.py             # Global configuration (MissinglyConfig)
-├── diagnostics.py        # MCAR/MAR/MNAR tests, Little's test, etc.
+├── diagnostics.py        # MCAR tests and observed-data association diagnostics
 ├── exceptions.py         # Custom exceptions (all loud, actionable messages)
 ├── impute.py             # Imputation methods (single imputation)
 ├── manipulation.py       # Insert/remove missing values programmatically
@@ -66,7 +66,7 @@ docs/                     # documentation source
 CONVENTIONS.md            # MUST READ before writing any code
 CHANGELOG.md              # version history
 pyproject.toml            # build config (PEP 517)
-requirements.txt          # pinned dependencies
+requirements.txt          # direct-install dependency floors
 ```
 
 ---
@@ -181,15 +181,17 @@ filled = impute_ts(df, strategy="linear")
 
 ## 4. Exceptions
 
-All exceptions are in `missingly/exceptions.py`. Use them — never use bare `ValueError` without actionable message.
+All package-specific exceptions are in `missingly/exceptions.py`. Prefer the
+most specific domain exception at public boundaries when one applies; any
+built-in exception must still carry an actionable message.
 
 | Exception | When to use |
 |---|---|
 | `MissinglyError` | Base exception |
+| `ImputationError` | Estimator fit or prediction failed during imputation |
 | `InsufficientDataError` | Not enough rows/cols for operation |
-| `InvalidMethodError` | Unknown imputation/test method |
-| `ColumnNotFoundError` | Referenced column missing from DataFrame |
-| `MixedDtypeError` | Operation requires uniform dtype |
+| `InvalidStrategyError` | Unknown or misconfigured strategy value |
+| `MissingColumnError` | Referenced column missing from DataFrame |
 | `ConfigurationError` | Invalid config values |
 
 ---
@@ -203,7 +205,9 @@ Full details in `CONVENTIONS.md`. Summary:
 - **Type hints**: required on all public functions.
 - **Validation**: use `_validation.py` utilities. Validate at the earliest possible point.
 - **No silent failures**: if data is bad, raise a `MissinglyError` subclass with a clear message.
-- **No new dependencies** without explicit discussion. Current deps: `pandas`, `numpy`, `matplotlib`, `seaborn`, `scipy`, `scikit-learn`, `statsmodels`, `jinja2`, `upsetplot`.
+- **No new dependencies** without explicit discussion. Core dependencies are
+  `pandas`, `numpy`, `matplotlib`, `seaborn`, `scipy`, `scikit-learn`,
+  `statsmodels`, and `jinja2`; `upsetplot` is optional.
 
 ---
 
