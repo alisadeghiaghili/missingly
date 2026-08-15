@@ -258,7 +258,7 @@ def bar(
     df = _apply_sentinels(df, missing_values)
     pct = _pct_missing(df)
     if sort:
-        pct = pct.sort_values(ascending=False)
+        pct = pct.sort_values(ascending=False, kind="stable")
 
     n = len(pct)
     if figsize is None:
@@ -323,7 +323,7 @@ def miss_case(
     df = _apply_sentinels(df, missing_values)
     counts = df.isnull().sum(axis=1)
     if sort:
-        counts = counts.sort_values(ascending=False)
+        counts = counts.sort_values(ascending=False, kind="stable")
 
     n = len(counts)
     if figsize is None:
@@ -382,7 +382,7 @@ def miss_var_pct(
     df = _apply_sentinels(df, missing_values)
     pct = df.isnull().mean() * 100
     if sort:
-        pct = pct.sort_values(ascending=True)
+        pct = pct.sort_values(ascending=True, kind="stable")
 
     n = len(pct)
     if figsize is None:
@@ -979,7 +979,7 @@ def vis_miss(
     null_mat = _null_matrix(df)
 
     if sort:
-        order = null_mat.mean().sort_values(ascending=False).index
+        order = null_mat.mean().sort_values(ascending=False, kind="stable").index
         null_mat = null_mat[order]
 
     if cluster and len(df) > 1:

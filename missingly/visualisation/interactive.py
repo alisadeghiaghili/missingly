@@ -48,7 +48,8 @@ def _vis_miss_plotly(
     display_df = df
     if sort:
         ordered_columns = _nullity(df, missing_values).mean().sort_values(
-            ascending=False
+            ascending=False,
+            kind="stable",
         ).index
         display_df = df.loc[:, ordered_columns]
 
@@ -183,7 +184,7 @@ def _miss_var_pct_plotly(
     go = _require_plotly()
     pct = _nullity(df, missing_values).mean() * 100
     if sort:
-        pct = pct.sort_values(ascending=True)
+        pct = pct.sort_values(ascending=True, kind="stable")
     labels = _safe_labels(pct.index)
     fig = go.Figure(
         data=go.Bar(
@@ -255,7 +256,7 @@ def _bar_plotly(
     go = _require_plotly()
     miss_counts = _nullity(df, missing_values).sum()
     if sort:
-        miss_counts = miss_counts.sort_values(ascending=False)
+        miss_counts = miss_counts.sort_values(ascending=False, kind="stable")
     labels = _safe_labels(miss_counts.index)
     total_rows = len(df)
     pct_vals = miss_counts.values / total_rows * 100
@@ -289,7 +290,7 @@ def _miss_case_plotly(
     go = _require_plotly()
     miss_counts = _nullity(df, missing_values).sum(axis=1)
     if sort:
-        miss_counts = miss_counts.sort_values(ascending=False)
+        miss_counts = miss_counts.sort_values(ascending=False, kind="stable")
     row_labels = _safe_labels(miss_counts.index)
     n_cols = df.shape[1]
     pct_vals = miss_counts.values / n_cols * 100
