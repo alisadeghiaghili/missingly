@@ -74,6 +74,40 @@ def test_rtl_plotting_never_uses_network_or_creates_a_user_font_cache(
     assert not cache_path.exists()
 
 
+def test_unreadable_packaged_font_falls_back_without_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Treat an inaccessible packaged font as unavailable.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Fixture used to emulate a file-system read failure.
+    tmp_path : pathlib.Path
+        Isolated location containing a nominal packaged font.
+
+    Returns
+    -------
+    None
+        The helper returns ``None`` instead of leaking an I/O error.
+
+    Examples
+    --------
+    The test models a package installed on a restricted read-only filesystem.
+    """
+    font_path = tmp_path / "Vazirmatn-Regular.ttf"
+    font_path.write_bytes(b"\x00\x01\x00\x00")
+    monkeypatch.setattr(_base, "_BUNDLED_VAZIRMATN_PATH", font_path)
+
+    def _deny_read(self: Path) -> bytes:
+        raise PermissionError("font asset is not readable")
+
+    monkeypatch.setattr(Path, "read_bytes", _deny_read)
+
+    assert _base._ensure_vazirmatn() is None
+
+
 def test_static_heatmap_never_imports_dqt_while_rendering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

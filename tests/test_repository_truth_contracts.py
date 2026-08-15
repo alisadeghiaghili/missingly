@@ -176,3 +176,24 @@ def test_repository_declares_a_cross_platform_text_normalization_policy() -> Non
 
     assert attributes.is_file()
     assert "* text=auto eol=lf" in attributes.read_text(encoding="utf-8")
+
+
+def test_missingly_owns_no_dqt_integration_gate() -> None:
+    """Keep the sister-package dependency and CI responsibility one-way."""
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "dqt-integration:" not in workflow
+    assert "data_quality_toolkit" not in workflow
+    assert "tests/test_dqt_integration.py" not in workflow
+
+
+def test_readmes_document_plotly_as_an_explicit_optional_dependency() -> None:
+    """Reject silent-fallback and dependency-free Plotly guidance."""
+    english = _read("README.md")
+    persian = _read("README_FA.md")
+
+    assert 'pip install "missingly[interactive]"' in english
+    assert "silently falls back" not in english
+    assert "Delegates to data_quality_toolkit" not in english
+    assert "with no extra dependencies" not in english
+    assert "بدون هیچ وابستگی اضافه‌ای" not in persian
