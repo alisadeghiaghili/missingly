@@ -440,71 +440,30 @@ class TestNullity:
 
 
 # ---------------------------------------------------------------------------
-# _ensure_vazirmatn — corrupt cache invalidation
+# _ensure_vazirmatn — packaged/local-only lookup
 # ---------------------------------------------------------------------------
 
 class TestEnsureVazirmatn:
-    def test_corrupt_cache_is_removed_and_redownloaded(self, tmp_path):
-        """A cached file with wrong magic bytes must be removed and
-        a fresh download attempted."""
-        font_path = tmp_path / "Vazirmatn-Regular.ttf"
-        font_path.write_bytes(b"THIS IS NOT A FONT")
-
-        valid_ttf = b"\x00\x01\x00\x00" + b"\x00" * 100
-
-        with (
-            patch.object(_base, "_FONT_CACHE_DIR", tmp_path),
-            patch("urllib.request.urlopen") as mock_url,
-        ):
-            mock_response = MagicMock()
-            mock_response.__enter__ = lambda s: s
-            mock_response.__exit__ = MagicMock(return_value=False)
-            mock_response.read.return_value = valid_ttf
-            mock_url.return_value = mock_response
-
-            result = _base._ensure_vazirmatn()
-
-        assert result is not None
-        assert result.read_bytes()[:4] == b"\x00\x01\x00\x00"
-
-    def test_valid_cache_returned_without_download(self, tmp_path):
+    def test_valid_packaged_font_is_returned_without_writing(self, tmp_path):
+        """A valid packaged asset is usable without creating a user cache."""
         font_path = tmp_path / "Vazirmatn-Regular.ttf"
         font_path.write_bytes(b"\x00\x01\x00\x00" + b"\x00" * 100)
-
-        with (
-            patch.object(_base, "_FONT_CACHE_DIR", tmp_path),
-            patch("urllib.request.urlopen") as mock_url,
-        ):
+        with patch.object(_base, "_BUNDLED_VAZIRMATN_PATH", font_path):
             result = _base._ensure_vazirmatn()
-            mock_url.assert_not_called()
-
         assert result == font_path
 
-    def test_network_failure_returns_none(self, tmp_path):
-        with (
-            patch.object(_base, "_FONT_CACHE_DIR", tmp_path),
-            patch("urllib.request.urlopen", side_effect=OSError("no network")),
-        ):
+    def test_missing_packaged_font_returns_none(self, tmp_path):
+        missing_font = tmp_path / "not-present.ttf"
+        with patch.object(_base, "_BUNDLED_VAZIRMATN_PATH", missing_font):
             result = _base._ensure_vazirmatn()
-
         assert result is None
 
-    def test_invalid_download_returns_none(self, tmp_path):
-        """A download that returns non-TTF data must not be cached."""
-        with (
-            patch.object(_base, "_FONT_CACHE_DIR", tmp_path),
-            patch("urllib.request.urlopen") as mock_url,
-        ):
-            mock_response = MagicMock()
-            mock_response.__enter__ = lambda s: s
-            mock_response.__exit__ = MagicMock(return_value=False)
-            mock_response.read.return_value = b"<html>404 not found</html>"
-            mock_url.return_value = mock_response
-
+    def test_invalid_packaged_font_returns_none(self, tmp_path):
+        invalid_font = tmp_path / "invalid.ttf"
+        invalid_font.write_bytes(b"not a font")
+        with patch.object(_base, "_BUNDLED_VAZIRMATN_PATH", invalid_font):
             result = _base._ensure_vazirmatn()
-
         assert result is None
-        assert not (tmp_path / "Vazirmatn-Regular.ttf").exists()
 
 
 # ---------------------------------------------------------------------------
