@@ -202,7 +202,11 @@ def miss_var_summary(
         miss_counts = df.isnull().sum()
     else:
         miss_counts = (df.isnull() | df.isin(missing_values)).sum()
-    miss_pct = (miss_counts / len(df)) * 100 if len(df) > 0 else 0
+    miss_pct = (
+        (miss_counts / len(df)) * 100
+        if len(df) > 0
+        else pd.Series(0.0, index=df.columns)
+    )
     return pd.DataFrame({
         "variable": df.columns,
         "n_miss": miss_counts.values,
@@ -231,7 +235,11 @@ def miss_case_summary(
         miss_counts = df.isnull().sum(axis=1)
     else:
         miss_counts = (df.isnull() | df.isin(missing_values)).sum(axis=1)
-    miss_pct = (miss_counts / df.shape[1]) * 100 if df.shape[1] > 0 else 0
+    miss_pct = (
+        (miss_counts / df.shape[1]) * 100
+        if df.shape[1] > 0
+        else pd.Series(0.0, index=df.index)
+    )
     return pd.DataFrame({
         "case": df.index,
         "n_miss": miss_counts.values,
@@ -563,7 +571,7 @@ def mcar_test(
 
     r = np.isnan(data_np).astype(int)
     nmis = r.sum(axis=0)
-    powers_of_2 = 2 ** np.arange(d)
+    powers_of_2: np.ndarray = 2 ** np.arange(d)
     mdp = r.dot(powers_of_2) + 1
 
     df_wp = pd.DataFrame(data_np.copy(), columns=X.columns)
@@ -665,7 +673,14 @@ def missingness_association_test(
     TypeError
         If ``X`` is not a DataFrame.
     ValueError
-        If ``outcome`` has a different length from ``X`` or contains missing values.
+        If ``X`` has duplicate labels, or ``outcome`` has a different length,
+        missing values, or non-finite numeric values.
+
+    Warnings
+    --------
+    UserWarning
+        If logistic fitting fails with a recoverable ``ValueError`` for a
+        feature. That feature is omitted from the result.
 
     Examples
     --------
@@ -682,6 +697,8 @@ def missingness_association_test(
     exploratory, especially when screening many features.
     """
     validate_dataframe(X, param="X")
+    if not X.columns.is_unique:
+        raise ValueError("X columns must be unique for observedness diagnostics.")
     if missing_values is not None:
         X = X.replace(missing_values, np.nan)
 
@@ -694,6 +711,8 @@ def missingness_association_test(
         )
     if pd.api.types.is_numeric_dtype(outcome_series):
         outcome_values = outcome_series.to_numpy(dtype=float)
+        if not np.isfinite(outcome_values).all():
+            raise ValueError("outcome must contain only finite numeric values.")
     else:
         outcome_values = pd.factorize(outcome_series, sort=True)[0].astype(float)
 
@@ -705,9 +724,10 @@ def missingness_association_test(
             continue
 
         others = [column for column in X.columns if column != feature]
-        predictors = pd.get_dummies(X[others], dummy_na=True, dtype=float)
-        baseline_features = predictors.fillna(0.0).to_numpy(dtype=float)
-        if baseline_features.shape[1] == 0:
+        if others:
+            predictors = pd.get_dummies(X[others], dummy_na=True, dtype=float)
+            baseline_features = predictors.fillna(0.0).to_numpy(dtype=float)
+        else:
             baseline_features = np.zeros((len(X), 1), dtype=float)
         augmented_features = np.column_stack([baseline_features, outcome_values])
 
@@ -718,7 +738,14 @@ def missingness_association_test(
         try:
             baseline.fit(baseline_features, response)
             augmented.fit(augmented_features, response)
-        except ValueError:
+        except ValueError as error:
+            warnings.warn(
+                "missingness_association_test: logistic fitting failed for "
+                f"feature {feature!r} ({type(error).__name__}: {error}); "
+                "omitting the feature from results.",
+                UserWarning,
+                stacklevel=2,
+            )
             continue
 
         statistic = max(
@@ -766,8 +793,9 @@ def mar_mnar_test(
     --------
     >>> import numpy as np
     >>> import pandas as pd
-    >>> mar_mnar_test(pd.DataFrame({"x": [1.0, np.nan, 3.0]}), [0, 1, 1])
-    []
+    >>> result = mar_mnar_test(pd.DataFrame({"x": [1.0, np.nan, 3.0]}), [0, 1, 1])
+    >>> [feature for feature, _, _ in result]
+    ['x']
 
     Warnings
     --------
@@ -1138,7 +1166,7 @@ def mice_convergence(
     n_iter_used: Dict[str, int] = {}
 
     for var in vars_to_use:
-        chains_for_var = []
+        chains_for_var: List[np.ndarray] = []
         for hist in histories:
             values = hist.get(var, [])
             if isinstance(values, (list, tuple)) and len(values) >= 2:
