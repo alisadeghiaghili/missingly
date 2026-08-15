@@ -1318,6 +1318,7 @@ def impute_logreg(
     df: pd.DataFrame,
     max_iter: int = 10,
     random_state: int = 0,
+    strict_mode: Optional[bool] = None,
 ) -> pd.DataFrame:
     """Impute missing values using Logistic Regression (for binary variables).
 
@@ -1333,6 +1334,11 @@ def impute_logreg(
         Maximum number of MICE iterations.
     random_state : int, default 0
         Random seed for reproducibility.
+    strict_mode : bool or None, default None
+        If ``True``, raise :class:`~missingly.exceptions.ImputationError`
+        when a binary conditional model cannot fit or predict. If ``False``,
+        fill with the observed mode and emit a :class:`UserWarning`. If
+        ``None``, use :attr:`missingly.config.strict_mode`.
 
     Returns
     -------
@@ -1345,6 +1351,8 @@ def impute_logreg(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    ImputationError
+        If the conditional estimator fails and ``strict_mode=True``.
 
     Examples
     --------
@@ -1365,6 +1373,7 @@ def impute_logreg(
 
     _warn_if_large(df, "impute_logreg")
     df_norm = _normalize_missing(df)
+    effective_strict = _config.strict_mode if strict_mode is None else strict_mode
 
     rng = np.random.default_rng(random_state)
     result = df_norm.copy()
@@ -1404,7 +1413,11 @@ def impute_logreg(
                     model.classes_[0],
                 )
                 result.loc[missing_mask, col] = imputed
-            except Exception as exc:  # noqa: BLE001 - estimator backends expose heterogeneous errors.
+            except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+                if effective_strict:
+                    raise ImputationError(
+                        column=col, strategy="logreg", original=exc
+                    ) from exc
                 fallback = result[col].mode().iloc[0]
                 warnings.warn(
                     f"impute_logreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
