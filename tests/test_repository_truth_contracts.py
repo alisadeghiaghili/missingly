@@ -166,7 +166,7 @@ def test_instruction_files_and_conventions_publish_current_verified_status() -> 
     assert "89.64% (3589/4004)" in developer_skill
     assert "## [2026-08-15] Current verified status" in conventions
     assert "### Current active issue map" in conventions
-    for issue in ("#69", "#60", "#61", "#71", "#40", "#76", "#77", "#78", "#79"):
+    for issue in ("#69", "#60", "#61", "#71", "#40", "#77", "#78", "#79", "#81"):
         assert issue in conventions
 
 
