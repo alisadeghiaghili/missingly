@@ -360,6 +360,13 @@ def _fill_feature_matrix(
     -------
     tuple of (np.ndarray, np.ndarray)
         ``(X_obs_clean, X_miss_clean)`` with no NaN values.
+
+    Examples
+    --------
+    >>> observed = np.array([[np.nan], [np.nan]])
+    >>> _, incomplete = _fill_feature_matrix(observed, np.array([[np.nan]]))
+    >>> incomplete.tolist()
+    [[0.0]]
     """
     X_obs_clean = X_obs.copy()
     X_miss_clean = X_miss.copy()
@@ -395,6 +402,14 @@ def _restore_categorical_dtype(
     -------
     pd.Series
         Series with dtype restored as closely as possible.
+
+    Examples
+    --------
+    >>> restored = _restore_categorical_dtype(
+    ...     pd.Series(["low", "high"]), pd.StringDtype()
+    ... )
+    >>> str(restored.dtype)
+    'string'
     """
     if hasattr(orig_dtype, "categories"):
         ordered = getattr(orig_dtype, "ordered", False)
@@ -413,10 +428,25 @@ def _split_encode(
 ):
     """Ordinal-encode categorical columns; return parts needed to reconstruct.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data whose categorical columns are ordinal-encoded. Nullable extension
+        missing values are normalized to ``np.nan`` for sklearn compatibility.
+
     Returns
     -------
     tuple
         ``(df_work, cat_cols, num_cols, encoder, cat_dtypes)``
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"number": [1.0, 2.0], "label": ["a", None]})
+    >>> encoded, cat_cols, _, _, _ = _split_encode(frame)
+    >>> cat_cols
+    ['label']
+    >>> encoded.shape
+    (2, 2)
     """
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -445,7 +475,31 @@ def _decode(
     encoder,
     cat_dtypes: dict,
 ) -> pd.DataFrame:
-    """Inverse-transform ordinal-encoded columns back to their original dtype."""
+    """Inverse-transform ordinal-encoded columns back to their original dtype.
+
+    Parameters
+    ----------
+    df_imputed : pd.DataFrame
+        Numeric imputation result containing encoded categorical columns.
+    cat_cols : list of str
+        Categorical column names in the order used to fit ``encoder``.
+    encoder : sklearn.preprocessing.OrdinalEncoder or None
+        Fitted encoder returned by :func:`_split_encode`.
+    cat_dtypes : dict of str to dtype
+        Original dtypes keyed by categorical column name.
+
+    Returns
+    -------
+    pd.DataFrame
+        Decoded frame with categorical extension dtypes restored where possible.
+
+    Examples
+    --------
+    >>> source = pd.DataFrame({"label": ["a", None]})
+    >>> encoded, columns, _, encoder, dtypes = _split_encode(source)
+    >>> _decode(encoded.fillna(0.0), columns, encoder, dtypes)["label"].tolist()
+    ['a', 'a']
+    """
     if not cat_cols or encoder is None:
         return df_imputed
 
