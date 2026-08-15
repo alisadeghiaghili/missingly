@@ -72,11 +72,11 @@ def test_plotly_vis_miss_does_not_hide_unexpected_clustering_errors(
     frame = pd.DataFrame({"a": [1.0, None], "b": [None, 2.0]})
 
     with pytest.raises(RuntimeError, match="unexpected linkage backend failure"):
-        interactive._vis_miss_plotly(frame, cluster=True)
+        static.vis_miss(frame, interactive=True, cluster=True)
 
 
-def test_public_plotly_wrappers_honor_shared_semantic_options() -> None:
-    """Interactive wrappers preserve documented ordering and subset semantics."""
+def test_public_plotly_vis_miss_honors_column_sorting() -> None:
+    """The public Plotly missingness plot sorts columns by missingness."""
     frame = pd.DataFrame(
         {
             "lowest": [1.0, None, 1.0, 1.0],
@@ -87,19 +87,61 @@ def test_public_plotly_wrappers_honor_shared_semantic_options() -> None:
     )
 
     missingness = static.vis_miss(frame, interactive=True, sort=True)
-    percentages = static.miss_var_pct(frame, interactive=True, sort=False)
-    variables = static.bar(frame, interactive=True, sort=True)
-    cases = static.miss_case(frame, interactive=True, sort=True)
-    patterns = static.upset(frame, interactive=True, min_subset_size=2)
 
     assert list(missingness.data[0].x) == [
         "highest (75.0%)",
         "lowest (25.0%)",
         "middle (25.0%)",
     ]
-    assert list(percentages.data[0].y) == ["lowest", "highest", "middle"]
+
+
+def test_public_plotly_miss_var_pct_honors_column_sorting() -> None:
+    """The public Plotly variable percentages retain the requested order."""
+    frame = pd.DataFrame({"first": [None, 1.0], "second": [1.0, 1.0]})
+
+    percentages = static.miss_var_pct(frame, interactive=True, sort=False)
+
+    assert list(percentages.data[0].y) == ["first", "second"]
+
+
+def test_public_plotly_bar_honors_column_sorting() -> None:
+    """The public Plotly column bar chart sorts missing counts when requested."""
+    frame = pd.DataFrame(
+        {"lowest": [1.0, None], "highest": [None, None], "middle": [1.0, None]}
+    )
+
+    variables = static.bar(frame, interactive=True, sort=True)
+
     assert list(variables.data[0].x) == ["highest", "lowest", "middle"]
-    assert list(cases.data[0].x) == ["second", "first", "third", "fourth"]
+
+
+def test_public_plotly_miss_case_honors_row_sorting() -> None:
+    """The public Plotly case bar chart sorts rows by missing counts."""
+    frame = pd.DataFrame(
+        {
+            "left": [1.0, None, 1.0, 1.0],
+            "right": [1.0, None, None, 1.0],
+        },
+        index=["first", "second", "third", "fourth"],
+    )
+
+    cases = static.miss_case(frame, interactive=True, sort=True)
+
+    assert list(cases.data[0].x) == ["second", "third", "first", "fourth"]
+
+
+def test_public_plotly_upset_honors_minimum_subset_size() -> None:
+    """The public Plotly UpSet chart removes combinations below its threshold."""
+    frame = pd.DataFrame(
+        {
+            "lowest": [1.0, None, 1.0, 1.0],
+            "highest": [None, None, None, 1.0],
+            "middle": [1.0, None, 1.0, 1.0],
+        }
+    )
+
+    patterns = static.upset(frame, interactive=True, min_subset_size=2)
+
     assert list(patterns.data[0].y) == [2]
 
 
