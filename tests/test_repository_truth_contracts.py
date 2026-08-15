@@ -91,7 +91,7 @@ def test_readme_does_not_advertise_mixed_knn_as_an_inductive_pipeline_mode() -> 
     readme = _read("README.md")
 
     assert 'MissinglyImputer(strategy="knn", metric="mixed"' not in readme
-    assert "rejected by MissinglyImputer" in readme
+    assert "rejected by `MissinglyImputer`" in readme
 
 
 def test_legacy_requirements_share_the_packaging_dependency_floors() -> None:
