@@ -150,6 +150,10 @@ def test_logreg_estimator_failure_has_explicit_fallback_and_strict_error_taxonom
     assert error.value.strategy == "logreg"
     assert isinstance(error.value.original, ValueError)
 
+    monkeypatch.setattr("missingly.impute._config.strict_mode", True)
+    with pytest.raises(ImputationError, match="outcome"):
+        impute_logreg(frame)
+
 
 def test_polyreg_runs_on_current_sklearn_and_reuses_feature_encoding():
     """polyreg accepts scikit-learn 1.7+ and predicts the encoded e-level."""
