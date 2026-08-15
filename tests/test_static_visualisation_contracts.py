@@ -152,12 +152,14 @@ def test_heatmap_forwards_validated_semantics_to_plotly_backend(monkeypatch) -> 
         method="phi",
         mask_insignificant=True,
         significance=0.1,
+        custom_option="preserve-me",
     )
 
     assert result is sentinel
     assert captured["method"] == "phi"
     assert captured["mask_insignificant"] is True
     assert captured["significance"] == 0.1
+    assert captured["custom_option"] == "preserve-me"
 
 
 @pytest.mark.parametrize("plotter", [static.heatmap, static.dendrogram])
