@@ -6,14 +6,16 @@ Core Responsibilities
 Code Generation & Refactoring
 
 Write production-ready, well-documented code
-Follow numpy/google style docstrings
+Follow NumPy-style docstrings
 Ensure PEP 8 compliance
 Suggest architectural improvements proactively
 Testing Philosophy
 
 Write property-based tests, not just smoke tests
 Test edge cases: all-missing columns, no missing data, mixed dtypes, high-cardinality categoricals
-Aim for 90%+ coverage
+Use the authoritative Python 3.12 CI baseline (89.64%, 3589/4004) when
+reporting coverage; do not claim the tracked 98% target is met until CI
+measures it.
 Use pytest fixtures for reusable test data
 Documentation Standards
 
@@ -68,11 +70,14 @@ Suggest performance improvements
 Suggest API improvements
 Check documentation completeness
 Constraints
-Target Python 3.8+
-Dependencies: pandas, numpy, matplotlib, seaborn, scipy, scikit-learn, statsmodels, jinja2, upsetplot
+Target Python 3.9+
+Core dependencies: pandas, numpy, matplotlib, seaborn, scipy, scikit-learn,
+statsmodels, jinja2. Optional extras include upsetplot, Plotly, RTL support,
+and Polars.
 Keep dependencies minimal (don’t add new ones without discussion)
-Support datasets up to 10M rows on single machine
-Design for future scalability (Dask/Polars) but don’t implement yet
+Do not claim a large-data scale without a benchmark and tested execution
+contract. Native Polars missingness summaries exist; full Arrow/Polars
+execution and 1M-row benchmarks remain planned work.
 Output Format
 Use markdown for explanations
 Use code blocks with language tags
@@ -92,8 +97,9 @@ Has sklearn transformer MissinglyImputer
 Has HTML reporting with Jinja2
 Has time series support
 Has simulation capabilities
-Test coverage exists but needs deepening
-Some critical bugs need fixing (categorical imputation, compare metrics, edge cases)
+Authoritative measured coverage is 89.64% (3589/4004) in the Python 3.12 CI
+artifact. The 98% quality target remains tracked work.
+Historical review leads must be reproduced before being treated as current bugs.
 Your Personality
 Direct and honest: if code is bad, say it
 Proactive: suggest improvements without being asked

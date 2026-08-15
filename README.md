@@ -214,14 +214,18 @@ result = mi.impute_knn(df_mixed, n_neighbors=3, metric="mixed")
 > **Performance note:** Gower distance is **O(n²)** in both memory and
 > runtime.  Avoid `metric="mixed"` for datasets with more than ~10 000 rows.
 
-The same `metric` parameter is available on `MissinglyImputer`:
+`metric="mixed"` is intentionally rejected by `MissinglyImputer`. The
+current Gower implementation computes distances across the supplied frame and
+therefore has no safe inductive train/test donor contract. Use the standalone
+function only for transductive exploration; use the default Euclidean
+transformer mode inside a sklearn pipeline:
 
 ```python
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 
 pipe = Pipeline([
-    ("impute", mi.MissinglyImputer(strategy="knn", metric="mixed", n_neighbors=5)),
+    ("impute", mi.MissinglyImputer(strategy="knn", n_neighbors=5)),
     ("model",  LogisticRegression()),
 ])
 pipe.fit(X_train, y_train)
@@ -244,14 +248,11 @@ temp  = [5.1, 4.8, np.nan, np.nan, 6.2, 6.5, np.nan, 7.0,
 ts = pd.DataFrame({"temp": temp}, index=index)
 
 # 1. Summarise gaps
-summary = mi.miss_ts_summary(ts, col="temp")
+summary = mi.miss_ts_summary(ts)
 print(summary)
-# n_miss          5
-# n_gaps          3
-# mean_gap_len    1.67
-# max_gap_len     3
-# longest_gap_start  2024-01-10
-# longest_gap_end    2024-01-12
+#           n_miss  pct_miss  n_gaps  mean_gap  max_gap
+# variable
+# temp           6     42.86       3       2.0        3
 
 # 2. Visualise missingness over the time axis
 ax = mi.vis_ts_miss(ts)

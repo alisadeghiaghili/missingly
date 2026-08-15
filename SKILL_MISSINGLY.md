@@ -4,7 +4,7 @@ description: AI co-pilot context for the missingly Python package — missing da
 version: 1.0.0
 author: Ali Sadeghi Aghili
 repo: github.com/alisadeghiaghili/missingly
-updated: 2026-07-11
+updated: 2026-08-15
 ---
 
 # SKILL: missingly — AI Co-Pilot Context File
@@ -16,12 +16,16 @@ updated: 2026-07-11
 
 ## 1. What Is missingly?
 
-`missingly` is a production-grade Python package for **missing data analysis, imputation, diagnostics, simulation, and reporting**. It is built on top of `pandas`, `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `matplotlib`, `seaborn`, `jinja2`, and `upsetplot`.
+`missingly` is a production-grade Python package for **missing data analysis, imputation, diagnostics, simulation, and reporting**. Its core dependencies include `pandas`, `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `matplotlib`, `seaborn`, and `jinja2`; `upsetplot` is an optional extra.
 
-- **Target Python**: 3.8+
-- **Target scale**: datasets up to 10M rows on a single machine
+- **Target Python**: 3.9+
+- **Current large-data support**: pandas operations warn above the configured
+  threshold, and the optional Polars adapter provides native missingness
+  summaries for eager and lazy frames. Full Arrow/Polars execution and a
+  1M-row benchmark are planned work, not a current capability claim.
 - **Design philosophy**: pandas-native API, sklearn-compatible transformers, sensible defaults, loud failures
-- **Future scalability**: designed for Dask/Polars integration (not yet implemented)
+- **Future scalability**: full Arrow/Polars execution is planned; do not infer it
+  from the existing native Polars summary adapter.
 
 ---
 
@@ -30,7 +34,7 @@ updated: 2026-07-11
 ```
 missingly/
 ├── __init__.py           # Public API surface — imports and __all__
-├── accessor.py           # pandas .miss accessor (df.miss.summary(), etc.)
+├── accessor.py           # pandas .miss accessor (df.miss.n_miss(), etc.)
 ├── compare.py            # Compare missingness across datasets/groups
 ├── config.py             # Global configuration (MissinglyConfig)
 ├── diagnostics.py        # MCAR/MAR/MNAR tests, Little's test, etc.
@@ -77,27 +81,27 @@ Registered via `@pd.api.extensions.register_dataframe_accessor("miss")` in `acce
 import pandas as pd
 import missingly  # registers .miss accessor
 
-df.miss.summary()          # per-column missing count, %, dtype
-df.miss.heatmap()          # correlation heatmap of missingness
-df.miss.matrix()           # missingno-style matrix plot
-df.miss.bar()              # bar chart of missing %
-df.miss.upset()            # UpSet plot of co-occurrence patterns
-df.miss.report()           # generate HTML report
-df.miss.compare(df2)       # compare missingness between two DataFrames
+df.miss.n_miss()                 # total missing count
+df.miss.miss_var_summary()       # per-column count, %, dtype
+df.miss.matrix()                 # missingno-style matrix plot
+df.miss.bar()                    # bar chart of missingness
+df.miss.upset()                  # UpSet plot of co-occurrence patterns
+df.miss.impute(strategy="mean")  # returns an imputed DataFrame
 ```
 
 ### 3.2 Imputation — `missingly.impute` + `MissinglyImputer`
 
 ```python
-from missingly.impute import impute_simple, impute_knn, impute_iterative
+from missingly.impute import impute_mean, impute_knn, impute_mice
 from missingly.transformer import MissinglyImputer  # sklearn API
 
 # Functional
-df_imputed = impute_simple(df, strategy="mean")
+df_imputed = impute_mean(df)
 df_imputed = impute_knn(df, n_neighbors=5)
+df_imputed = impute_mice(df)
 
 # Transformer (sklearn Pipeline compatible)
-imp = MissinglyImputer(method="knn", n_neighbors=5)
+imp = MissinglyImputer(strategy="knn", n_neighbors=5)
 imp.fit(X_train)
 X_imputed = imp.transform(X_test)
 ```
@@ -106,15 +110,18 @@ X_imputed = imp.transform(X_test)
 
 ```python
 from missingly.diagnostics import (
-    test_mcar,          # Little's MCAR test
-    test_mar,           # logistic regression-based MAR indicator
-    missing_pattern,    # returns pattern matrix
-    missing_mechanism,  # heuristic classification: MCAR/MAR/MNAR
+    mcar_test,                      # Little's MCAR test
+    missingness_association_test,   # observed-data association screen
+    diagnose_missing,               # MCAR evidence and guidance
 )
 
-result = test_mcar(df)
-result.statistic   # chi-square statistic
-result.p_value     # p-value (< 0.05 → reject MCAR)
+result = mcar_test(df)
+result["chi_square"]  # chi-square statistic
+result["p_value"]     # small values are evidence against MCAR
+
+# This screen does not identify MAR versus MNAR from observed data.
+associations = missingness_association_test(df, outcome)
+guidance = diagnose_missing(df)
 ```
 
 ### 3.4 Simulation — `missingly.simulate`
@@ -122,53 +129,52 @@ result.p_value     # p-value (< 0.05 → reject MCAR)
 ```python
 from missingly.simulate import simulate_mcar, simulate_mar, simulate_mnar
 
-df_with_missing = simulate_mcar(df, missing_rate=0.2, random_state=42)
-df_with_missing = simulate_mar(df, target_col="y", predictor_col="x", missing_rate=0.3)
-df_with_missing = simulate_mnar(df, target_col="y", threshold=0.5, missing_rate=0.25)
+df_with_missing = simulate_mcar(df, frac=0.2, random_state=42)
+df_with_missing = simulate_mar(df, target_col="y", predictor_col="x", frac=0.3)
+df_with_missing = simulate_mnar(df, target_col="y", threshold=0.5, frac=0.25)
 ```
 
 ### 3.5 Multiple Imputation — `missingly.mi`
 
 ```python
-from missingly.mi import MultipleImputer
-from missingly.mi_workflow import MIWorkflow
+from missingly import impute_mice
+from missingly.mi import pool_scalar_estimates
+from missingly.mi_workflow import mi_with
 
-mi = MultipleImputer(m=5, method="mice", random_state=42)
-imputed_datasets = mi.fit_transform(df)  # returns list of m DataFrames
-
-workflow = MIWorkflow(imputer=mi)
-workflow.fit(df)
-results = workflow.analyze(analysis_func=my_model_fn)
-pooled = workflow.pool(results)  # Rubin's rules
+imputed_datasets = impute_mice(df, n_imputations=5, random_state=42)
+results = mi_with(imputed_datasets, my_model_fn)
+pooled = pool_scalar_estimates(estimates, variances)  # scalar Rubin pooling
 ```
 
 ### 3.6 Compare — `missingly.compare`
 
 ```python
-from missingly.compare import compare_datasets, compare_groups
+from missingly.compare import compare_imputations, cv_compare_imputations
 
-summary = compare_datasets(df_before, df_after)
-group_summary = compare_groups(df, group_col="treatment")
+# `compare_imputations` evaluates reconstruction on artificially masked
+# values in a complete frame; it is an exploration tool.
+summary = compare_imputations(df_complete)
+# Cross-validation uses train-fold fit/transform semantics for model selection.
+scores = cv_compare_imputations(X, y, estimator)
 ```
 
 ### 3.7 Report — `missingly.report`
 
 ```python
-from missingly.report import MissinglyReport
+from missingly.report import create_report
 
-report = MissinglyReport(df)
-report.generate(output_path="missing_report.html")
+output_path = create_report(df, output_path="missing_report.html")
 ```
 
 ### 3.8 Time Series — `missingly.timeseries`
 
 ```python
-from missingly.timeseries import TimeSeriesMissingnessAnalyzer
+from missingly.timeseries import gap_table, miss_ts_summary, vis_ts_miss, impute_ts
 
-ts = TimeSeriesMissingnessAnalyzer(df, time_col="date")
-ts.summary()
-ts.plot_gaps()
-ts.interpolate(method="linear")
+summary = miss_ts_summary(df)
+gaps = gap_table(df)  # experimental helper; emits a deprecation warning
+ax = vis_ts_miss(df)
+filled = impute_ts(df, strategy="linear")
 ```
 
 ---
@@ -206,7 +212,11 @@ Full details in `CONVENTIONS.md`. Summary:
 - Test file location: `tests/`
 - Shared fixtures: `conftest.py` in root
 - Framework: `pytest`
-- Coverage target: **90%+**
+- Authoritative coverage baseline (Python 3.12 CI artifact): **89.64% (3589/4004)**.
+  Retrieve the `coverage-py312` artifact from the CI run when measuring
+  progress. The current enforcement threshold remains 80% until the real
+  suite reaches the separately tracked 98% target; do not mask uncovered
+  code with exclusions.
 - **Always** test these edge cases:
   - All-missing column/row
   - No missing data at all
@@ -232,19 +242,28 @@ def df_mixed():
 
 ## 7. Performance Rules
 
-- Functions operating on > 1M rows: **profile memory** before shipping.
-- Visualisations with > 1M rows: **implement intelligent sampling** (e.g., stratified 10k-row sample with a `sample_size` param).
+- Do not claim a large-data capability without a benchmark and a public
+  execution contract.
+- Profile memory before shipping operations intended for large frames.
 - Use `performance.py` profilers for benchmarking.
-- Chunking is preferred over loading full data for `report.py` and `diagnostics.py` on large datasets.
+- Keep full Arrow/Polars execution, chunked reporting, and 1M-row benchmarks
+  explicitly scoped as planned until their tests and benchmarks land.
 
 ---
 
-## 8. Known Bugs & Critical Weak Spots
+## 8. Historical Review Evidence and Current Limits
 
-1. **Categorical imputation**: `impute.py` — categorical columns sometimes cast to `object` after imputation. Always preserve `pd.CategoricalDtype`.
-2. **`compare.py` metrics**: some edge cases return `NaN` metrics when one dataset has zero missing values. Add a guard.
-3. **`MissinglyImputer.transform()`**: does not validate that columns seen in `fit()` exist in `transform()` input. Add column consistency check.
-4. **`test_mcar()`**: fails silently on DataFrames with all-complete columns (no missing at all). Should return a clear result, not raise or hang.
+The following are historical review leads, not assertions about the current
+release. Reproduce each with a focused test before acting on it:
+
+1. Categorical dtype preservation after imputation.
+2. `compare.py` behavior when one input has no missing values.
+3. Train/test column-consistency validation in `MissinglyImputer`.
+4. `mcar_test()` behavior for an all-complete DataFrame.
+
+Current, verified limits include the absence of a full inductive Gower KNN
+transformer and the absence of a complete FCS statistical-validation engine.
+Those modes must fail loudly or remain outside the public claim surface.
 
 ---
 
@@ -272,7 +291,7 @@ When fixing a bug:
 | Module | Responsibility |
 |---|---|
 | `accessor.py` | pandas `.miss` extension API |
-| `impute.py` | Single imputation (mean/median/mode/knn/iterative) |
+| `impute.py` | Single imputation (mean/median/mode/KNN/MICE/model-based) |
 | `transformer.py` | sklearn-compatible `MissinglyImputer` |
 | `diagnostics.py` | Statistical tests (MCAR/MAR/MNAR) |
 | `simulate.py` | Inject missingness under different mechanisms |

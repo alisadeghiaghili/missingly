@@ -18,6 +18,37 @@ comparison, and reporting on those.
 
 ## [2026-08-11] Verified critical-recovery program
 
+### [2026-08-15] Current verified status
+
+This is a current-status correction, not a rewrite of the historical reviews
+below. Historical observations remain evidence and must be reproduced before
+they are treated as current defects.
+
+- Supported Python is **3.9+**; the CI matrix currently exercises 3.9 through
+  3.14.
+- Public guidance uses NumPy-style docstrings with `Parameters`, `Returns`,
+  and `Examples`, and `df.miss.impute(...)` is a supported accessor method.
+- `miss_ts_summary(df)` returns per-column rows with `n_miss`, `pct_miss`,
+  `n_gaps`, `mean_gap`, and `max_gap`; it does not take a `col` parameter.
+- Mixed-metric (`metric="mixed"`) KNN is a standalone transductive operation.
+  `MissinglyImputer` rejects it until a train-only Gower donor contract exists.
+- The authoritative Python 3.12 CI coverage artifact measures **89.64%
+  (3589/4004)**. The active 98% target is not yet met, and CI enforcement
+  remains 80% until real coverage reaches that target.
+
+### Current active issue map
+
+- #69 — Raise real test coverage to 98% without artificial exclusions.
+- #60 — Enforce full lint, typing, docstring, and quality gates.
+- #61 — Build measured Arrow/Polars large-data execution and benchmarks.
+- #71 — Deliver a statistically validated full FCS MI engine.
+- #40 — Release preflight, blocked by the applicable recovery phases.
+- #76 — Repository Truth phase: reconcile current public guidance and config
+  with executable source.
+- #77 — Establish release-blocking safety and compatibility checks.
+- #78 — Complete sklearn transformer contract coverage and validation.
+- #79 — Validate MI inference and pooling behavior for supported workflows.
+
 ### Evidence status
 
 An independent source review and local reproductions confirmed that a passing test suite
@@ -692,22 +723,24 @@ currently resolves to the module rather than the documented singleton, and
 - Restructure tests into `unit/`, `integration/`, `fixtures/`.
 - Required fixtures: `df_no_missing`, `df_all_missing_col`, `df_single_row`,
   `df_mixed_dtypes`, `df_large`, `df_high_cardinality_cat`.
-- Current measured coverage is 81% (`impute.py` 57%, `naniar.py` 11%). Coverage must
-  first reach ≥ 85% without exclusions that hide public paths, then ratchet toward the
-  project-wide 90% target.
+- The 81% measurement is historical evidence. The current authoritative Python 3.12
+  CI artifact measures 89.64% (3589/4004). Issue #69 tracks reaching 98% without
+  exclusions that hide public paths; the CI enforcement threshold remains 80% until
+  that real measurement is achieved.
 - **Prerequisite: A1 done ✓. `manual_tests/` must also be deleted here.**
 - **Acceptance:** `pytest tests/` runs cleanly. Coverage ≥ 85%. `manual_tests/` does not exist.
 
 ### [ ] T2. Docstring and typing policy
-- Google-style docstrings. English only. `mypy --strict` passes.
-- **Acceptance:** `pydoclint --style=google missingly/` exits 0, `mypy --strict` exits
+- NumPy-style docstrings. English only. `mypy --strict` passes.
+- **Acceptance:** a NumPy-style docstring check, `mypy --strict` exits
   0, and doctest collection plus all public examples pass from an installed package.
 
 ### [ ] T3. CI pipeline
 - GitHub Actions: `lint`, `typecheck`, `docstrings`, `doctest`, `test`, package build,
   dependency audit, and docs build. Matrix: supported Python versions and Windows,
   macOS, and Linux coverage as defined by release policy.
-- Coverage gate: `--cov-fail-under=85`, then a non-decreasing ratchet to 90.
+- Coverage gate: the current `--cov-fail-under=80` is a temporary floor; issue #69
+  raises it to 98% only after the CI artifact measures that real coverage.
 - No unexplained warning, skip, xfail, or optional dependency degradation can produce a
   green release check.
 
