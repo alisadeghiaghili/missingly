@@ -360,13 +360,22 @@ def _fill_feature_matrix(
     -------
     tuple of (np.ndarray, np.ndarray)
         ``(X_obs_clean, X_miss_clean)`` with no NaN values.
+
+    Examples
+    --------
+    >>> observed = np.array([[np.nan], [np.nan]])
+    >>> _, incomplete = _fill_feature_matrix(observed, np.array([[np.nan]]))
+    >>> incomplete.tolist()
+    [[0.0]]
     """
     X_obs_clean = X_obs.copy()
     X_miss_clean = X_miss.copy()
     for j in range(X_obs_clean.shape[1]):
-        col_mean = np.nanmean(X_obs_clean[:, j])
-        if np.isnan(col_mean):
+        observed_column = X_obs_clean[:, j]
+        if np.isnan(observed_column).all():
             col_mean = 0.0
+        else:
+            col_mean = np.nanmean(observed_column)
         X_obs_clean[np.isnan(X_obs_clean[:, j]), j] = col_mean
         X_miss_clean[np.isnan(X_miss_clean[:, j]), j] = col_mean
     return X_obs_clean, X_miss_clean
@@ -393,6 +402,14 @@ def _restore_categorical_dtype(
     -------
     pd.Series
         Series with dtype restored as closely as possible.
+
+    Examples
+    --------
+    >>> restored = _restore_categorical_dtype(
+    ...     pd.Series(["low", "high"]), pd.StringDtype()
+    ... )
+    >>> str(restored.dtype)
+    'string'
     """
     if hasattr(orig_dtype, "categories"):
         ordered = getattr(orig_dtype, "ordered", False)
@@ -411,10 +428,25 @@ def _split_encode(
 ):
     """Ordinal-encode categorical columns; return parts needed to reconstruct.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data whose categorical columns are ordinal-encoded. Nullable extension
+        missing values are normalized to ``np.nan`` for sklearn compatibility.
+
     Returns
     -------
     tuple
         ``(df_work, cat_cols, num_cols, encoder, cat_dtypes)``
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"number": [1.0, 2.0], "label": ["a", None]})
+    >>> encoded, cat_cols, _, _, _ = _split_encode(frame)
+    >>> cat_cols
+    ['label']
+    >>> encoded.shape
+    (2, 2)
     """
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -428,7 +460,9 @@ def _split_encode(
         unknown_value=np.nan,
         encoded_missing_value=np.nan,
     )
-    cat_encoded = encoder.fit_transform(df[cat_cols])
+    categorical_values = df.loc[:, cat_cols].astype(object)
+    categorical_values = categorical_values.where(categorical_values.notna(), np.nan)
+    cat_encoded = encoder.fit_transform(categorical_values)
     df_work = df[num_cols].copy()
     for i, col in enumerate(cat_cols):
         df_work[col] = cat_encoded[:, i]
@@ -441,7 +475,31 @@ def _decode(
     encoder,
     cat_dtypes: dict,
 ) -> pd.DataFrame:
-    """Inverse-transform ordinal-encoded columns back to their original dtype."""
+    """Inverse-transform ordinal-encoded columns back to their original dtype.
+
+    Parameters
+    ----------
+    df_imputed : pd.DataFrame
+        Numeric imputation result containing encoded categorical columns.
+    cat_cols : list of str
+        Categorical column names in the order used to fit ``encoder``.
+    encoder : sklearn.preprocessing.OrdinalEncoder or None
+        Fitted encoder returned by :func:`_split_encode`.
+    cat_dtypes : dict of str to dtype
+        Original dtypes keyed by categorical column name.
+
+    Returns
+    -------
+    pd.DataFrame
+        Decoded frame with categorical extension dtypes restored where possible.
+
+    Examples
+    --------
+    >>> source = pd.DataFrame({"label": ["a", None]})
+    >>> encoded, columns, _, encoder, dtypes = _split_encode(source)
+    >>> _decode(encoded.fillna(0.0), columns, encoder, dtypes)["label"].tolist()
+    ['a', 'a']
+    """
     if not cat_cols or encoder is None:
         return df_imputed
 
@@ -468,14 +526,10 @@ def _decode(
         col_vals = np.clip(np.round(col_vals), 0, n_cats - 1).astype(int)
         decoded_col = encoder.categories_[i][col_vals]
 
-        orig_dtype = cat_dtypes[col]
-        if hasattr(orig_dtype, "categories"):
-            ordered = orig_dtype.ordered if hasattr(orig_dtype, "ordered") else False
-            result[col] = pd.Categorical(
-                decoded_col, categories=orig_dtype.categories, ordered=ordered
-            )
-        else:
-            result[col] = decoded_col
+        result[col] = _restore_categorical_dtype(
+            pd.Series(decoded_col, index=result.index),
+            cat_dtypes[col],
+        )
 
     return result
 
@@ -877,11 +931,8 @@ def impute_mode(
     --------
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"city": ["Berlin", np.nan, "Berlin"]})
-    >>> impute_mode(df)
-        city
-    0  Berlin
-    1  Berlin
-    2  Berlin
+    >>> impute_mode(df)["city"].tolist()
+    ['Berlin', 'Berlin', 'Berlin']
     """
     validate_dataframe(df, param="df")
     df = _normalize_missing(df)
@@ -937,12 +988,9 @@ def impute_knn(
     --------
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"age": [25.0, np.nan, 35.0, 40.0]})
-    >>> impute_knn(df, n_neighbors=2)
-        age
-    0  25.0
-    1  30.0
-    2  35.0
-    3  40.0
+    >>> result = impute_knn(df, n_neighbors=2)
+    >>> round(float(result.loc[1, "age"]), 1)
+    33.3
     """
     validate_dataframe(df, param="df")
     validate_positive_int(n_neighbors, param="n_neighbors")
@@ -1056,13 +1104,16 @@ def impute_mice(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty or *n_imputations* < 1.
+    InsufficientDataError
+        If an enabled target column has no observed values from which an
+        imputation model can learn.
 
     Examples
     --------
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0]})
     >>> result = impute_mice(df, max_iter=2, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
 
     >>> imputed, history = impute_mice(df, max_iter=5, return_history=True)
@@ -1134,6 +1185,15 @@ def impute_mice(
                 raise ValueError("bounds must contain finite numeric limits")
             if lower > upper:
                 raise ValueError("bounds lower limit must not exceed upper limit")
+
+    for column in missing_targets:
+        n_observed = int((~original_missing_mask[column]).sum())
+        if n_observed == 0:
+            raise InsufficientDataError(
+                column=column,
+                n_observed=0,
+                n_required=1,
+            )
 
     def _single_chain(
         seed: int,
@@ -1289,7 +1349,7 @@ def impute_pmm(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
     >>> result = impute_pmm(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
 
     Notes
@@ -1412,7 +1472,7 @@ def impute_logreg(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 0.0, 1.0, 0.0]})
     >>> result = impute_logreg(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
 
     Notes
@@ -1533,7 +1593,7 @@ def impute_polyreg(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"color": ["red", np.nan, "blue", "green", "red"]})
     >>> result = impute_polyreg(df, random_state=0)
-    >>> result["color"].isna().any()
+    >>> bool(result["color"].isna().any())
     False
 
     Notes
@@ -1652,7 +1712,7 @@ def impute_polr(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"grade": ["A", np.nan, "B", "C", "A"]})
     >>> result = impute_polr(df, random_state=0)
-    >>> result["grade"].isna().any()
+    >>> bool(result["grade"].isna().any())
     False
 
     Notes
@@ -1821,7 +1881,7 @@ def impute_rf(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
     >>> result = impute_rf(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
     """
     validate_dataframe(df, param="df")
@@ -1892,7 +1952,7 @@ def impute_gb(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
     >>> result = impute_gb(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
     """
     validate_dataframe(df, param="df")
@@ -2025,7 +2085,7 @@ class FittedImputer:
         >>> imp = FittedImputer(strategy="mean")
         >>> repr(imp)
         "FittedImputer(strategy='mean', fitted=False)"
-        >>> imp.fit(pd.DataFrame({"a": [1.0, 2.0]}))
+        >>> _ = imp.fit(pd.DataFrame({"a": [1.0, 2.0]}))
         >>> repr(imp)
         "FittedImputer(strategy='mean', fitted=True)"
         """
@@ -2148,7 +2208,7 @@ def make_imputer(strategy: str = "mean") -> FittedImputer:
     Examples
     --------
     >>> imp = make_imputer("median")
-    >>> type(imp)
-    <class 'missingly.impute.FittedImputer'>
+    >>> type(imp).__name__
+    'FittedImputer'
     """
     return FittedImputer(strategy=strategy)
