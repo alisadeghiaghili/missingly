@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from missingly.exceptions import ImputationError
 from missingly.impute import (
     _decode,
     _encode_feature_pair,
@@ -110,6 +111,56 @@ def test_logreg_uses_one_categorical_encoding_for_fit_and_prediction():
     result = impute_logreg(_categorical_predictor_frame("binary"), random_state=0)
 
     assert result.loc[result.index[-5:], "target"].tolist() == ["yes"] * 5
+
+
+def test_logreg_estimator_failure_has_explicit_fallback_and_strict_error_taxonomy(
+    monkeypatch,
+):
+    """Logreg fallback preserves observed categories while strict mode exposes cause."""
+    class FailingLogisticRegression:
+        """Deterministically reproduce a supported estimator fit failure."""
+
+        def __init__(self, **kwargs):
+            """Accept the production constructor contract for this failure fixture."""
+
+        def fit(self, X, y):
+            """Raise the validation error that the public fallback contract handles."""
+            raise ValueError("synthetic ill-conditioned fit")
+
+    monkeypatch.setattr(
+        "missingly.impute.LogisticRegression",
+        FailingLogisticRegression,
+    )
+    frame = pd.DataFrame(
+        {
+            "predictor": [0.0, 1.0, 0.0, 1.0],
+            "outcome": pd.Categorical(["no", "yes", "no", pd.NA]),
+        }
+    )
+    original = frame.copy(deep=True)
+    expected_fallback = frame["outcome"].dropna().mode().iloc[0]
+
+    with pytest.warns(UserWarning, match="Falling back to mode"):
+        recovered = impute_logreg(frame, strict_mode=False)
+
+    assert recovered.loc[3, "outcome"] == expected_fallback
+    assert recovered["outcome"].dtype == frame["outcome"].dtype
+    pd.testing.assert_frame_equal(frame, original)
+    pd.testing.assert_series_equal(
+        recovered.loc[:2, "outcome"],
+        original.loc[:2, "outcome"],
+    )
+
+    with pytest.raises(ImputationError) as error:
+        impute_logreg(frame, strict_mode=True)
+
+    assert error.value.column == "outcome"
+    assert error.value.strategy == "logreg"
+    assert isinstance(error.value.original, ValueError)
+
+    monkeypatch.setattr("missingly.impute._config.strict_mode", True)
+    with pytest.raises(ImputationError, match="outcome"):
+        impute_logreg(frame)
 
 
 def test_polyreg_runs_on_current_sklearn_and_reuses_feature_encoding():

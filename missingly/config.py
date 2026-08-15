@@ -45,11 +45,13 @@ class MissinglyConfig:
         ``n_neighbors`` exceeds this value. Default is 5.
     strict_mode : bool
         Global default for the ``strict_mode`` parameter accepted by
-        ``impute_rf``, ``impute_gb``, and ``_impute_column_by_column``.
-        When ``True``, estimator failures raise
+        ``impute_logreg``, ``impute_rf``, and ``impute_gb``. When ``True``,
+        estimator failures raise
         :class:`~missingly.exceptions.ImputationError` instead of falling
-        back to a column mean/mode. Default is ``False``.
-        Individual call-site ``strict_mode`` kwargs override this setting.
+        back to a column mean/mode. Default is ``False``. The imputation
+        functions validate this value at call time and reject values other
+        than exactly ``True`` or ``False``. Individual call-site
+        ``strict_mode`` kwargs override this setting.
 
     Examples
     --------

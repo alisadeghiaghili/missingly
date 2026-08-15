@@ -40,7 +40,7 @@ def test_skill_describes_the_supported_runtime_and_documentation_contract() -> N
 
     assert "**Target Python**: 3.9+" in skill
     assert "Parameters, Returns, Examples" in skill
-    assert "**90.25% (3601/3990)**" in skill
+    assert "**90.41% (3619/4003)**" in skill
     assert "coverage-py312" in skill
 
 
@@ -161,9 +161,9 @@ def test_instruction_files_and_conventions_publish_current_verified_status() -> 
 
     assert "Target Python 3.9+" in instructions
     assert "NumPy-style docstrings" in instructions
-    assert "90.25%, 3601/3990" in instructions
+    assert "90.41%, 3619/4003" in instructions
     assert "Python 3.9+" in developer_skill
-    assert "90.25% (3601/3990)" in developer_skill
+    assert "90.41% (3619/4003)" in developer_skill
     assert "## [2026-08-15] Current verified status" in conventions
     assert "### Current active issue map" in conventions
     for issue in (
