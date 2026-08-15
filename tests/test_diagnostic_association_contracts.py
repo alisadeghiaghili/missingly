@@ -39,10 +39,10 @@ class _ValueErrorLogisticRegression:
         y : np.ndarray
             Observedness response supplied by the diagnostic.
 
-        Returns
-        -------
-        _ValueErrorLogisticRegression
-            This method never returns because it raises.
+        Raises
+        ------
+        ValueError
+            Always, to model a recoverable backend validation failure.
         """
         raise ValueError("synthetic logistic fit failure")
 
@@ -73,10 +73,10 @@ class _RuntimeErrorLogisticRegression:
         y : np.ndarray
             Observedness response supplied by the diagnostic.
 
-        Returns
-        -------
-        _RuntimeErrorLogisticRegression
-            This method never returns because it raises.
+        Raises
+        ------
+        RuntimeError
+            Always, to model an unexpected backend failure.
         """
         raise RuntimeError("synthetic unexpected logistic failure")
 
