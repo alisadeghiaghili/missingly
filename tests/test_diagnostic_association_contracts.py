@@ -5,7 +5,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from missingly.diagnostics import missingness_association_test
+from missingly.diagnostics import (
+    miss_case_summary,
+    miss_var_summary,
+    missingness_association_test,
+)
 
 
 class _ValueErrorLogisticRegression:
@@ -98,3 +102,23 @@ def test_association_test_omits_recoverable_estimator_failures(monkeypatch) -> N
         "p_value",
         "n_obs",
     ]
+
+
+def test_missingness_summaries_keep_documented_schema_for_empty_axes() -> None:
+    """Variable and case summaries represent an empty row or column axis safely."""
+    no_rows = pd.DataFrame(columns=["first", "second"])
+    no_columns = pd.DataFrame(index=["first", "second"])
+
+    variable_summary = miss_var_summary(no_rows)
+    case_summary = miss_case_summary(no_columns)
+
+    assert variable_summary.to_dict("list") == {
+        "variable": ["first", "second"],
+        "n_miss": [0, 0],
+        "pct_miss": [0.0, 0.0],
+    }
+    assert case_summary.to_dict("list") == {
+        "case": ["first", "second"],
+        "n_miss": [0, 0],
+        "pct_miss": [0.0, 0.0],
+    }
