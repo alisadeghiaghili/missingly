@@ -145,6 +145,31 @@ def test_public_plotly_upset_honors_minimum_subset_size() -> None:
     assert list(patterns.data[0].y) == [2]
 
 
+def test_public_sorting_requests_stable_tie_order(monkeypatch) -> None:
+    """Public static and Plotly sort options explicitly preserve caller tie order."""
+    original_sort_values = pd.Series.sort_values
+
+    def require_stable_sort(series, *args, **kwargs):
+        """Require visualization sorting to opt into the deterministic algorithm."""
+        assert kwargs.get("kind") == "stable"
+        return original_sort_values(series, *args, **kwargs)
+
+    monkeypatch.setattr(pd.Series, "sort_values", require_stable_sort)
+    frame = pd.DataFrame(
+        {"first": [None, 1.0], "second": [1.0, None]},
+        index=["row-first", "row-second"],
+    )
+
+    static.vis_miss(frame, sort=True)
+    static.miss_var_pct(frame, sort=True)
+    static.bar(frame, sort=True)
+    static.miss_case(frame, sort=True)
+    static.vis_miss(frame, interactive=True, sort=True)
+    static.miss_var_pct(frame, interactive=True, sort=True)
+    static.bar(frame, interactive=True, sort=True)
+    static.miss_case(frame, interactive=True, sort=True)
+
+
 def test_plotly_upset_empty_data_returns_an_annotated_figure() -> None:
     """An all-observed frame has a deterministic, inspectable empty UpSet result."""
     figure = interactive._upset_plotly(pd.DataFrame({"a": [1.0, 2.0]}))
