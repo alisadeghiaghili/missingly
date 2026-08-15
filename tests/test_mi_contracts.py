@@ -72,3 +72,115 @@ def test_mi_data_preserves_observed_cells_and_result_validates_histories(origina
         MIData(original, schema, plan, (changed, chain_b))
     with pytest.raises(ValueError, match="one mapping per imputation"):
         ImputationResult(data, histories=({"age": (1.0,)},))
+
+
+def test_mi_data_rejects_chain_that_leaves_an_originally_missing_cell_unfilled(
+    original, schema, plan
+):
+    """A completed chain must fill every cell that its schema marks as eligible."""
+    incomplete_chain = original.copy()
+    completed_chain = pd.DataFrame(
+        {"age": [20.0, 31.0], "group": ["a", "b"]}, index=[10, 20]
+    )
+
+    with pytest.raises(ValueError, match="fill every originally missing cell"):
+        MIData(original, schema, plan, (incomplete_chain, completed_chain))
+
+
+@pytest.mark.parametrize(
+    ("columns", "dtypes", "index", "mask", "error", "message"),
+    [
+        (("age",), (), pd.Index([10, 20]), pd.DataFrame({"age": [False, True]}, index=[10, 20]), ValueError, "equal length"),
+        (("age",), ("float64",), [10, 20], pd.DataFrame({"age": [False, True]}, index=[10, 20]), TypeError, "pandas Index"),
+        (("age",), ("float64",), pd.Index([10, 10]), pd.DataFrame({"age": [False, True]}, index=[10, 10]), ValueError, "duplicate labels"),
+        (("age",), ("float64",), pd.Index([10, 20]), pd.DataFrame({"other": [False, True]}, index=[10, 20]), ValueError, "columns"),
+        (("age",), ("float64",), pd.Index([10, 20]), pd.DataFrame({"age": [False, True]}, index=[11, 12]), ValueError, "index"),
+        (("age",), ("float64",), pd.Index([10, 20]), pd.DataFrame({"age": [0, 1]}, index=[10, 20]), TypeError, "boolean"),
+    ],
+)
+def test_schema_constructor_rejects_invalid_structural_contracts(
+    columns, dtypes, index, mask, error, message
+):
+    """Direct construction rejects every ambiguous schema alignment boundary."""
+    with pytest.raises(error, match=message):
+        MissingnessSchema(columns, dtypes, index, mask)
+
+
+@pytest.mark.parametrize(
+    ("frame", "error", "message"),
+    [
+        ([1, 2], TypeError, "pandas DataFrame"),
+        (pd.DataFrame(index=[0]), ValueError, "at least one column"),
+        (pd.DataFrame([[1.0]], columns=[1]), TypeError, "columns must be strings"),
+    ],
+)
+def test_schema_factory_rejects_inputs_without_an_unambiguous_tabular_identity(frame, error, message):
+    """Schema creation rejects non-tabular, empty, and non-string-column inputs."""
+    with pytest.raises(error, match=message):
+        MissingnessSchema.from_dataframe(frame)
+
+
+def test_schema_validate_frame_rejects_type_columns_index_and_dtype_drift(schema, original):
+    """Serving data must retain the exact fit-time schema identity."""
+    with pytest.raises(TypeError, match="candidate must be a pandas DataFrame"):
+        schema.validate_frame([1, 2], name="candidate")
+    with pytest.raises(ValueError, match="columns"):
+        schema.validate_frame(original.rename(columns={"age": "years"}))
+    with pytest.raises(ValueError, match="index"):
+        schema.validate_frame(original.rename(index={10: 11}))
+    with pytest.raises(ValueError, match="dtypes"):
+        schema.validate_frame(original.astype({"age": "Int64"}))
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error", "message"),
+    [
+        ({"methods": {}}, ValueError, "nonempty mapping"),
+        ({"methods": {" ": "pmm"}}, TypeError, "nonempty strings"),
+        ({"methods": {"age": ""}}, TypeError, "nonempty strings"),
+        ({"n_imputations": True}, ValueError, "positive integer"),
+        ({"max_iter": 0}, ValueError, "positive integer"),
+        ({"seed_sequence": [101, 202]}, ValueError, "tuple"),
+        ({"seed_sequence": (101, True)}, TypeError, "integers"),
+        ({"constraints": []}, TypeError, "mapping"),
+        ({"provenance": []}, TypeError, "mapping"),
+    ],
+)
+def test_imputation_plan_rejects_nonreproducible_settings(kwargs, error, message):
+    """Plans reject malformed methods, iteration counts, seeds, and metadata."""
+    settings = {
+        "methods": {"age": "pmm"},
+        "n_imputations": 2,
+        "max_iter": 3,
+        "seed_sequence": (101, 202),
+    }
+    settings.update(kwargs)
+
+    with pytest.raises(error, match=message):
+        ImputationPlan(**settings)
+
+
+def test_plan_rejects_wrong_schema_type_and_unknown_constraint(schema):
+    """Plans reject a non-schema boundary and constraints without a target column."""
+    plan = ImputationPlan({"age": "pmm"}, 1, 3, (101,), constraints={"missing": "x > 0"})
+
+    with pytest.raises(TypeError, match="MissingnessSchema"):
+        plan.validate_schema(pd.DataFrame())
+    with pytest.raises(ValueError, match="unknown schema columns"):
+        plan.validate_schema(schema)
+
+
+def test_result_contract_rejects_invalid_trace_warning_and_validation_metadata(original, schema):
+    """Result metadata must align with chains and remain serialisable diagnostic data."""
+    plan = ImputationPlan({"age": "pmm"}, 1, 3, (101,))
+    completed = pd.DataFrame({"age": [20.0, 30.0], "group": ["a", "b"]}, index=[10, 20])
+    data = MIData(original, schema, plan, (completed,))
+
+    with pytest.raises(ValueError, match="unknown schema columns"):
+        ImputationResult(data, histories=({"missing": (1.0,)},))
+    with pytest.raises(TypeError, match="finite numbers"):
+        ImputationResult(data, histories=({"age": (float("nan"),)},))
+    with pytest.raises(TypeError, match="tuple of strings"):
+        ImputationResult(data, warnings=["warning"])
+    with pytest.raises(TypeError, match="string names to booleans"):
+        ImputationResult(data, validation={"valid": 1})
