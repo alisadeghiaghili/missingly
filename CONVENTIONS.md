@@ -32,8 +32,8 @@ they are treated as current defects.
   `n_gaps`, `mean_gap`, and `max_gap`; it does not take a `col` parameter.
 - Mixed-metric (`metric="mixed"`) KNN is a standalone transductive operation.
   `MissinglyImputer` rejects it until a train-only Gower donor contract exists.
-- The authoritative Python 3.12 CI coverage artifact measures **89.64%
-  (3589/4004)**. The active 98% target is not yet met, and CI enforcement
+- The authoritative Python 3.12 CI coverage artifact measures **89.69%
+  (3576/3987)**. The active 98% target is not yet met, and CI enforcement
   remains 80% until real coverage reaches that target.
 - Core/static plotting is offline-only: it makes no network requests, never
   writes a user font cache, and does not import DQT. RTL uses an explicitly
@@ -51,10 +51,11 @@ they are treated as current defects.
 - #61 — Build measured Arrow/Polars large-data execution and benchmarks.
 - #71 — Deliver a statistically validated full FCS MI engine.
 - #40 — Release preflight, blocked by the applicable recovery phases.
-- #77 — Establish release-blocking safety and compatibility checks.
 - #78 — Complete sklearn transformer contract coverage and validation.
 - #79 — Validate MI inference and pooling behavior for supported workflows.
 - #81 — Remove or redesign legacy DQT forwarding shims in v2.
+- #83 — Reimplement localization from the stale i18n branch on current APIs.
+- #84 — Add licensed deterministic RTL rendering and visual regression tests.
 
 ### Evidence status
 
@@ -731,7 +732,7 @@ currently resolves to the module rather than the documented singleton, and
 - Required fixtures: `df_no_missing`, `df_all_missing_col`, `df_single_row`,
   `df_mixed_dtypes`, `df_large`, `df_high_cardinality_cat`.
 - The 81% measurement is historical evidence. The current authoritative Python 3.12
-  CI artifact measures 89.64% (3589/4004). Issue #69 tracks reaching 98% without
+  CI artifact measures 89.69% (3576/3987). Issue #69 tracks reaching 98% without
   exclusions that hide public paths; the CI enforcement threshold remains 80% until
   that real measurement is achieved.
 - **Prerequisite: A1 done ✓. `manual_tests/` must also be deleted here.**
