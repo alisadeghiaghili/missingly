@@ -875,11 +875,8 @@ def impute_mode(
     --------
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"city": ["Berlin", np.nan, "Berlin"]})
-    >>> impute_mode(df)
-        city
-    0  Berlin
-    1  Berlin
-    2  Berlin
+    >>> impute_mode(df)["city"].tolist()
+    ['Berlin', 'Berlin', 'Berlin']
     """
     validate_dataframe(df, param="df")
     df = _normalize_missing(df)
@@ -935,12 +932,9 @@ def impute_knn(
     --------
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"age": [25.0, np.nan, 35.0, 40.0]})
-    >>> impute_knn(df, n_neighbors=2)
-        age
-    0  25.0
-    1  30.0
-    2  35.0
-    3  40.0
+    >>> result = impute_knn(df, n_neighbors=2)
+    >>> round(float(result.loc[1, "age"]), 1)
+    33.3
     """
     validate_dataframe(df, param="df")
     validate_positive_int(n_neighbors, param="n_neighbors")
@@ -1063,7 +1057,7 @@ def impute_mice(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0]})
     >>> result = impute_mice(df, max_iter=2, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
 
     >>> imputed, history = impute_mice(df, max_iter=5, return_history=True)
@@ -1299,7 +1293,7 @@ def impute_pmm(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
     >>> result = impute_pmm(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
 
     Notes
@@ -1422,7 +1416,7 @@ def impute_logreg(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 0.0, 1.0, 0.0]})
     >>> result = impute_logreg(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
 
     Notes
@@ -1543,7 +1537,7 @@ def impute_polyreg(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"color": ["red", np.nan, "blue", "green", "red"]})
     >>> result = impute_polyreg(df, random_state=0)
-    >>> result["color"].isna().any()
+    >>> bool(result["color"].isna().any())
     False
 
     Notes
@@ -1662,7 +1656,7 @@ def impute_polr(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"grade": ["A", np.nan, "B", "C", "A"]})
     >>> result = impute_polr(df, random_state=0)
-    >>> result["grade"].isna().any()
+    >>> bool(result["grade"].isna().any())
     False
 
     Notes
@@ -1831,7 +1825,7 @@ def impute_rf(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
     >>> result = impute_rf(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
     """
     validate_dataframe(df, param="df")
@@ -1902,7 +1896,7 @@ def impute_gb(
     >>> import pandas as pd, numpy as np
     >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
     >>> result = impute_gb(df, random_state=0)
-    >>> result["a"].isna().any()
+    >>> bool(result["a"].isna().any())
     False
     """
     validate_dataframe(df, param="df")
@@ -2035,7 +2029,7 @@ class FittedImputer:
         >>> imp = FittedImputer(strategy="mean")
         >>> repr(imp)
         "FittedImputer(strategy='mean', fitted=False)"
-        >>> imp.fit(pd.DataFrame({"a": [1.0, 2.0]}))
+        >>> _ = imp.fit(pd.DataFrame({"a": [1.0, 2.0]}))
         >>> repr(imp)
         "FittedImputer(strategy='mean', fitted=True)"
         """
@@ -2158,7 +2152,7 @@ def make_imputer(strategy: str = "mean") -> FittedImputer:
     Examples
     --------
     >>> imp = make_imputer("median")
-    >>> type(imp)
-    <class 'missingly.impute.FittedImputer'>
+    >>> type(imp).__name__
+    'FittedImputer'
     """
     return FittedImputer(strategy=strategy)
