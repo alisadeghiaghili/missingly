@@ -2,12 +2,32 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from missingly.exceptions import InsufficientDataError
-from missingly.impute import impute_mice
+from missingly.impute import _fill_feature_matrix, impute_mice
+
+
+def test_fill_feature_matrix_handles_all_nan_observed_features_without_warning() -> None:
+    """All-NaN features use the documented zero fallback without RuntimeWarning."""
+    observed = np.array([[np.nan, 2.0], [np.nan, 4.0]])
+    incomplete = np.array([[np.nan, 6.0]])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        observed_filled, incomplete_filled = _fill_feature_matrix(
+            observed,
+            incomplete,
+        )
+
+    np.testing.assert_array_equal(observed_filled, [[0.0, 2.0], [0.0, 4.0]])
+    np.testing.assert_array_equal(incomplete_filled, [[0.0, 6.0]])
+    np.testing.assert_array_equal(observed, [[np.nan, 2.0], [np.nan, 4.0]])
+    np.testing.assert_array_equal(incomplete, [[np.nan, 6.0]])
 
 
 @pytest.mark.parametrize(
