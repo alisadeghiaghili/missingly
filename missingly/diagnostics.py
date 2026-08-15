@@ -1223,7 +1223,7 @@ def plot_mice_convergence(
         variables = list(trace_map.keys())
 
     if not variables:
-        print("No variables to plot.")
+        warnings.warn("No variables to plot.", UserWarning, stacklevel=2)
         return
 
     n_vars = len(variables)
