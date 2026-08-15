@@ -100,10 +100,10 @@ def test_unreadable_packaged_font_falls_back_without_crashing(
     font_path.write_bytes(b"\x00\x01\x00\x00")
     monkeypatch.setattr(_base, "_BUNDLED_VAZIRMATN_PATH", font_path)
 
-    def _deny_read(self: Path) -> bytes:
+    def _deny_open(self: Path, *args: object, **kwargs: object) -> object:
         raise PermissionError("font asset is not readable")
 
-    monkeypatch.setattr(Path, "read_bytes", _deny_read)
+    monkeypatch.setattr(Path, "open", _deny_open)
 
     assert _base._ensure_vazirmatn() is None
 
