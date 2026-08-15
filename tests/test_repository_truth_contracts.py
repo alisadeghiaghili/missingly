@@ -164,6 +164,7 @@ def test_instruction_files_and_conventions_publish_current_verified_status() -> 
     assert "91.55%, 3706/4048" in instructions
     assert "Python 3.9+" in developer_skill
     assert "91.55% (3706/4048)" in developer_skill
+    assert "91.55% (3706/4048)" in conventions
     assert "## [2026-08-15] Current verified status" in conventions
     assert "### Current active issue map" in conventions
     for issue in (
