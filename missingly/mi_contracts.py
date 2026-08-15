@@ -195,18 +195,28 @@ class ImputationPlan:
         for column, method in self.methods.items():
             _require_nonempty_strings((column,), "method column names")
             _require_nonempty_strings((method,), "method identifiers")
-        for name, value in (("n_imputations", self.n_imputations), ("max_iter", self.max_iter)):
-            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-                raise ValueError(f"{name} must be a positive integer")
+        for numeric_name, numeric_value in (
+            ("n_imputations", self.n_imputations),
+            ("max_iter", self.max_iter),
+        ):
+            if (
+                isinstance(numeric_value, bool)
+                or not isinstance(numeric_value, int)
+                or numeric_value <= 0
+            ):
+                raise ValueError(f"{numeric_name} must be a positive integer")
         if not isinstance(self.seed_sequence, tuple) or len(self.seed_sequence) != self.n_imputations:
             raise ValueError("seed_sequence must be a tuple with one seed per imputation")
         if len(set(self.seed_sequence)) != len(self.seed_sequence):
             raise ValueError("seed_sequence must not contain duplicate seeds")
         if any(isinstance(seed, bool) or not isinstance(seed, int) for seed in self.seed_sequence):
             raise TypeError("seed_sequence must contain integers")
-        for name, value in (("constraints", self.constraints), ("provenance", self.provenance)):
-            if not isinstance(value, Mapping):
-                raise TypeError(f"{name} must be a mapping")
+        for metadata_name, metadata_value in (
+            ("constraints", self.constraints),
+            ("provenance", self.provenance),
+        ):
+            if not isinstance(metadata_value, Mapping):
+                raise TypeError(f"{metadata_name} must be a mapping")
 
     def validate_schema(self, schema: MissingnessSchema) -> None:
         """Check that all planned methods target columns in a schema.
