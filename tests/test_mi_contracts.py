@@ -72,3 +72,16 @@ def test_mi_data_preserves_observed_cells_and_result_validates_histories(origina
         MIData(original, schema, plan, (changed, chain_b))
     with pytest.raises(ValueError, match="one mapping per imputation"):
         ImputationResult(data, histories=({"age": (1.0,)},))
+
+
+def test_mi_data_rejects_chain_that_leaves_an_originally_missing_cell_unfilled(
+    original, schema, plan
+):
+    """A completed chain must fill every cell that its schema marks as eligible."""
+    incomplete_chain = original.copy()
+    completed_chain = pd.DataFrame(
+        {"age": [20.0, 31.0], "group": ["a", "b"]}, index=[10, 20]
+    )
+
+    with pytest.raises(ValueError, match="fill every originally missing cell"):
+        MIData(original, schema, plan, (incomplete_chain, completed_chain))
