@@ -49,7 +49,10 @@ def _reset_never_run_estimator() -> None:
     _NeverRunEstimator.predict_calls = 0
 
 
-def test_logreg_rejects_non_boolean_override_before_model_execution(monkeypatch, binary_frame):
+def test_logreg_rejects_non_boolean_override_before_model_execution(
+    monkeypatch,
+    binary_frame,
+):
     """A truthy string is not a valid strict-mode override or estimator input."""
     _reset_never_run_estimator()
     monkeypatch.setattr("missingly.impute.LogisticRegression", _NeverRunEstimator)
@@ -91,7 +94,10 @@ def test_model_imputers_reject_integer_strict_mode_before_shared_estimator_execu
     pd.testing.assert_frame_equal(binary_frame, original)
 
 
-def test_invalid_global_strict_mode_fails_before_logreg_model_execution(monkeypatch, binary_frame):
+def test_invalid_global_strict_mode_fails_before_logreg_model_execution(
+    monkeypatch,
+    binary_frame,
+):
     """An invalid package default must fail before it can affect model behavior."""
     _reset_never_run_estimator()
     monkeypatch.setattr("missingly.impute.LogisticRegression", _NeverRunEstimator)
@@ -106,11 +112,17 @@ def test_invalid_global_strict_mode_fails_before_logreg_model_execution(monkeypa
     pd.testing.assert_frame_equal(binary_frame, original)
 
 
-def test_boolean_override_does_not_consult_an_invalid_global_default(monkeypatch, binary_frame):
+def test_boolean_override_does_not_consult_an_invalid_global_default(
+    monkeypatch,
+    binary_frame,
+):
     """A valid explicit override takes precedence over an invalid global setting."""
     monkeypatch.setattr("missingly.impute._config.strict_mode", "enabled")
 
     result = impute_logreg(binary_frame, strict_mode=False)
 
     assert not result["outcome"].isna().any()
-    pd.testing.assert_series_equal(result.loc[:2, "outcome"], binary_frame.loc[:2, "outcome"])
+    pd.testing.assert_series_equal(
+        result.loc[:2, "outcome"],
+        binary_frame.loc[:2, "outcome"],
+    )

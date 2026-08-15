@@ -113,7 +113,9 @@ def test_logreg_uses_one_categorical_encoding_for_fit_and_prediction():
     assert result.loc[result.index[-5:], "target"].tolist() == ["yes"] * 5
 
 
-def test_logreg_estimator_failure_has_explicit_fallback_and_strict_error_taxonomy(monkeypatch):
+def test_logreg_estimator_failure_has_explicit_fallback_and_strict_error_taxonomy(
+    monkeypatch,
+):
     """Logreg fallback preserves observed categories while strict mode exposes cause."""
     class FailingLogisticRegression:
         """Deterministically reproduce a supported estimator fit failure."""
@@ -125,7 +127,10 @@ def test_logreg_estimator_failure_has_explicit_fallback_and_strict_error_taxonom
             """Raise the validation error that the public fallback contract handles."""
             raise ValueError("synthetic ill-conditioned fit")
 
-    monkeypatch.setattr("missingly.impute.LogisticRegression", FailingLogisticRegression)
+    monkeypatch.setattr(
+        "missingly.impute.LogisticRegression",
+        FailingLogisticRegression,
+    )
     frame = pd.DataFrame(
         {
             "predictor": [0.0, 1.0, 0.0, 1.0],
@@ -141,7 +146,10 @@ def test_logreg_estimator_failure_has_explicit_fallback_and_strict_error_taxonom
     assert recovered.loc[3, "outcome"] == expected_fallback
     assert recovered["outcome"].dtype == frame["outcome"].dtype
     pd.testing.assert_frame_equal(frame, original)
-    pd.testing.assert_series_equal(recovered.loc[:2, "outcome"], original.loc[:2, "outcome"])
+    pd.testing.assert_series_equal(
+        recovered.loc[:2, "outcome"],
+        original.loc[:2, "outcome"],
+    )
 
     with pytest.raises(ImputationError) as error:
         impute_logreg(frame, strict_mode=True)
