@@ -1097,14 +1097,6 @@ def impute_mice(
         imputation_mask = original_missing_mask & where
     retained_missing_mask = original_missing_mask & ~imputation_mask
     missing_targets = [column for column in df_norm.columns if imputation_mask[column].any()]
-    for column in missing_targets:
-        n_observed = int((~original_missing_mask[column]).sum())
-        if n_observed == 0:
-            raise InsufficientDataError(
-                column=column,
-                n_observed=0,
-                n_required=1,
-            )
     if visit_sequence is not None:
         if not isinstance(visit_sequence, list) or not all(
             isinstance(column, str) for column in visit_sequence
@@ -1143,6 +1135,15 @@ def impute_mice(
                 raise ValueError("bounds must contain finite numeric limits")
             if lower > upper:
                 raise ValueError("bounds lower limit must not exceed upper limit")
+
+    for column in missing_targets:
+        n_observed = int((~original_missing_mask[column]).sum())
+        if n_observed == 0:
+            raise InsufficientDataError(
+                column=column,
+                n_observed=0,
+                n_required=1,
+            )
 
     def _single_chain(
         seed: int,
