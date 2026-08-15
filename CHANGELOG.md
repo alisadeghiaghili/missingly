@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made public ``impute_mode`` preserve nullable extension dtypes and raise
   ``InsufficientDataError`` for all-missing columns instead of leaking backend
   failures.
+- Repaired the observedness-association screen for one-feature, intercept-only
+  inputs; duplicate labels and non-finite numeric outcomes now fail early, and
+  recoverable logistic fit failures emit a feature-named warning. This remains
+  an exploratory observed-data association screen and does not identify MAR/MNAR.
 
 ### Added
 - Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,

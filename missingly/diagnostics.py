@@ -190,12 +190,19 @@ def miss_var_summary(
     Parameters
     ----------
     df : pd.DataFrame
+        Input DataFrame. Empty row axes are supported.
     missing_values : list, optional
+        Extra sentinel values treated as missing in addition to null values.
 
     Returns
     -------
     pd.DataFrame
         Columns: ``variable``, ``n_miss``, ``pct_miss``.
+
+    Examples
+    --------
+    >>> miss_var_summary(pd.DataFrame(columns=["a"])).to_dict("list")
+    {'variable': ['a'], 'n_miss': [0], 'pct_miss': [0.0]}
     """
     validate_dataframe(df, allow_empty=True)
     if missing_values is None:
@@ -223,12 +230,19 @@ def miss_case_summary(
     Parameters
     ----------
     df : pd.DataFrame
+        Input DataFrame. Empty column axes are supported.
     missing_values : list, optional
+        Extra sentinel values treated as missing in addition to null values.
 
     Returns
     -------
     pd.DataFrame
         Columns: ``case``, ``n_miss``, ``pct_miss``.
+
+    Examples
+    --------
+    >>> miss_case_summary(pd.DataFrame(index=["row"])).to_dict("list")
+    {'case': ['row'], 'n_miss': [0.0], 'pct_miss': [0.0]}
     """
     validate_dataframe(df, allow_empty=True)
     if missing_values is None:
@@ -633,7 +647,30 @@ def mcar_test(
 
 
 def _logistic_log_likelihood(model, X, y):
-    """Log-likelihood of a fitted LogisticRegression."""
+    """Compute the Bernoulli log-likelihood of a fitted logistic model.
+
+    Parameters
+    ----------
+    model : sklearn.linear_model.LogisticRegression
+        Fitted binary classifier exposing ``predict_proba``.
+    X : array-like of shape (n_samples, n_features)
+        Design matrix used to evaluate fitted probabilities.
+    y : array-like of shape (n_samples,)
+        Binary response values encoded as zero and one.
+
+    Returns
+    -------
+    float
+        Clipped finite log-likelihood for the supplied response.
+
+    Examples
+    --------
+    >>> class Model:
+    ...     def predict_proba(self, X):
+    ...         return np.column_stack([1 - np.asarray(X), np.asarray(X)])
+    >>> _logistic_log_likelihood(Model(), np.array([0.25, 0.75]), np.array([0, 1]))
+    -0.5753641449035618
+    """
     p = np.clip(model.predict_proba(X)[:, 1], 1e-12, 1 - 1e-12)
     return float(np.sum(y * np.log(p) + (1 - y) * np.log(1 - p)))
 
