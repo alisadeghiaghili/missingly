@@ -51,6 +51,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 from sklearn.base import BaseEstimator, RegressorMixin, clone
 from sklearn.ensemble import (
     GradientBoostingClassifier,
@@ -1634,7 +1635,7 @@ def impute_polr(
             if _HAS_STATSMODELS:
                 try:
                     category_to_code = {category: index for index, category in enumerate(categories)}
-                    y_obs_codes = np.asarray(
+                    y_obs_codes: NDArray[np.int64] = np.asarray(
                         [category_to_code[value] for value in y_obs], dtype=np.int64
                     )
                     ord_model = _OrderedModel(y_obs_codes, X_obs_clean, distr="logit")
