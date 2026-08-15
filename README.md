@@ -214,8 +214,8 @@ result = mi.impute_knn(df_mixed, n_neighbors=3, metric="mixed")
 > **Performance note:** Gower distance is **O(n²)** in both memory and
 > runtime.  Avoid `metric="mixed"` for datasets with more than ~10 000 rows.
 
-`metric="mixed"` is intentionally rejected by `MissinglyImputer`. The
-current Gower implementation computes distances across the supplied frame and
+`metric="mixed"` is rejected by `MissinglyImputer` because the current Gower
+implementation computes distances across the supplied frame and
 therefore has no safe inductive train/test donor contract. Use the standalone
 function only for transductive exploration; use the default Euclidean
 transformer mode inside a sklearn pipeline:
