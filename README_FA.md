@@ -47,7 +47,8 @@ pip install missingly[all]
 > **کاربران فارسی/عربی:** نمودارهای ایستای matplotlib نیاز به `missingly[rtl]` دارند
 > (نصب می‌کند `arabic-reshaper` و `python-bidi`) **به‌علاوه** یک فونت سازگار
 > مانند [Vazirmatn](https://fonts.google.com/specimen/Vazirmatn) روی سیستم شما.
-> نمودارهای تعاملی Plotly (`interactive=True`) بدون هیچ وابستگی اضافه‌ای به درستی کار می‌کنند.
+> نمودارهای تعاملی Plotly (`interactive=True`) به extra اختیاری
+> `missingly[interactive]` که در بالا نشان داده شد نیاز دارند.
 > نمودارهای ایستای RTL هرگز فونت دانلود نمی‌کنند و cache فونت در مسیر کاربر
 > نمی‌نویسند؛ فقط از فونت bundled یا فونت نصب‌شدهٔ سیستم استفاده می‌کنند و در
 > نبود آن هشدار شفاف می‌دهند.
@@ -140,7 +141,9 @@ mi.dendrogram(df)
 
 #### تعاملی
 
-`interactive=True` را به هر تابع زیر پاس دهید تا یک figure Plotly بگیرید:
+پس از نصب `missingly[interactive]`، مقدار `interactive=True` را به هر تابع زیر
+پاس دهید تا یک figure Plotly بگیرید. اگر Plotly نصب نباشد، تابع به‌جای fallback
+خاموش به backend ایستا، یک `ImportError` روشن ایجاد می‌کند.
 
 ```python
 mi.vis_miss(df, interactive=True)

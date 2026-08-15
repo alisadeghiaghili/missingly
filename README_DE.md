@@ -107,6 +107,10 @@ mi.dendrogram(df)
 
 #### Interaktiv
 
+Installieren Sie zuerst `missingly[interactive]`. Ohne Plotly lösen interaktive
+Aufrufe einen verständlichen `ImportError` aus und wechseln nicht still zum
+statischen Backend.
+
 ```python
 mi.vis_miss(df, interactive=True)
 mi.heatmap(df, interactive=True)
