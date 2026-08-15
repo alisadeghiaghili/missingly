@@ -16,11 +16,14 @@ _CONDITIONAL_IMPUTERS: tuple[tuple[str, Callable[..., pd.DataFrame]], ...] = (
     ("rf", impute_rf),
     ("gb", impute_gb),
 )
+_CONDITIONAL_WRAPPERS: tuple[Callable[..., pd.DataFrame], ...] = (
+    impute_rf,
+    impute_gb,
+)
 
 
-@pytest.mark.parametrize(("strategy", "imputer"), _CONDITIONAL_IMPUTERS)
+@pytest.mark.parametrize("imputer", _CONDITIONAL_WRAPPERS, ids=["rf", "gb"])
 def test_conditional_imputers_use_numeric_fallback_without_predictors(
-    strategy: str,
     imputer: Callable[..., pd.DataFrame],
 ) -> None:
     """A valid one-column numeric frame uses the documented mean fallback."""
@@ -31,12 +34,10 @@ def test_conditional_imputers_use_numeric_fallback_without_predictors(
 
     assert result["score"].tolist() == [1.0, 2.0, 3.0]
     pd.testing.assert_frame_equal(frame, original)
-    assert strategy in {"rf", "gb"}
 
 
-@pytest.mark.parametrize(("strategy", "imputer"), _CONDITIONAL_IMPUTERS)
+@pytest.mark.parametrize("imputer", _CONDITIONAL_WRAPPERS, ids=["rf", "gb"])
 def test_conditional_imputers_use_categorical_fallback_without_predictors(
-    strategy: str,
     imputer: Callable[..., pd.DataFrame],
 ) -> None:
     """A categorical fallback keeps dtype, observed values, and valid support."""
@@ -50,7 +51,6 @@ def test_conditional_imputers_use_categorical_fallback_without_predictors(
     assert result.loc[2, "grade"] in set(frame["grade"].dropna())
     pd.testing.assert_series_equal(result.loc[:1, "grade"], frame.loc[:1, "grade"])
     pd.testing.assert_frame_equal(frame, original)
-    assert strategy in {"rf", "gb"}
 
 
 @pytest.mark.parametrize(("strategy", "imputer"), _CONDITIONAL_IMPUTERS)
@@ -78,9 +78,8 @@ def test_conditional_imputers_raise_typed_error_in_strict_mode(
     pd.testing.assert_frame_equal(frame, original)
 
 
-@pytest.mark.parametrize(("strategy", "imputer"), _CONDITIONAL_IMPUTERS)
+@pytest.mark.parametrize("imputer", _CONDITIONAL_WRAPPERS, ids=["rf", "gb"])
 def test_conditional_imputers_reject_all_missing_target_before_estimation(
-    strategy: str,
     imputer: Callable[..., pd.DataFrame],
 ) -> None:
     """Public conditional APIs report an all-missing target through typed data error."""
@@ -93,4 +92,3 @@ def test_conditional_imputers_reject_all_missing_target_before_estimation(
     assert exc_info.value.column == "score"
     assert exc_info.value.n_observed == 0
     pd.testing.assert_frame_equal(frame, original)
-    assert strategy in {"rf", "gb"}
