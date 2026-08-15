@@ -57,11 +57,22 @@ def test_skill_only_names_supported_accessor_and_imputation_apis() -> None:
         "MultipleImputer",
         "MIWorkflow",
         "missing_rate=",
+        "MissinglyImputer(method=",
+        "test_mcar",
+        "test_mar",
+        "missing_pattern",
+        "missing_mechanism",
+        "compare_datasets",
+        "compare_groups",
+        "MissinglyReport",
+        "TimeSeriesMissingnessAnalyzer",
     ):
         assert unsupported not in skill
 
     assert "df.miss.impute(strategy=\"mean\")" in skill
     assert "frac=0.2" in skill
+    assert "from missingly.report import create_report" in skill
+    assert "from missingly.timeseries import gap_table, miss_ts_summary, vis_ts_miss, impute_ts" in skill
 
 
 def test_readme_time_series_example_matches_the_current_return_schema() -> None:
@@ -96,9 +107,42 @@ def test_legacy_requirements_share_the_packaging_dependency_floors() -> None:
         "scikit-learn>=1.2.0",
         "statsmodels>=0.14.0",
         "jinja2>=3.1.0",
-        "upsetplot>=0.9.0",
     ):
         assert requirement in requirements
+    assert 'pip install "missingly[upset]"' in requirements
+
+
+def test_translated_readmes_match_time_series_and_mixed_knn_contracts() -> None:
+    """Keep localized quickstarts aligned with the executable public API."""
+    german = _read("README_DE.md")
+    persian = _read("README_FA.md")
+
+    for readme in (german, persian):
+        assert "miss_ts_summary(ts)" in readme
+        assert "miss_ts_summary(ts, col=" not in readme
+        assert 'metric="mixed"' in readme
+
+    assert "Python-Version:** 3.9" in german
+    assert "lehnt `metric=\"mixed\"` ab" in german
+    assert "۳.۹ و بالاتر" in persian
+    assert "رد می‌کند" in persian
+
+
+def test_instruction_files_and_conventions_publish_current_verified_status() -> None:
+    """Prevent stale development instructions from overriding source truth."""
+    instructions = _read("instructions.md")
+    developer_skill = _read("missingly-dev-skills.md")
+    conventions = _read("CONVENTIONS.md")
+
+    assert "Target Python 3.9+" in instructions
+    assert "NumPy-style docstrings" in instructions
+    assert "89.64%, 3589/4004" in instructions
+    assert "Python 3.9+" in developer_skill
+    assert "89.64% (3589/4004)" in developer_skill
+    assert "## [2026-08-15] Current verified status" in conventions
+    assert "### Current active issue map" in conventions
+    for issue in ("#69", "#60", "#61", "#71", "#40", "#76", "#77", "#78", "#79"):
+        assert issue in conventions
 
 
 def test_repository_declares_a_cross_platform_text_normalization_policy() -> None:
