@@ -22,6 +22,7 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from numpy.typing import NDArray
 
 from missingly.visualisation._base import (
     _apply_rtl_font,
@@ -79,6 +80,54 @@ def _set_datetime_yticks(
 def _clean_ax(ax: Any, spines: Sequence[str] = ("top", "right")) -> None:
     for spine in spines:
         ax.spines[spine].set_visible(False)
+
+
+def _empty_upset_axes(
+    figsize: tuple[float, float] | None,
+    message: str,
+) -> dict[str, Any]:
+    """Create the documented UpSet axes schema for an empty pattern result.
+
+    Parameters
+    ----------
+    figsize : tuple of float or None
+        Requested matplotlib figure size. ``None`` selects the standard size.
+    message : str
+        Explanation rendered on the intersections axis.
+
+    Returns
+    -------
+    dict of str to matplotlib.axes.Axes
+        Axes keyed by ``intersections``, ``matrix``, and ``totals``.
+
+    Examples
+    --------
+    >>> sorted(_empty_upset_axes(None, "No patterns"))
+    ['intersections', 'matrix', 'totals']
+    """
+    figure = plt.figure(figsize=figsize or (9, 5), constrained_layout=True)
+    grid = figure.add_gridspec(2, 2, width_ratios=(1.2, 4.0), height_ratios=(2.2, 1.4))
+    blank_ax = figure.add_subplot(grid[0, 0])
+    intersections_ax = figure.add_subplot(grid[0, 1])
+    totals_ax = figure.add_subplot(grid[1, 0])
+    matrix_ax = figure.add_subplot(grid[1, 1])
+    blank_ax.axis("off")
+    intersections_ax.text(
+        0.5,
+        0.5,
+        message,
+        ha="center",
+        va="center",
+        transform=intersections_ax.transAxes,
+    )
+    intersections_ax.set_axis_off()
+    totals_ax.set_axis_off()
+    matrix_ax.set_axis_off()
+    return {
+        "intersections": intersections_ax,
+        "matrix": matrix_ax,
+        "totals": totals_ax,
+    }
 
 
 # ===========================================================================
@@ -450,14 +499,19 @@ def upset(
         from missingly.visualisation.interactive import _upset_plotly
         return _upset_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    show_pct = bool(kwargs.pop("show_pct", False))
+    if kwargs:
+        unknown = ", ".join(sorted(kwargs))
+        raise TypeError(f"Unsupported UpSet keyword arguments: {unknown}")
+
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     if not null_mat.any(axis=None):
-        return {"intersections": None, "matrix": None, "totals": None}
+        return _empty_upset_axes(figsize, "No missingness patterns to display")
 
     cols_with_missing = [c for c in null_mat.columns if null_mat[c].any()]
     if not cols_with_missing:
-        return {"intersections": None, "matrix": None, "totals": None}
+        return _empty_upset_axes(figsize, "No missingness patterns to display")
 
     patterns = (
         null_mat[cols_with_missing]
@@ -465,12 +519,7 @@ def upset(
         .loc[lambda counts: counts >= min_subset_size]
     )
     if patterns.empty:
-        return {"intersections": None, "matrix": None, "totals": None}
-
-    show_pct = bool(kwargs.pop("show_pct", False))
-    if kwargs:
-        unknown = ", ".join(sorted(kwargs))
-        raise TypeError(f"Unsupported UpSet keyword arguments: {unknown}")
+        return _empty_upset_axes(figsize, "No missingness patterns to display")
 
     figure = plt.figure(figsize=figsize or (9, 5), constrained_layout=True)
     grid = figure.add_gridspec(
@@ -680,35 +729,117 @@ def heatmap(
     missing_values=None,
     **kwargs: Any,
 ) -> Any:
-    """Nullity correlation heatmap.
+    """Plot correlations among per-column missingness indicators.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missingness indicators are correlated.
+    figsize : tuple of float, optional
+        Matplotlib figure size. A readable default is selected when omitted.
+    cmap : str, default "RdYlGn"
+        Matplotlib colormap for the correlation matrix.
+    fontsize : int, default 12
+        Tick-label font size.
+    annot : bool, default True
+        Whether to annotate visible matrix cells with correlation values.
+    fmt : str, default ".2f"
+        Numeric format used for annotations.
+    vmin, vmax, center : float
+        Colormap bounds and midpoint forwarded to seaborn.
+    linewidths : float, default 0.5
+        Width of grid lines between matrix cells.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw into.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend. ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    mask_insignificant : bool, default True
+        Mask off-diagonal correlations whose two-sided Pearson p-value is at
+        least ``significance``. Constant nullity indicators remain masked.
+    significance : float, default 0.05
+        Strictly positive p-value cutoff no greater than one.
+    method : {"pearson", "phi"}, default "pearson"
+        Correlation name. Both calculate Pearson correlation on binary
+        missingness indicators, which is the phi coefficient.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Additional keyword arguments forwarded to :func:`seaborn.heatmap`.
 
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        The supplied or newly created axes for static output, or a Plotly
+        figure when interactive output is selected.
+
+    Raises
+    ------
+    ValueError
+        If ``method`` is unsupported or ``significance`` is outside ``(0, 1]``
+        while significance masking is enabled.
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"a": [1.0, np.nan], "b": [np.nan, 2.0]})
+    >>> heatmap(frame, annot=False).get_title()
+    ''
     """
+    if method not in {"pearson", "phi"}:
+        raise ValueError("method must be either 'pearson' or 'phi'")
+    if mask_insignificant and not 0 < significance <= 1:
+        raise ValueError("significance must be in the interval (0, 1]")
+
     if backend == "plotly" or interactive:
         _require_plotly()
         from missingly.visualisation.interactive import _heatmap_plotly
-        return _heatmap_plotly(_apply_sentinels(df, missing_values), **kwargs)
+        return _heatmap_plotly(
+            _apply_sentinels(df, missing_values),
+            method=method,
+            mask_insignificant=mask_insignificant,
+            significance=significance,
+            **kwargs,
+        )
 
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     cols_with_missing = [c for c in null_mat.columns if null_mat[c].any()]
     if len(cols_with_missing) < 2:
-        fig, ax_ = plt.subplots(figsize=figsize or (4, 3), constrained_layout=True)
+        if ax is not None:
+            ax_ = ax
+        else:
+            _, ax_ = plt.subplots(figsize=figsize or (4, 3), constrained_layout=True)
         ax_.text(0.5, 0.5, "Not enough columns with missing values",
-                 ha="center", va="center", transform=ax_.transAxes)
+                  ha="center", va="center", transform=ax_.transAxes)
         return ax_
-
-    if method not in {"pearson", "phi"}:
-        raise ValueError("method must be either 'pearson' or 'phi'")
 
     sub = null_mat[cols_with_missing].astype(float)
     # Pearson correlation between two binary indicators is the phi
     # coefficient, so both public names intentionally use this calculation.
     corr = sub.corr(method="pearson")
-    diag_mask = np.eye(len(cols_with_missing), dtype=bool)
-    final_mask = diag_mask
+    diag_mask: NDArray[np.bool_] = np.eye(len(cols_with_missing), dtype=bool)
+    final_mask = diag_mask | corr.isna().to_numpy()
+    if mask_insignificant:
+        from scipy.stats import pearsonr
+
+        p_values: NDArray[np.float64] = np.ones(corr.shape, dtype=float)
+        for left_idx, left_col in enumerate(cols_with_missing):
+            for right_idx in range(left_idx):
+                right_col = cols_with_missing[right_idx]
+                left = sub[left_col]
+                right = sub[right_col]
+                if left.nunique() < 2 or right.nunique() < 2:
+                    continue
+                _, p_value = pearsonr(left, right)
+                if np.isfinite(p_value):
+                    p_values[left_idx, right_idx] = p_value
+                    p_values[right_idx, left_idx] = p_value
+        final_mask |= p_values >= significance
 
     if figsize is None:
         n = len(cols_with_missing)
@@ -762,9 +893,12 @@ def dendrogram(
     null_mat = _null_matrix(df)
     cols_with_missing = [c for c in null_mat.columns if null_mat[c].any()]
     if len(cols_with_missing) < 2:
-        fig, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
+        if ax is not None:
+            ax_ = ax
+        else:
+            _, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
         ax_.text(0.5, 0.5, "Not enough columns with missing values",
-                 ha="center", va="center", transform=ax_.transAxes)
+                  ha="center", va="center", transform=ax_.transAxes)
         ax_.set_title("Dendrogram of Variables by Missing Data Patterns")
         return ax_
 
@@ -833,8 +967,13 @@ def vis_miss(
         try:
             lnk = hierarchy.linkage(data, method="ward", metric="euclidean")
             null_mat = null_mat.iloc[hierarchy.leaves_list(lnk)]
-        except Exception:  # noqa: BLE001
-            pass
+        except ValueError as exc:
+            warnings.warn(
+                "vis_miss: clustering could not form valid distances "
+                f"({exc}); using original order.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     n_rows, n_cols = null_mat.shape
     if figsize is None:
@@ -888,8 +1027,13 @@ def miss_cluster(
         row_order = leaves_list(linkage(null_mat.values, method="ward", metric="euclidean"))
         col_order = leaves_list(linkage(null_mat.values.T, method="ward", metric="euclidean"))
         null_mat = null_mat.iloc[row_order, col_order]
-    except Exception:  # noqa: BLE001
-        pass
+    except ValueError as exc:
+        warnings.warn(
+            "miss_cluster: clustering could not form valid distances "
+            f"({exc}); using original order.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     n_rows, n_cols = null_mat.shape
     if figsize is None:
@@ -1448,9 +1592,12 @@ def vis_parallel_coords(
     df = _apply_sentinels(df, missing_values)
     num_df = df.select_dtypes(include=[np.number])
     if num_df.empty:
-        fig, ax_ = plt.subplots(figsize=figsize or (6, 4), constrained_layout=True)
+        if ax is not None:
+            ax_ = ax
+        else:
+            _, ax_ = plt.subplots(figsize=figsize or (6, 4), constrained_layout=True)
         ax_.text(0.5, 0.5, "No numeric columns available",
-                 ha="center", va="center", transform=ax_.transAxes)
+                  ha="center", va="center", transform=ax_.transAxes)
         return ax_
 
     norm = (num_df - num_df.min()) / (num_df.max() - num_df.min()).replace(0, 1)
