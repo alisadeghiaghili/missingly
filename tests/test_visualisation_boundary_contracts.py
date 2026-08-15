@@ -7,7 +7,7 @@ import builtins
 import pandas as pd
 import pytest
 
-from missingly.visualisation import _base, interactive
+from missingly.visualisation import _base, interactive, static
 
 
 def test_nullity_handles_mixed_sentinels_without_mutating_input() -> None:
@@ -49,12 +49,12 @@ def test_plotly_requirement_is_lazy_and_reports_the_optional_install(
         _base._require_plotly()
 
 
-def test_plotly_vis_miss_handles_empty_rows_when_clustering_is_requested() -> None:
-    """An empty-column frame has an annotated Plotly result instead of SciPy failure."""
+def test_public_plotly_vis_miss_handles_empty_columns_when_clustering_is_requested() -> None:
+    """The public Plotly heatmap preserves empty-column rows after clustering fails."""
     frame = pd.DataFrame(index=["first", "second"])
 
     with pytest.warns(UserWarning, match="original order"):
-        figure = interactive._vis_miss_plotly(frame, cluster=True)
+        figure = static.vis_miss(frame, interactive=True, cluster=True)
 
     assert figure.data[0].z.shape == (2, 0)
     assert list(figure.data[0].y) == ["first", "second"]
@@ -73,6 +73,34 @@ def test_plotly_vis_miss_does_not_hide_unexpected_clustering_errors(
 
     with pytest.raises(RuntimeError, match="unexpected linkage backend failure"):
         interactive._vis_miss_plotly(frame, cluster=True)
+
+
+def test_public_plotly_wrappers_honor_shared_semantic_options() -> None:
+    """Interactive wrappers preserve documented ordering and subset semantics."""
+    frame = pd.DataFrame(
+        {
+            "lowest": [1.0, None, 1.0, 1.0],
+            "highest": [None, None, None, 1.0],
+            "middle": [1.0, None, 1.0, 1.0],
+        },
+        index=["first", "second", "third", "fourth"],
+    )
+
+    missingness = static.vis_miss(frame, interactive=True, sort=True)
+    percentages = static.miss_var_pct(frame, interactive=True, sort=False)
+    variables = static.bar(frame, interactive=True, sort=True)
+    cases = static.miss_case(frame, interactive=True, sort=True)
+    patterns = static.upset(frame, interactive=True, min_subset_size=2)
+
+    assert list(missingness.data[0].x) == [
+        "highest (75.0%)",
+        "lowest (25.0%)",
+        "middle (25.0%)",
+    ]
+    assert list(percentages.data[0].y) == ["lowest", "highest", "middle"]
+    assert list(variables.data[0].x) == ["highest", "lowest", "middle"]
+    assert list(cases.data[0].x) == ["second", "first", "third", "fourth"]
+    assert list(patterns.data[0].y) == [2]
 
 
 def test_plotly_upset_empty_data_returns_an_annotated_figure() -> None:
