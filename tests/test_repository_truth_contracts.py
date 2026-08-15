@@ -75,6 +75,31 @@ def test_skill_only_names_supported_accessor_and_imputation_apis() -> None:
     assert "from missingly.timeseries import gap_table, miss_ts_summary, vis_ts_miss, impute_ts" in skill
 
 
+def test_skill_only_documents_real_domain_exceptions_and_maturity() -> None:
+    """Reject fictional exception names and unverified maturity claims."""
+    skill = _read("SKILL_MISSINGLY.md")
+
+    for stale_claim in (
+        "production-grade Python package",
+        "InvalidMethodError",
+        "ColumnNotFoundError",
+        "MixedDtypeError",
+        "requirements.txt          # pinned dependencies",
+        "MCAR/MAR/MNAR tests, Little's test, etc.",
+    ):
+        assert stale_claim not in skill
+
+    for public_exception in (
+        "MissinglyError",
+        "ImputationError",
+        "InsufficientDataError",
+        "InvalidStrategyError",
+        "MissingColumnError",
+        "ConfigurationError",
+    ):
+        assert f"`{public_exception}`" in skill
+
+
 def test_readme_time_series_example_matches_the_current_return_schema() -> None:
     """Keep the time-series quickstart executable against public functions."""
     readme = _read("README.md")
