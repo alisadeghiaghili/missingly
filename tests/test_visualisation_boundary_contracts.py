@@ -145,7 +145,24 @@ def test_public_plotly_upset_honors_minimum_subset_size() -> None:
     assert list(patterns.data[0].y) == [2]
 
 
-def test_public_sorting_requests_stable_tie_order(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("function_name", "interactive"),
+    [
+        pytest.param("vis_miss", False, id="static-vis-miss"),
+        pytest.param("miss_var_pct", False, id="static-miss-var-pct"),
+        pytest.param("bar", False, id="static-bar"),
+        pytest.param("miss_case", False, id="static-miss-case"),
+        pytest.param("vis_miss", True, id="plotly-vis-miss"),
+        pytest.param("miss_var_pct", True, id="plotly-miss-var-pct"),
+        pytest.param("bar", True, id="plotly-bar"),
+        pytest.param("miss_case", True, id="plotly-miss-case"),
+    ],
+)
+def test_public_sorting_requests_stable_tie_order(
+    monkeypatch,
+    function_name: str,
+    interactive: bool,
+) -> None:
     """Public static and Plotly sort options explicitly preserve caller tie order."""
     original_sort_values = pd.Series.sort_values
 
@@ -160,14 +177,20 @@ def test_public_sorting_requests_stable_tie_order(monkeypatch) -> None:
         index=["row-first", "row-second"],
     )
 
-    static.vis_miss(frame, sort=True)
-    static.miss_var_pct(frame, sort=True)
-    static.bar(frame, sort=True)
-    static.miss_case(frame, sort=True)
-    static.vis_miss(frame, interactive=True, sort=True)
-    static.miss_var_pct(frame, interactive=True, sort=True)
-    static.bar(frame, interactive=True, sort=True)
-    static.miss_case(frame, interactive=True, sort=True)
+    plot = getattr(static, function_name)
+    plot(frame, sort=True, interactive=interactive)
+
+
+def test_public_bar_reports_missing_counts_on_both_backends() -> None:
+    """Static and Plotly bar charts expose the documented column counts."""
+    frame = pd.DataFrame({"two": [None, None, 1.0], "one": [None, 1.0, 1.0]})
+
+    static_axis = static.bar(frame)
+    interactive_figure = static.bar(frame, interactive=True)
+
+    assert [patch.get_height() for patch in static_axis.patches] == [2.0, 1.0]
+    assert static_axis.get_ylabel() == "Number of Missing Values"
+    assert list(interactive_figure.data[0].y) == [2, 1]
 
 
 def test_plotly_upset_empty_data_returns_an_annotated_figure() -> None:
