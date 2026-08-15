@@ -318,8 +318,10 @@ pip install missingly[all]
 > **Persian/Arabic users:** static matplotlib plots require `missingly[rtl]`
 > (installs `arabic-reshaper` and `python-bidi`) **plus** a compatible font
 > such as [Vazirmatn](https://fonts.google.com/specimen/Vazirmatn) installed
-> on your system.  Interactive Plotly charts (`interactive=True`) work
-> correctly out of the box with no extra dependencies.
+> on your system. Static rendering never downloads fonts or writes a font cache:
+> it uses a packaged font only when a distribution explicitly includes one, then
+> falls back to installed system fonts with a warning. Interactive Plotly charts
+> (`interactive=True`) work correctly out of the box with no extra dependencies.
 
 ---
 

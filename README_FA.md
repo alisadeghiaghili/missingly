@@ -48,6 +48,9 @@ pip install missingly[all]
 > (نصب می‌کند `arabic-reshaper` و `python-bidi`) **به‌علاوه** یک فونت سازگار
 > مانند [Vazirmatn](https://fonts.google.com/specimen/Vazirmatn) روی سیستم شما.
 > نمودارهای تعاملی Plotly (`interactive=True`) بدون هیچ وابستگی اضافه‌ای به درستی کار می‌کنند.
+> نمودارهای ایستای RTL هرگز فونت دانلود نمی‌کنند و cache فونت در مسیر کاربر
+> نمی‌نویسند؛ فقط از فونت bundled یا فونت نصب‌شدهٔ سیستم استفاده می‌کنند و در
+> نبود آن هشدار شفاف می‌دهند.
 
 ---
 

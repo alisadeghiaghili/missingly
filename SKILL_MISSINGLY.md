@@ -26,6 +26,13 @@ updated: 2026-08-15
 - **Design philosophy**: pandas-native API, sklearn-compatible transformers, sensible defaults, loud failures
 - **Future scalability**: full Arrow/Polars execution is planned; do not infer it
   from the existing native Polars summary adapter.
+- **Runtime safety**: static rendering is offline-only. It never downloads
+  fonts or writes a user font cache; it uses an explicitly packaged font when
+  available, otherwise a system font and an actionable warning. Core plotting
+  never imports DQT.
+- **Legacy DQT exception**: deprecated forwarding shims remain lazy for the
+  current SemVer window and are tracked for removal or redesign in issue #81.
+  Do not add a new DQT import to core code.
 
 ---
 
@@ -316,4 +323,4 @@ When fixing a bug:
 
 ---
 
-*Last updated: 2026-07-11 | Repo: github.com/alisadeghiaghili/missingly*
+*Last updated: 2026-08-15 | Repo: github.com/alisadeghiaghili/missingly*
