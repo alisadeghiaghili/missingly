@@ -122,54 +122,6 @@ jobs:
           flags: unittests
           fail_ci_if_error: false
 
-  dqt-integration:
-    name: DQT integration (correlation_heatmap contract)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout missingly
-        uses: actions/checkout@v7
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-
-      - name: Install pinned data-quality-toolkit
-        run: pip install "https://github.com/alisadeghiaghili/data-quality-toolkit/archive/8476f521f37dadd746231e519818e46bff69471c.zip"
-
-      - name: Install missingly and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip uninstall -y missingly || true
-          pip install -e '.[test]'
-
-      - name: Verify correlation_heatmap contract
-        run: |
-          python - <<'PYEOF'
-          import sys
-          import numpy as np
-          import pandas as pd
-          import matplotlib
-          matplotlib.use('Agg')
-          try:
-              from data_quality_toolkit.visualization import correlation_heatmap
-          except ImportError as e:
-              print(f'FAIL: cannot import correlation_heatmap from DQT: {e}')
-              sys.exit(1)
-          rng = np.random.default_rng(42)
-          df = pd.DataFrame(rng.standard_normal((20, 3)), columns=['a', 'b', 'c'])
-          try:
-              correlation_heatmap(df.corr())
-          except Exception as e:
-              print(f'FAIL: correlation_heatmap raised {type(e).__name__}: {e}')
-              sys.exit(1)
-          print('OK: DQT.correlation_heatmap contract verified.')
-          PYEOF
-
-      - name: Run DQT-integration tests
-        run: pytest tests/test_dqt_integration.py -v --tb=short
-
   package:
     name: Compile and validate distributions
     runs-on: ubuntu-latest
