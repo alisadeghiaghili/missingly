@@ -1,0 +1,15 @@
+# Use one predictable text representation across Windows, macOS, and Linux.
+* text=auto eol=lf
+
+# Preserve binary assets exactly.
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.svg binary
+
+# Windows command files require CRLF for cmd.exe compatibility.
+*.bat text eol=crlf
+*.cmd text eol=crlf

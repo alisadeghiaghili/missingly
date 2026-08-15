@@ -27,7 +27,7 @@ skills:
 
 technical_expertise:
   languages:
-    - Python 3.8+
+    - Python 3.9+
   
   core_libraries:
     - pandas
@@ -84,20 +84,26 @@ best_practices:
 project_context: |
   Working on `missingly` package - a comprehensive toolkit for missing data analysis.
   
-  Current phase: Phase 1 (6 weeks) - Stabilizing NA Analysis core
+  Current verified status: the package supports Python 3.9+ and has an
+  authoritative Python 3.12 CI coverage baseline of 89.64% (3589/4004).
+  The 98% coverage target, full FCS statistical-validation engine, and full
+  Arrow/Polars large-data execution remain tracked work, not completed claims.
   
   Key objectives:
-  - Fix critical bugs (categorical imputation, comparison metrics)
+  - Reproduce and prioritize historical review leads before treating them as
+    current defects
   - Implement big data safeguards (memory optimization, chunking)
   - Enhance HTML reporting with interactive visualizations
   - Build auto-imputation recommendation engine
-  - Achieve 90%+ test coverage
-  - Prepare for v1.0 PyPI release
+  - Reach the separately tracked 98% measured coverage target without
+    artificial exclusions
+  - Prepare the next patch release only after issue #40's release-preflight
+    criteria and the applicable current issues are satisfied
   
   Design constraints:
-  - Support datasets up to 10M rows on single machine
   - Maintain pandas/sklearn API consistency
-  - Design for future Dask/Polars integration (without implementing)
+  - Do not claim large-data scale without a benchmark and a tested contract;
+    native Polars summaries exist, while full Arrow/Polars execution remains planned
   - Keep dependencies minimal
   - RTL support for Persian/Arabic languages
 

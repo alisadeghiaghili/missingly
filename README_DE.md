@@ -21,6 +21,8 @@
 - Little-MCAR-Test und ausdrücklich begrenzte Diagnostik beobachteter Fehlwertmuster.
 - Zeitreihenbewusstes Lückenanalyse und Imputation.
 
+**Unterstützte Python-Version:** 3.9 und neuer.
+
 ---
 
 ## Installation
@@ -130,10 +132,15 @@ temp  = [5.1, 4.8, np.nan, np.nan, 6.2, 6.5, np.nan, 7.0,
          7.3, np.nan, np.nan, np.nan, 8.1, 8.4]
 ts = pd.DataFrame({"temperatur": temp}, index=index)
 
-summary = mi.miss_ts_summary(ts, col="temperatur")
+summary = mi.miss_ts_summary(ts)
 ax = mi.vis_ts_miss(ts)
 ts_filled = mi.impute_ts(ts, strategy="linear")
 ```
+
+Für gemischte kategoriale/numerische Daten steht Gower-KNN nur als
+transduktive Standalone-Funktion `mi.impute_knn(..., metric="mixed")` zur
+Verfügung. `MissinglyImputer` lehnt `metric="mixed"` ab, weil noch kein
+sicherer induktiver Train/Test-Donorvertrag implementiert ist.
 
 ### sklearn-Pipeline
 

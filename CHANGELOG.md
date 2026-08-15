@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reconciled the AI co-pilot context, README examples, legacy requirements,
+  and repository line-ending policy with the supported public API. In
+  particular, the documented Python floor is 3.9, time-series examples use
+  the actual summary schema, and mixed-metric KNN is no longer presented as
+  an inductive sklearn transformer mode.
+
 - Reimplemented Little's MCAR test with an observed-data EM M-step, explicit
   convergence/error contracts, and an offline frozen `naniar` R oracle fixture.
 - Prevented `MissinglyImputer.transform` from refitting on evaluation data or
@@ -41,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   screen with named results.
 
 ### Changed
+
+- Recorded the authoritative Python 3.12 CI coverage baseline as 89.64%
+  (3589/4004) and its `coverage-py312` artifact, without changing the
+  separately tracked coverage-enforcement target.
+
 - `diagnose_missing` now reports MCAR evidence without claiming to identify MAR or
   MNAR. Report recommendations require documented assumptions and sensitivity analysis.
 - Scalar MI pooling now distinguishes `lambda` from small-sample `fmi` and rejects
