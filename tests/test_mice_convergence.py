@@ -197,11 +197,11 @@ class TestPlotMiceConvergence:
         result = mice_convergence(simple_histories)
         plot_mice_convergence(result)
 
-    def test_empty_result_prints_message(self, capsys):
+    def test_empty_result_warns_without_writing_stdout(self, capsys):
         empty_result = {"trace_data": {}, "rhat": {}}
-        plot_mice_convergence(empty_result)
-        captured = capsys.readouterr()
-        assert "No variables" in captured.out
+        with pytest.warns(UserWarning, match="No variables to plot"):
+            plot_mice_convergence(empty_result)
+        assert capsys.readouterr().out == ""
 
     def test_variable_filter_in_plot(self, three_chain_histories, monkeypatch):
         import matplotlib.pyplot as plt
