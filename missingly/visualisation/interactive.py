@@ -14,6 +14,7 @@ All functions return a :class:`plotly.graph_objects.Figure`.
 """
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import numpy as np
@@ -36,6 +37,7 @@ def _vis_miss_plotly(
     df: pd.DataFrame,
     missing_values: Optional[List] = None,
     show_pct: bool = True,
+    sort: bool = False,
     cluster: bool = False,
 ) -> "go.Figure":
     """Plotly backend for :func:`~missingly.visualisation.static.vis_miss`."""
@@ -43,13 +45,33 @@ def _vis_miss_plotly(
     from scipy.cluster.hierarchy import linkage, leaves_list
     from scipy.spatial.distance import pdist
 
-    null_df = _nullity(df, missing_values).astype(float)
-    if cluster and null_df.shape[0] > 1:
-        row_dist = pdist(null_df.values, metric="hamming")
-        row_order = leaves_list(linkage(row_dist, method="ward"))
-        null_df = null_df.iloc[row_order]
+    display_df = df
+    if sort:
+        ordered_columns = _nullity(df, missing_values).mean().sort_values(
+            ascending=False,
+            kind="stable",
+        ).index
+        display_df = df.loc[:, ordered_columns]
 
-    col_labels = _pct_labels(df, missing_values) if show_pct else _safe_labels(df.columns)
+    null_df = _nullity(display_df, missing_values).astype(float)
+    if cluster and null_df.shape[0] > 1:
+        try:
+            row_dist = pdist(null_df.values, metric="hamming")
+            row_order = leaves_list(linkage(row_dist, method="ward"))
+            null_df = null_df.iloc[row_order]
+        except ValueError as exc:
+            warnings.warn(
+                "_vis_miss_plotly: clustering could not form valid distances "
+                f"({exc}); using original order.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    col_labels = (
+        _pct_labels(display_df, missing_values)
+        if show_pct
+        else _safe_labels(display_df.columns)
+    )
     fig = go.Figure(
         data=go.Heatmap(
             z=null_df.values,
@@ -162,7 +184,7 @@ def _miss_var_pct_plotly(
     go = _require_plotly()
     pct = _nullity(df, missing_values).mean() * 100
     if sort:
-        pct = pct.sort_values(ascending=True)
+        pct = pct.sort_values(ascending=True, kind="stable")
     labels = _safe_labels(pct.index)
     fig = go.Figure(
         data=go.Bar(
@@ -228,10 +250,13 @@ def _miss_cooccurrence_plotly(
 def _bar_plotly(
     df: pd.DataFrame,
     missing_values: Optional[List] = None,
+    sort: bool = False,
 ) -> "go.Figure":
     """Plotly backend for :func:`~missingly.visualisation.static.bar`."""
     go = _require_plotly()
     miss_counts = _nullity(df, missing_values).sum()
+    if sort:
+        miss_counts = miss_counts.sort_values(ascending=False, kind="stable")
     labels = _safe_labels(miss_counts.index)
     total_rows = len(df)
     pct_vals = miss_counts.values / total_rows * 100
@@ -259,10 +284,13 @@ def _bar_plotly(
 def _miss_case_plotly(
     df: pd.DataFrame,
     missing_values: Optional[List] = None,
+    sort: bool = True,
 ) -> "go.Figure":
     """Plotly backend for :func:`~missingly.visualisation.static.miss_case`."""
     go = _require_plotly()
     miss_counts = _nullity(df, missing_values).sum(axis=1)
+    if sort:
+        miss_counts = miss_counts.sort_values(ascending=False, kind="stable")
     row_labels = _safe_labels(miss_counts.index)
     n_cols = df.shape[1]
     pct_vals = miss_counts.values / n_cols * 100
@@ -294,6 +322,7 @@ def _miss_case_plotly(
 def _upset_plotly(
     df: pd.DataFrame,
     missing_values: Optional[List] = None,
+    min_subset_size: int = 1,
     max_patterns: int = 20,
     show_pct: bool = True,
     color: str = "steelblue",
@@ -322,7 +351,11 @@ def _upset_plotly(
     for row in null_mat.itertuples(index=False):
         key = tuple(row)
         combos[key] = combos.get(key, 0) + 1
-    combos = {k: v for k, v in combos.items() if any(k)}
+    combos = {
+        key: count
+        for key, count in combos.items()
+        if any(key) and count >= min_subset_size
+    }
     if not combos:
         fig = go.Figure()
         fig.add_annotation(

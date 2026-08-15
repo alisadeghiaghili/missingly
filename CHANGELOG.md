@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made static visualisation offline-only: rendering no longer downloads fonts,
   writes a user font cache, or imports DQT. Empty MICE convergence plots now
   issue a warning instead of writing operational output to stdout.
+- Aligned the static ``bar`` visualization with its public count contract and
+  Plotly backend; bars now report missing-value counts rather than percentages.
 
 ### Added
 - Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,
