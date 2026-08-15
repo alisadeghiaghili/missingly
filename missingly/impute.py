@@ -32,7 +32,7 @@ All public functions validate their inputs eagerly and raise specific
 :mod:`missingly.exceptions` exceptions on failure. No exception is swallowed
 silently. When ``strict_mode=True`` (see :mod:`missingly.config` or the
 global :data:`missingly.config.strict_mode` setting), ``impute_logreg``,
-``impute_rf``, and ``impute_gb`` raise
+``impute_polyreg``, ``impute_polr``, ``impute_rf``, and ``impute_gb`` raise
 :class:`~missingly.exceptions.ImputationError` rather than falling back to a
 column mean or mode.
 
@@ -1488,6 +1488,7 @@ def impute_polyreg(
     df: pd.DataFrame,
     max_iter: int = 10,
     random_state: int = 0,
+    strict_mode: Optional[bool] = None,
 ) -> pd.DataFrame:
     """Impute missing values using Multinomial Logistic Regression.
 
@@ -1503,6 +1504,13 @@ def impute_polyreg(
         Maximum number of MICE iterations.
     random_state : int, default 0
         Random seed for reproducibility.
+    strict_mode : bool or None, default None
+        If ``True``, raise :class:`~missingly.exceptions.ImputationError`
+        when a multinomial conditional model cannot fit or predict. If
+        ``False``, fill with the observed mode and emit a
+        :class:`UserWarning`. If ``None``, use
+        :attr:`missingly.config.strict_mode`. Values must be exactly ``True``
+        or ``False``.
 
     Returns
     -------
@@ -1515,6 +1523,10 @@ def impute_polyreg(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    ImputationError
+        If the conditional estimator fails and ``strict_mode=True``.
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
 
     Examples
     --------
@@ -1532,6 +1544,7 @@ def impute_polyreg(
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
 
+    effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_polyreg")
     df_norm = _normalize_missing(df)
 
@@ -1570,11 +1583,17 @@ def impute_polyreg(
                 model.fit(X_obs_clean, y_obs)
                 y_pred = model.predict(X_miss_clean)
                 result.loc[missing_mask, col] = y_pred
-            except Exception as exc:  # noqa: BLE001 - estimator backends expose heterogeneous errors.
+            except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+                if effective_strict:
+                    raise ImputationError(
+                        column=col, strategy="polyreg", original=exc
+                    ) from exc
                 fallback = result[col].mode().iloc[0]
                 warnings.warn(
-                    f"impute_polyreg: column {col!r} model failed ({type(exc).__name__}: {exc}). "
-                    f"Falling back to mode={fallback!r}.",
+                    f"impute_polyreg: column {col!r} model failed "
+                    f"({type(exc).__name__}: {exc}). "
+                    f"Falling back to mode={fallback!r}. "
+                    "Set strict_mode=True to raise.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -1587,6 +1606,7 @@ def impute_polr(
     df: pd.DataFrame,
     max_iter: int = 10,
     random_state: int = 0,
+    strict_mode: Optional[bool] = None,
 ) -> pd.DataFrame:
     """Impute missing values using Ordinal Logistic Regression.
 
@@ -1603,6 +1623,13 @@ def impute_polr(
         Maximum number of MICE iterations.
     random_state : int, default 0
         Random seed for reproducibility.
+    strict_mode : bool or None, default None
+        If ``True``, raise :class:`~missingly.exceptions.ImputationError`
+        when an ordinal or multinomial conditional model cannot fit or
+        predict. If ``False``, use the documented fallback sequence and emit
+        a :class:`UserWarning`. If ``None``, use
+        :attr:`missingly.config.strict_mode`. Values must be exactly ``True``
+        or ``False``.
 
     Returns
     -------
@@ -1615,6 +1642,10 @@ def impute_polr(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    ImputationError
+        If a conditional estimator fails and ``strict_mode=True``.
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
 
     Examples
     --------
@@ -1637,6 +1668,7 @@ def impute_polr(
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
 
+    effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_polr")
     df_norm = _normalize_missing(df)
 
@@ -1701,7 +1733,11 @@ def impute_polr(
                     y_pred = np.array(categories)[best_idx]
                     result.loc[missing_mask, col] = y_pred
                     imputed_ok = True
-                except Exception as exc:  # noqa: BLE001 - optional statsmodels backend errors require fallback.
+                except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+                    if effective_strict:
+                        raise ImputationError(
+                            column=col, strategy="polr", original=exc
+                        ) from exc
                     warnings.warn(
                         f"impute_polr: OrderedModel failed for column {col!r} "
                         f"({type(exc).__name__}: {exc}). "
@@ -1716,12 +1752,17 @@ def impute_polr(
                     model.fit(X_obs_clean, y_obs)
                     y_pred = model.predict(X_miss_clean)
                     result.loc[missing_mask, col] = y_pred
-                except Exception as exc:  # noqa: BLE001 - estimator backends expose heterogeneous errors.
+                except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+                    if effective_strict:
+                        raise ImputationError(
+                            column=col, strategy="polr", original=exc
+                        ) from exc
                     fallback = result[col].mode().iloc[0]
                     warnings.warn(
-                        f"impute_polr: multinomial fallback also failed for column {col!r} "
+                        f"impute_polr: multinomial fallback also failed for "
+                        f"column {col!r} "
                         f"({type(exc).__name__}: {exc}). "
-                        f"Using mode={fallback!r}.",
+                        f"Using mode={fallback!r}. Set strict_mode=True to raise.",
                         UserWarning,
                         stacklevel=2,
                     )
