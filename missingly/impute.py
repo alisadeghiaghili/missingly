@@ -428,7 +428,9 @@ def _split_encode(
         unknown_value=np.nan,
         encoded_missing_value=np.nan,
     )
-    cat_encoded = encoder.fit_transform(df[cat_cols])
+    categorical_values = df.loc[:, cat_cols].astype(object)
+    categorical_values = categorical_values.where(categorical_values.notna(), np.nan)
+    cat_encoded = encoder.fit_transform(categorical_values)
     df_work = df[num_cols].copy()
     for i, col in enumerate(cat_cols):
         df_work[col] = cat_encoded[:, i]
@@ -468,14 +470,10 @@ def _decode(
         col_vals = np.clip(np.round(col_vals), 0, n_cats - 1).astype(int)
         decoded_col = encoder.categories_[i][col_vals]
 
-        orig_dtype = cat_dtypes[col]
-        if hasattr(orig_dtype, "categories"):
-            ordered = orig_dtype.ordered if hasattr(orig_dtype, "ordered") else False
-            result[col] = pd.Categorical(
-                decoded_col, categories=orig_dtype.categories, ordered=ordered
-            )
-        else:
-            result[col] = decoded_col
+        result[col] = _restore_categorical_dtype(
+            pd.Series(decoded_col, index=result.index),
+            cat_dtypes[col],
+        )
 
     return result
 
@@ -1056,6 +1054,9 @@ def impute_mice(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty or *n_imputations* < 1.
+    InsufficientDataError
+        If an enabled target column has no observed values from which an
+        imputation model can learn.
 
     Examples
     --------
@@ -1096,6 +1097,14 @@ def impute_mice(
         imputation_mask = original_missing_mask & where
     retained_missing_mask = original_missing_mask & ~imputation_mask
     missing_targets = [column for column in df_norm.columns if imputation_mask[column].any()]
+    for column in missing_targets:
+        n_observed = int((~original_missing_mask[column]).sum())
+        if n_observed == 0:
+            raise InsufficientDataError(
+                column=column,
+                n_observed=0,
+                n_required=1,
+            )
     if visit_sequence is not None:
         if not isinstance(visit_sequence, list) or not all(
             isinstance(column, str) for column in visit_sequence
