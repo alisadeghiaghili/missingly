@@ -14,6 +14,7 @@ All functions return a :class:`plotly.graph_objects.Figure`.
 """
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import numpy as np
@@ -45,9 +46,17 @@ def _vis_miss_plotly(
 
     null_df = _nullity(df, missing_values).astype(float)
     if cluster and null_df.shape[0] > 1:
-        row_dist = pdist(null_df.values, metric="hamming")
-        row_order = leaves_list(linkage(row_dist, method="ward"))
-        null_df = null_df.iloc[row_order]
+        try:
+            row_dist = pdist(null_df.values, metric="hamming")
+            row_order = leaves_list(linkage(row_dist, method="ward"))
+            null_df = null_df.iloc[row_order]
+        except ValueError as exc:
+            warnings.warn(
+                "_vis_miss_plotly: clustering could not form valid distances "
+                f"({exc}); using original order.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     col_labels = _pct_labels(df, missing_values) if show_pct else _safe_labels(df.columns)
     fig = go.Figure(
