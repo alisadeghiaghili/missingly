@@ -310,6 +310,9 @@ class MIData:
             self.schema.validate_frame(imputed, name=f"imputations[{position}]")
             if imputed.where(observed).compare(self.original.where(observed)).shape[0]:
                 raise ValueError("imputations must not change originally observed cells")
+            unfilled = imputed.isna() & self.schema.original_mask
+            if unfilled.to_numpy().any():
+                raise ValueError("imputations must fill every originally missing cell")
 
     @property
     def n_imputations(self) -> int:
