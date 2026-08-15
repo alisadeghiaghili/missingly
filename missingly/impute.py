@@ -364,9 +364,11 @@ def _fill_feature_matrix(
     X_obs_clean = X_obs.copy()
     X_miss_clean = X_miss.copy()
     for j in range(X_obs_clean.shape[1]):
-        col_mean = np.nanmean(X_obs_clean[:, j])
-        if np.isnan(col_mean):
+        observed_column = X_obs_clean[:, j]
+        if np.isnan(observed_column).all():
             col_mean = 0.0
+        else:
+            col_mean = np.nanmean(observed_column)
         X_obs_clean[np.isnan(X_obs_clean[:, j]), j] = col_mean
         X_miss_clean[np.isnan(X_miss_clean[:, j]), j] = col_mean
     return X_obs_clean, X_miss_clean
