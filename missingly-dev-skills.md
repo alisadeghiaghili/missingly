@@ -85,7 +85,7 @@ project_context: |
   Working on `missingly` package - a comprehensive toolkit for missing data analysis.
   
   Current verified status: the package supports Python 3.9+ and has an
-  authoritative Python 3.12 CI coverage baseline of 89.69% (3576/3987).
+  authoritative Python 3.12 CI coverage baseline of 90.25% (3601/3990).
   The 98% coverage target, full FCS statistical-validation engine, and full
   Arrow/Polars large-data execution remain tracked work, not completed claims.
   
