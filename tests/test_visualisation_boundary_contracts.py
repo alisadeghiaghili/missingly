@@ -49,7 +49,7 @@ def test_plotly_requirement_is_lazy_and_reports_the_optional_install(
         _base._require_plotly()
 
 
-def test_public_plotly_vis_miss_handles_empty_columns_when_clustering_is_requested() -> None:
+def test_public_plotly_vis_miss_preserves_empty_columns_when_clustered() -> None:
     """The public Plotly heatmap preserves empty-column rows after clustering fails."""
     frame = pd.DataFrame(index=["first", "second"])
 
