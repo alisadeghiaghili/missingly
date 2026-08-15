@@ -137,7 +137,12 @@ def _ensure_vazirmatn() -> Path | None:
     font_path = _BUNDLED_VAZIRMATN_PATH
     if not font_path.is_file():
         return None
-    if font_path.read_bytes()[:4] not in (_TTF_MAGIC, _OTF_MAGIC):
+    try:
+        with font_path.open("rb") as font_stream:
+            header = font_stream.read(4)
+    except OSError:
+        return None
+    if header not in (_TTF_MAGIC, _OTF_MAGIC):
         return None
     return font_path
 
