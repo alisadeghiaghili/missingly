@@ -7,7 +7,46 @@ import pandas as pd
 import pytest
 
 from missingly.exceptions import InsufficientDataError
-from missingly.impute import impute_pmm, make_imputer
+from missingly.impute import impute_mode, impute_pmm, make_imputer
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_dtype"),
+    [
+        (pd.Series(["Tehran", pd.NA, "Tehran"], dtype="string"), "string"),
+        (
+            pd.Series(pd.Categorical(["Tehran", None, "Tehran"])),
+            "category",
+        ),
+    ],
+    ids=["string", "category"],
+)
+def test_impute_mode_preserves_extension_dtypes_without_mutation(
+    values: pd.Series,
+    expected_dtype: str,
+) -> None:
+    """Public mode imputation fills extension values without changing caller data."""
+    frame = pd.DataFrame({"city": values})
+    original = frame.copy(deep=True)
+
+    result = impute_mode(frame)
+
+    assert result["city"].tolist() == ["Tehran", "Tehran", "Tehran"]
+    assert str(result["city"].dtype) == expected_dtype
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_impute_mode_rejects_all_missing_column_without_mutation() -> None:
+    """Public mode imputation gives all-missing columns an actionable typed error."""
+    frame = pd.DataFrame({"city": pd.Series([pd.NA, pd.NA], dtype="string")})
+    original = frame.copy(deep=True)
+
+    with pytest.raises(InsufficientDataError) as exc_info:
+        impute_mode(frame)
+
+    assert exc_info.value.column == "city"
+    assert exc_info.value.n_observed == 0
+    pd.testing.assert_frame_equal(frame, original)
 
 
 def test_impute_pmm_uses_mode_for_observed_non_numeric_data_without_mutation() -> None:
