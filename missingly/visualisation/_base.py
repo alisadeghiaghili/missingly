@@ -13,7 +13,7 @@ _nullity
 _pct_labels
     Build ``"col (X.Y%)"`` label strings for bar/vis_miss axes.
 _ensure_vazirmatn
-    Download / validate Vazirmatn font to local cache.
+    Return a packaged Vazirmatn asset when one is distributed with the package.
 _register_font
     Register a font file with matplotlib's font manager.
 _require_plotly
@@ -26,7 +26,6 @@ from __future__ import annotations
 import logging
 import sys
 import unicodedata
-import urllib.request
 from pathlib import Path
 from types import ModuleType
 from typing import List, Sequence
@@ -100,25 +99,24 @@ _RTL_FONT_WARNED = False                   # emit warning at most once
 _RTL_WARNED = _RTL_FONT_WARNED  # type: ignore[assignment]  # kept in sync via property below
 
 # ---------------------------------------------------------------------------
-# Vazirmatn font cache
+# Packaged Vazirmatn font asset
 # ---------------------------------------------------------------------------
 
-_FONT_CACHE_DIR: Path = Path.home() / ".cache" / "missingly" / "fonts"
-
-_VAZIRMATN_URL = (
-    "https://github.com/rastikerdar/vazirmatn/releases/download/v33.003/"
-    "Vazirmatn-Regular.ttf"
-)
 _VAZIRMATN_FILENAME = "Vazirmatn-Regular.ttf"
+_BUNDLED_VAZIRMATN_PATH = (
+    Path(__file__).resolve().parent / "assets" / _VAZIRMATN_FILENAME
+)
 _TTF_MAGIC = b"\x00\x01\x00\x00"
 _OTF_MAGIC = b"OTTO"
 
 
 def _ensure_vazirmatn() -> Path | None:
-    """Return a local path to a valid Vazirmatn TTF, downloading if needed.
+    """Return a valid packaged Vazirmatn font path when one is available.
 
-    Returns *None* on network failure or if the downloaded data is not a
-    recognised font binary.
+    Rendering is deliberately offline-only: this helper never downloads a
+    font and never writes to a user cache. When the optional packaged font is
+    absent, callers use an installed system font or emit the normal RTL
+    fallback warning.
 
     Parameters
     ----------
@@ -127,38 +125,25 @@ def _ensure_vazirmatn() -> Path | None:
     Returns
     -------
     Path or None
-        Absolute path to ``Vazirmatn-Regular.ttf`` in the local cache, or
-        *None* when the font cannot be obtained.
+        Absolute path to the packaged ``Vazirmatn-Regular.ttf``, or *None*
+        when no valid packaged asset is available.
 
-    Notes
-    -----
-    Patching :data:`_FONT_CACHE_DIR` in tests redirects the cache directory
-    so that downloads go to a temporary location.
+    Examples
+    --------
+    >>> result = _ensure_vazirmatn()
+    >>> result is None or result.name == "Vazirmatn-Regular.ttf"
+    True
     """
-    cache_dir: Path = _FONT_CACHE_DIR  # allow monkeypatching in tests
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    font_path = cache_dir / _VAZIRMATN_FILENAME
-
-    # Validate an existing cached file.
-    if font_path.exists():
-        header = font_path.read_bytes()[:4]
-        if header in (_TTF_MAGIC, _OTF_MAGIC):
-            return font_path
-        # Corrupt / wrong file – remove and re-download.
-        font_path.unlink(missing_ok=True)
-
-    # Download.
+    font_path = _BUNDLED_VAZIRMATN_PATH
+    if not font_path.is_file():
+        return None
     try:
-        with urllib.request.urlopen(_VAZIRMATN_URL) as resp:
-            data: bytes = resp.read()
+        with font_path.open("rb") as font_stream:
+            header = font_stream.read(4)
     except OSError:
         return None
-
-    # Validate the downloaded bytes.
-    if data[:4] not in (_TTF_MAGIC, _OTF_MAGIC):
+    if header not in (_TTF_MAGIC, _OTF_MAGIC):
         return None
-
-    font_path.write_bytes(data)
     return font_path
 
 
@@ -179,7 +164,7 @@ def _register_font(path: Path) -> bool:
     try:
         fm.fontManager.addfont(str(path))
         return True
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, RuntimeError, ValueError) as exc:
         _logger.warning("Failed to register font %s: %s", path, exc)
         return False
 
@@ -242,7 +227,7 @@ def _apply_rtl_font(
         _RTL_FONT_REGISTERED = _find_rtl_font()
 
     if _RTL_FONT_REGISTERED is None:
-        # Try downloading Vazirmatn as a last resort.
+        # A package build may include Vazirmatn; never fetch it at render time.
         font_path = _ensure_vazirmatn()
         if font_path is not None:
             _register_font(font_path)

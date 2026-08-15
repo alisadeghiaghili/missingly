@@ -724,30 +724,14 @@ def heatmap(
     corr.columns = col_labels
     corr.index = col_labels
 
-    try:
-        import warnings as _w
-        import matplotlib as _mpl
-        from data_quality_toolkit.visualization import correlation_heatmap as _dqt_hm
-        with _w.catch_warnings():
-            _w.filterwarnings("ignore", category=_mpl.MatplotlibDeprecationWarning)
-            _w.filterwarnings("ignore", message=r".*set_bad.*")
-            _dqt_hm(
-                corr, ax=ax_,
-                mask_insignificant=mask_insignificant,
-                significance=significance,
-                n_obs=len(null_mat),
-                cmap=cmap, annot=annot, fmt=fmt,
-                vmin=vmin, vmax=vmax,
-            )
-    except ImportError:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=r".*set_bad.*")
-            sns.heatmap(
-                corr, mask=final_mask, ax=ax_,
-                cmap=cmap, annot=annot, fmt=fmt,
-                vmin=vmin, vmax=vmax, center=center, linewidths=linewidths,
-                **kwargs,
-            )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=r".*set_bad.*")
+        sns.heatmap(
+            corr, mask=final_mask, ax=ax_,
+            cmap=cmap, annot=annot, fmt=fmt,
+            vmin=vmin, vmax=vmax, center=center, linewidths=linewidths,
+            **kwargs,
+        )
     return ax_
 
 

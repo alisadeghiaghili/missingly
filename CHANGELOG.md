@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restored posterior stochasticity to MICE history chains and reject identical
   chain traces as invalid convergence evidence rather than reporting R-hat as
   acceptable.
+- Made static visualisation offline-only: rendering no longer downloads fonts,
+  writes a user font cache, or imports DQT. Empty MICE convergence plots now
+  issue a warning instead of writing operational output to stdout.
 
 ### Added
 - Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,

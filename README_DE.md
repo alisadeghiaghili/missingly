@@ -41,6 +41,10 @@ pip install missingly[rtl]
 pip install missingly[all]
 ```
 
+Statische RTL-Diagramme laden niemals Fonts herunter und schreiben keinen
+Font-Cache. Sie verwenden nur mitgelieferte oder systemweit installierte Fonts
+und geben sonst eine verständliche Warnung aus.
+
 ---
 
 ## Öffentliche API (v1)
@@ -102,6 +106,10 @@ mi.dendrogram(df)
 ```
 
 #### Interaktiv
+
+Installieren Sie zuerst `missingly[interactive]`. Ohne Plotly lösen interaktive
+Aufrufe einen verständlichen `ImportError` aus und wechseln nicht still zum
+statischen Backend.
 
 ```python
 mi.vis_miss(df, interactive=True)

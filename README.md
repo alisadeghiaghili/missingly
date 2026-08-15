@@ -140,8 +140,7 @@ mi.upset(df)             # UpSet plot of intersecting missingness sets
 
 ```python
 # Nullity-correlation heatmap (Pearson on binary missingness indicators).
-# Delegates to data_quality_toolkit.visualization.correlation_heatmap when
-# that package is installed; falls back to a pure-seaborn renderer otherwise.
+# The core renderer is local, offline, and independent of DQT.
 mi.heatmap(df)
 mi.heatmap(df, mask_insignificant=True)  # grey out non-significant cells
 
@@ -157,8 +156,9 @@ mi.dendrogram(df)
 
 Pass `interactive=True` to any function below to get a Plotly figure
 that can be panned, zoomed, and exported to HTML.
-When Plotly is not installed the function silently falls back to the
-static backend.
+Install the explicit optional dependency first with
+`pip install "missingly[interactive]"`. Without Plotly, interactive calls
+raise an actionable `ImportError`; they do not silently change backend.
 
 ```python
 mi.vis_miss(df, interactive=True)
@@ -318,8 +318,10 @@ pip install missingly[all]
 > **Persian/Arabic users:** static matplotlib plots require `missingly[rtl]`
 > (installs `arabic-reshaper` and `python-bidi`) **plus** a compatible font
 > such as [Vazirmatn](https://fonts.google.com/specimen/Vazirmatn) installed
-> on your system.  Interactive Plotly charts (`interactive=True`) work
-> correctly out of the box with no extra dependencies.
+> on your system. Static rendering never downloads fonts or writes a font cache:
+> it uses a packaged font only when a distribution explicitly includes one, then
+> falls back to installed system fonts with a warning. Interactive Plotly charts
+> (`interactive=True`) require the `missingly[interactive]` extra shown above.
 
 ---
 

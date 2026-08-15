@@ -35,6 +35,14 @@ they are treated as current defects.
 - The authoritative Python 3.12 CI coverage artifact measures **89.64%
   (3589/4004)**. The active 98% target is not yet met, and CI enforcement
   remains 80% until real coverage reaches that target.
+- Core/static plotting is offline-only: it makes no network requests, never
+  writes a user font cache, and does not import DQT. RTL uses an explicitly
+  packaged font only when present, otherwise local system-font fallback with a
+  warning.
+- Deprecated forwarding shims in `manipulation`, `performance`, and
+  `stats_extra` remain a narrowly scoped, lazy call-time DQT exception during
+  the current SemVer window. Their v2 removal or local redesign is tracked by
+  #81; no new core DQT dependency is permitted.
 
 ### Current active issue map
 
@@ -43,11 +51,10 @@ they are treated as current defects.
 - #61 — Build measured Arrow/Polars large-data execution and benchmarks.
 - #71 — Deliver a statistically validated full FCS MI engine.
 - #40 — Release preflight, blocked by the applicable recovery phases.
-- #76 — Repository Truth phase: reconcile current public guidance and config
-  with executable source.
 - #77 — Establish release-blocking safety and compatibility checks.
 - #78 — Complete sklearn transformer contract coverage and validation.
 - #79 — Validate MI inference and pooling behavior for supported workflows.
+- #81 — Remove or redesign legacy DQT forwarding shims in v2.
 
 ### Evidence status
 
