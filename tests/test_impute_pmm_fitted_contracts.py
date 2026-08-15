@@ -24,15 +24,17 @@ def test_impute_pmm_uses_mode_for_observed_non_numeric_data_without_mutation() -
     pd.testing.assert_frame_equal(frame, original)
 
 
-def test_impute_pmm_single_numeric_feature_uses_observed_mean(
+def test_impute_pmm_single_numeric_feature_samples_an_observed_donor(
 ) -> None:
-    """PMM has a deterministic donor-free fallback for a single numeric feature."""
+    """PMM retains donor support when one numeric feature lacks predictors."""
     frame = pd.DataFrame({"score": [1.0, np.nan, 3.0]})
     original = frame.copy(deep=True)
 
-    result = impute_pmm(frame, random_state=7)
+    first = impute_pmm(frame, random_state=7)
+    second = impute_pmm(frame, random_state=7)
 
-    assert result["score"].tolist() == [1.0, 2.0, 3.0]
+    pd.testing.assert_frame_equal(first, second)
+    assert first.loc[1, "score"] in set(frame["score"].dropna())
     pd.testing.assert_frame_equal(frame, original)
 
 
@@ -122,6 +124,40 @@ def test_fitted_imputer_rejects_all_missing_training_columns() -> None:
     assert exc_info.value.column == "city"
     assert imputer._is_fitted is False
     pd.testing.assert_frame_equal(train, original)
+
+
+@pytest.mark.parametrize("phase", ["fit", "transform"])
+def test_fitted_imputer_rejects_duplicate_column_labels(phase: str) -> None:
+    """Fit and transform reject duplicate labels before recording state or filling."""
+    train = pd.DataFrame([[20.0, 40.0]], columns=["age", "age"])
+    test = pd.DataFrame([[np.nan, 50.0]], columns=["age", "age"])
+    original = test.copy(deep=True)
+    imputer = make_imputer("mean")
+
+    with pytest.raises(ValueError, match="unique"):
+        if phase == "fit":
+            imputer.fit(train)
+        else:
+            imputer.fit(pd.DataFrame({"age": [20.0, 40.0]}))
+            imputer.transform(test)
+
+    if phase == "fit":
+        assert imputer._is_fitted is False
+    pd.testing.assert_frame_equal(test, original)
+
+
+def test_fitted_imputer_supports_reordered_unique_training_columns() -> None:
+    """Label-based fills support and preserve a reordered, otherwise matching schema."""
+    train = pd.DataFrame({"age": [20.0, 40.0], "city": ["Tehran", "Shiraz"]})
+    test = pd.DataFrame({"city": [None], "age": [np.nan]})
+    original = test.copy(deep=True)
+
+    result = make_imputer("mean").fit(train).transform(test)
+
+    assert result.columns.tolist() == ["city", "age"]
+    assert result.loc[0, "city"] == "Shiraz"
+    assert result.loc[0, "age"] == 30.0
+    pd.testing.assert_frame_equal(test, original)
 
 
 def test_fitted_imputer_preserves_nullable_dtype_and_training_statistics() -> None:
