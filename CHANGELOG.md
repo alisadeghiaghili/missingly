@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   issue a warning instead of writing operational output to stdout.
 - Aligned the static ``bar`` visualization with its public count contract and
   Plotly backend; bars now report missing-value counts rather than percentages.
+- Corrected single-feature PMM to make deterministic random hot-deck draws
+  from observed donors instead of producing an unsupported regression mean.
+  PMM targets without observed donors now raise ``InsufficientDataError``.
+- Made ``FittedImputer`` reject duplicate, missing, extra, and unknown schema
+  labels before filling, while retaining support for reordered unique labels.
+- Made public ``impute_mode`` preserve nullable extension dtypes and raise
+  ``InsufficientDataError`` for all-missing columns instead of leaking backend
+  failures.
 
 ### Added
 - Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,
