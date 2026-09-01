@@ -1127,18 +1127,57 @@ def miss_row_profile(
 ) -> Any:
     """Histogram of per-row completeness fractions.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input data. The function does not mutate it.
+    figsize : tuple of float, default (8, 4)
+        Figure size used only when *ax* is not supplied.
+    color : str, default "#4C72B0"
+        Histogram bar colour.
+    fontsize : int, default 11
+        Font size for axis labels.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : sequence, optional
+        Additional sentinel values treated as missing.
+    **kwargs : Any
+        Reserved for future compatibility.
+
     Returns
     -------
     matplotlib.axes.Axes
-    """
-    df = _apply_sentinels(df, missing_values)
-    completeness = 1 - df.isnull().mean(axis=1)
+        The supplied or newly created axes. Empty row or column inputs return
+        annotated axes instead of attempting an undefined histogram.
 
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = miss_row_profile(pd.DataFrame({"score": [1.0, None]}))
+    >>> ax.get_title()
+    'Row Missingness Profile'
+    """
     if ax is not None:
         fig = ax.figure
         ax_ = ax
     else:
         fig, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
+
+    df = _apply_sentinels(df, missing_values)
+    if df.empty or df.shape[1] == 0:
+        ax_.text(
+            0.5,
+            0.5,
+            "No row completeness data to display",
+            ha="center",
+            va="center",
+            transform=ax_.transAxes,
+        )
+        ax_.set_title("Row Missingness Profile")
+        _clean_ax(ax_)
+        return ax_
+
+    completeness = 1 - df.isnull().mean(axis=1)
 
     ax_.hist(completeness.values, bins=min(30, len(df)), color=color, edgecolor="white")
     ax_.set_xlabel("Row completeness", fontsize=fontsize)
