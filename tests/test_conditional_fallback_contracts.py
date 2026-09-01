@@ -146,10 +146,16 @@ def test_logreg_uses_mode_without_predictors() -> None:
     pd.testing.assert_frame_equal(frame, original)
 
 
+@pytest.mark.parametrize("strict_mode", [False, True], ids=["non-strict", "strict"])
 def test_polr_does_not_import_a_backend_for_a_no_predictor_fallback(
     monkeypatch,
+    strict_mode: bool,
 ) -> None:
-    """Avoid an optional-model import when a one-column frame needs only its mode."""
+    """Use the valid one-column mode baseline without importing a backend.
+
+    Strict mode governs conditional-estimator errors. It must not reject this
+    predictor-free baseline because no estimator is needed.
+    """
     original_import = builtins.__import__
 
     def reject_ordinal_model_import(
@@ -174,7 +180,7 @@ def test_polr_does_not_import_a_backend_for_a_no_predictor_fallback(
         }
     )
 
-    result = impute_polr(frame, random_state=0)
+    result = impute_polr(frame, random_state=0, strict_mode=strict_mode)
 
     assert result.loc[result.index[-1], "grade"] == "low"
 
