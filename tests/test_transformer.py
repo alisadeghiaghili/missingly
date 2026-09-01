@@ -368,10 +368,13 @@ def test_does_not_mutate(numeric_df):
 # ---------------------------------------------------------------------------
 
 def test_get_feature_names_out(numeric_df):
-    """get_feature_names_out returns the training column names in order."""
+    """get_feature_names_out follows sklearn's ndarray output contract."""
     imputer = MissinglyImputer(strategy="mean")
     imputer.fit(numeric_df)
-    assert imputer.get_feature_names_out() == numeric_df.columns.tolist()
+    feature_names = imputer.get_feature_names_out()
+
+    assert isinstance(feature_names, np.ndarray)
+    assert feature_names.tolist() == numeric_df.columns.tolist()
 
 
 # ---------------------------------------------------------------------------
