@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made predictor-free ``impute_polr`` calls use their safe observed modal
+  baseline without importing ``statsmodels``. This valid no-estimator path is
+  unchanged by ``strict_mode=True``.
 - Reconciled the AI co-pilot context, README examples, legacy requirements,
   and repository line-ending policy with the supported public API. In
   particular, the documented Python floor is 3.9, time-series examples use
