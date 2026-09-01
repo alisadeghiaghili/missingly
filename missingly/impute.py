@@ -1748,7 +1748,8 @@ def impute_polr(
     Uses ``statsmodels.miscmodels.ordinal_model.OrderedModel`` when
     available.  If statsmodels is not installed or the model fails to
     converge, falls back to sklearn multinomial logistic regression with
-    an audible ``UserWarning``.
+    an audible ``UserWarning``. A one-column target has no predictors, so it
+    uses its observed mode directly without importing a model backend.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -1768,18 +1769,26 @@ def impute_polr(
     ]
     missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
-    try:
-        from statsmodels.miscmodels.ordinal_model import OrderedModel as _OrderedModel
-        _HAS_STATSMODELS = True
-    except ImportError:
-        _HAS_STATSMODELS = False
-        warnings.warn(
-            "impute_polr: statsmodels not found. Falling back to multinomial "
-            "logistic regression for all columns. Install statsmodels for proper "
-            "ordinal logistic regression: pip install statsmodels",
-            UserWarning,
-            stacklevel=2,
-        )
+    requires_ordered_model = any(
+        mask.any() and len(df_norm.columns) > 1
+        for mask in missing_masks.values()
+    )
+    _HAS_STATSMODELS = False
+    if requires_ordered_model:
+        try:
+            from statsmodels.miscmodels.ordinal_model import (
+                OrderedModel as _OrderedModel,
+            )
+
+            _HAS_STATSMODELS = True
+        except ImportError:
+            warnings.warn(
+                "impute_polr: statsmodels not found. Falling back to multinomial "
+                "logistic regression for all columns. Install statsmodels for proper "
+                "ordinal logistic regression: pip install statsmodels",
+                UserWarning,
+                stacklevel=2,
+            )
 
     for _ in range(max_iter):
         for col in cat_cols:
