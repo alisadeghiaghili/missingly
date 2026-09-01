@@ -1131,14 +1131,27 @@ def miss_row_profile(
     -------
     matplotlib.axes.Axes
     """
-    df = _apply_sentinels(df, missing_values)
-    completeness = 1 - df.isnull().mean(axis=1)
-
     if ax is not None:
         fig = ax.figure
         ax_ = ax
     else:
         fig, ax_ = plt.subplots(figsize=figsize, constrained_layout=True)
+
+    df = _apply_sentinels(df, missing_values)
+    if df.empty or df.shape[1] == 0:
+        ax_.text(
+            0.5,
+            0.5,
+            "No row completeness data to display",
+            ha="center",
+            va="center",
+            transform=ax_.transAxes,
+        )
+        ax_.set_title("Row Missingness Profile")
+        _clean_ax(ax_)
+        return ax_
+
+    completeness = 1 - df.isnull().mean(axis=1)
 
     ax_.hist(completeness.values, bins=min(30, len(df)), color=color, edgecolor="white")
     ax_.set_xlabel("Row completeness", fontsize=fontsize)
