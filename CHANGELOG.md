@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made the sklearn transformer reject duplicate DataFrame column labels with
+  stable, actionable errors before backend-specific validation.
 - Made predictor-free transformer PMM draw reproducibly from observed training
   donors instead of producing a mean outside the donor support.
 - Made ``miss_row_profile`` return an annotated axes for empty rows or columns
