@@ -208,6 +208,16 @@ class TestImputation:
         with pytest.raises(InvalidStrategyError, match="strategy"):
             df_numeric.miss.impute("unknown")
 
+    def test_impute_rejects_an_unhashable_strategy_with_domain_error(self, df_numeric):
+        """Generic dispatch does not leak a mapping error for invalid API input."""
+        from missingly.exceptions import InvalidStrategyError
+
+        with pytest.raises(InvalidStrategyError) as error:
+            df_numeric.miss.impute([])
+
+        assert error.value.param == "strategy"
+        assert error.value.got == []
+
     def test_impute_mean(self, df_numeric):
         """impute_mean should fill missing values."""
         result = df_numeric.miss.impute_mean()
