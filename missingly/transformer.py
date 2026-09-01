@@ -205,10 +205,11 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Examples
         --------
         >>> MissinglyImputer._validate_strategy("mean")
-        >>> MissinglyImputer._validate_strategy("unknown")
-        Traceback (most recent call last):
-        ...
-        ValueError: strategy must be one of ...
+        >>> try:
+        ...     MissinglyImputer._validate_strategy("unknown")
+        ... except ValueError as error:
+        ...     "strategy" in str(error) and "unknown" in str(error)
+        True
         """
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
@@ -826,11 +827,21 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     # sklearn API utilities
     # ------------------------------------------------------------------
 
-    def get_feature_names_out(self) -> List[str]:
-        """Return feature names as seen during fit.
+    def get_feature_names_out(self) -> np.ndarray:
+        """Return fit-time feature names in scikit-learn's array format.
 
         Returns
         -------
-        list[str]
+        numpy.ndarray
+            One-dimensional array of feature names in their fit-time order.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> names = MissinglyImputer().fit(
+        ...     pd.DataFrame({"score": [1.0, None]})
+        ... ).get_feature_names_out()
+        >>> names.tolist()
+        ['score']
         """
-        return list(self.feature_names_in_)
+        return np.asarray(self.feature_names_in_, dtype=object)
