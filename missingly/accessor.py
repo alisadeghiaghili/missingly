@@ -281,7 +281,7 @@ class MissinglyAccessor:
         }
         try:
             imputer = strategies[strategy]
-        except KeyError as error:
+        except (KeyError, TypeError) as error:
             raise InvalidStrategyError(
                 param="strategy",
                 got=strategy,
