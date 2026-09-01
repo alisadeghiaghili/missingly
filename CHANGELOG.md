@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made typed MICE results preserve ``where=False`` structural missingness
+  while continuing to reject chains that leave imputation-eligible cells null.
 - Made the sklearn transformer reject duplicate DataFrame column labels with
   stable, actionable errors before backend-specific validation.
 - Made predictor-free transformer PMM draw reproducibly from observed training
