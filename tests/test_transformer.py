@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.exceptions import NotFittedError
@@ -152,14 +153,19 @@ def test_pmm_transform_draws_only_from_training_target_donors():
     assert result.loc[0, "target"] in set(train["target"])
 
 
-def test_pmm_transform_uses_the_training_mean_for_a_single_numeric_column():
-    """PMM has a deterministic valid fallback when no predictors exist."""
+def test_pmm_single_feature_draws_only_from_training_donors_without_mutation():
+    """Predictor-free PMM samples train donors and preserves serving observations."""
     train = pd.DataFrame({"target": [10.0, 20.0, 30.0]})
-    serving = pd.DataFrame({"target": [np.nan]})
+    serving = pd.DataFrame({"target": [np.nan, 99.0, np.nan]})
+    original = serving.copy(deep=True)
 
-    result = MissinglyImputer(strategy="pmm", random_state=0).fit(train).transform(serving)
+    result = MissinglyImputer(strategy="pmm", random_state=0).fit(train).transform(
+        serving
+    )
 
-    assert result.loc[0, "target"] == pytest.approx(20.0)
+    assert set(result.loc[[0, 2], "target"]).issubset(set(train["target"]))
+    assert result.loc[1, "target"] == 99.0
+    pd.testing.assert_frame_equal(serving, original)
 
 
 def test_gb_transform_is_invariant_to_other_test_rows():
@@ -368,10 +374,26 @@ def test_does_not_mutate(numeric_df):
 # ---------------------------------------------------------------------------
 
 def test_get_feature_names_out(numeric_df):
-    """get_feature_names_out returns the training column names in order."""
+    """get_feature_names_out follows sklearn's ndarray output contract."""
     imputer = MissinglyImputer(strategy="mean")
     imputer.fit(numeric_df)
-    assert imputer.get_feature_names_out() == numeric_df.columns.tolist()
+    feature_names = imputer.get_feature_names_out()
+
+    assert isinstance(feature_names, np.ndarray)
+    assert feature_names.dtype == object
+    assert feature_names.tolist() == numeric_df.columns.tolist()
+
+
+def test_clone_preserves_public_parameters_without_fitted_state(numeric_df):
+    """sklearn.clone recreates an unfitted estimator from constructor parameters."""
+    fitted = MissinglyImputer(strategy="median", n_neighbors=3).fit(numeric_df)
+
+    cloned = clone(fitted)
+
+    assert cloned.get_params(deep=False) == fitted.get_params(deep=False)
+    assert cloned._is_fitted is False
+
+
 
 
 # ---------------------------------------------------------------------------
