@@ -153,14 +153,19 @@ def test_pmm_transform_draws_only_from_training_target_donors():
     assert result.loc[0, "target"] in set(train["target"])
 
 
-def test_pmm_transform_uses_the_training_mean_for_a_single_numeric_column():
-    """PMM has a deterministic valid fallback when no predictors exist."""
+def test_pmm_single_feature_draws_only_from_training_donors_without_mutation():
+    """Predictor-free PMM samples train donors and preserves serving observations."""
     train = pd.DataFrame({"target": [10.0, 20.0, 30.0]})
-    serving = pd.DataFrame({"target": [np.nan]})
+    serving = pd.DataFrame({"target": [np.nan, 99.0, np.nan]})
+    original = serving.copy(deep=True)
 
-    result = MissinglyImputer(strategy="pmm", random_state=0).fit(train).transform(serving)
+    result = MissinglyImputer(strategy="pmm", random_state=0).fit(train).transform(
+        serving
+    )
 
-    assert result.loc[0, "target"] == pytest.approx(20.0)
+    assert set(result.loc[[0, 2], "target"]).issubset(set(train["target"]))
+    assert result.loc[1, "target"] == 99.0
+    pd.testing.assert_frame_equal(serving, original)
 
 
 def test_gb_transform_is_invariant_to_other_test_rows():
@@ -389,19 +394,6 @@ def test_clone_preserves_public_parameters_without_fitted_state(numeric_df):
     assert cloned._is_fitted is False
 
 
-def test_pmm_single_feature_uses_only_training_donors_without_mutation():
-    """PMM's no-predictor fallback samples observed donors rather than a mean."""
-    train = pd.DataFrame({"score": [1.0, 3.0]})
-    serving = pd.DataFrame({"score": [np.nan, 99.0, np.nan]})
-    original = serving.copy(deep=True)
-
-    result = MissinglyImputer(strategy="pmm", random_state=7).fit(train).transform(
-        serving
-    )
-
-    assert set(result.loc[[0, 2], "score"]).issubset({1.0, 3.0})
-    assert result.loc[1, "score"] == 99.0
-    pd.testing.assert_frame_equal(serving, original)
 
 
 # ---------------------------------------------------------------------------
