@@ -245,7 +245,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         'median'
         """
         if "strategy" in params:
-            self._validate_strategy(params["strategy"])
+            strategy = params["strategy"]
+            if not isinstance(strategy, str):
+                raise ValueError("strategy must be a string")
+            self._validate_strategy(strategy)
         return super().set_params(**params)
 
     # ------------------------------------------------------------------
@@ -411,8 +414,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.imputer_ = None
         self.cat_imputer_ = None
         self.encoder_: Optional[OrdinalEncoder] = None
-        self.rf_reg_models_: Dict[str, object] = {}
-        self.rf_clf_models_: Dict[str, object] = {}
+        self.rf_reg_models_: Dict[
+            str, RandomForestRegressor | GradientBoostingRegressor
+        ] = {}
+        self.rf_clf_models_: Dict[
+            str, RandomForestClassifier | GradientBoostingClassifier
+        ] = {}
         self.cat_label_encoders_: Dict[str, OrdinalEncoder] = {}
         self._knn_train_df_: Optional[pd.DataFrame] = None
         self._train_df_: Optional[pd.DataFrame] = None
@@ -466,8 +473,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             self.imputer_ = SimpleImputer(strategy=num_strategy)
             self.imputer_.fit(X[self.numeric_cols_])
         if self.cat_cols_:
-            self.cat_imputer_ = SimpleImputer(strategy="most_frequent")
-            self.cat_imputer_.fit(X[self.cat_cols_])
+            cat_imputer = SimpleImputer(strategy="most_frequent")
+            cat_imputer.fit(X[self.cat_cols_])
+            self.cat_imputer_ = cat_imputer
 
     def _fit_knn(self, X: pd.DataFrame) -> None:
         """Fit KNN imputer — euclidean or mixed metric."""
@@ -578,6 +586,31 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     # transform
     # ------------------------------------------------------------------
 
+    def _require_fitted_imputer(
+        self,
+    ) -> SimpleImputer | KNNImputer | IterativeImputer:
+        """Return the strategy-specific sklearn imputer after fit.
+
+        Returns
+        -------
+        SimpleImputer or KNNImputer or IterativeImputer
+            The fitted estimator required by the active transform path.
+
+        Raises
+        ------
+        RuntimeError
+            If a fitted-state invariant has been violated.
+
+        Examples
+        --------
+        >>> imputer = MissinglyImputer().fit(pd.DataFrame({"x": [1.0, None]}))
+        >>> type(imputer._require_fitted_imputer()).__name__
+        'SimpleImputer'
+        """
+        if self.imputer_ is None:
+            raise RuntimeError("Fitted transformer is missing its sklearn imputer.")
+        return self.imputer_
+
     def transform(self, X: pd.DataFrame, y=None) -> pd.DataFrame:
         """Apply fitted imputation to a DataFrame.
 
@@ -631,21 +664,22 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                     result[col] = _restore_categorical_dtype(filled, self.cat_dtypes_[col])
 
         elif strategy == "mode":
-            arr = self.imputer_.transform(X)
+            imputer = self._require_fitted_imputer()
+            arr = imputer.transform(X)
             result = pd.DataFrame(arr, index=X.index, columns=X.columns)
             for col in X.columns:
                 result[col] = _restore_categorical_dtype(result[col], X[col].dtype)
 
         elif strategy == "knn":
             X_enc = self._encode_cats(X)
-            arr = self.imputer_.transform(X_enc)
+            arr = self._require_fitted_imputer().transform(X_enc)
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
             result = self._decode_cats(df_enc)
             result = self._restore_observed_unknown_categories(result, X)
 
         elif strategy == "mice":
             X_enc = self._encode_cats(X)
-            arr = self.imputer_.transform(X_enc)
+            arr = self._require_fitted_imputer().transform(X_enc)
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
             result = self._decode_cats(df_enc)
             result = self._restore_observed_unknown_categories(result, X)
@@ -768,6 +802,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         from .impute import _fill_feature_matrix
 
         train_df = self._train_df_
+        if train_df is None:
+            raise RuntimeError("PMM transformer has no fitted training data.")
         rng = np.random.default_rng(self.random_state)
         result = X.copy()
 
