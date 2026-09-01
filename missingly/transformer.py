@@ -159,11 +159,13 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     Examples
     --------
     >>> from sklearn.pipeline import Pipeline
-    >>> from sklearn.linear_model import LogisticRegression
-    >>> pipe = Pipeline([
-    ...     ("imputer", MissinglyImputer(strategy="hotdeck", hotdeck_method="weighted")),
-    ...     ("clf",     LogisticRegression()),
-    ... ])
+    >>> frame = pd.DataFrame({"score": [1.0, None, 3.0]})
+    >>> pipe = Pipeline([("imputer", MissinglyImputer(
+    ...     strategy="hotdeck", hotdeck_method="random", random_state=0
+    ... ))])
+    >>> result = pipe.fit_transform(frame)
+    >>> bool(result.isna().any().any())
+    False
     """
 
     def __init__(
@@ -409,6 +411,20 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         ------
         ValueError
             If ``X`` has duplicate column labels.
+
+        Returns
+        -------
+        None
+            This method returns after validating that the column labels are unique.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame([[1.0, 2.0]], columns=["x", "x"])
+        >>> try:
+        ...     MissinglyImputer._require_unique_columns(frame, operation="fit")
+        ... except ValueError as error:
+        ...     "fit X columns must be unique" in str(error)
+        True
         """
         if not X.columns.is_unique:
             raise ValueError(
