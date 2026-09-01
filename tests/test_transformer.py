@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.exceptions import NotFittedError
@@ -374,7 +375,18 @@ def test_get_feature_names_out(numeric_df):
     feature_names = imputer.get_feature_names_out()
 
     assert isinstance(feature_names, np.ndarray)
+    assert feature_names.dtype == object
     assert feature_names.tolist() == numeric_df.columns.tolist()
+
+
+def test_clone_preserves_public_parameters_without_fitted_state(numeric_df):
+    """sklearn.clone recreates an unfitted estimator from constructor parameters."""
+    fitted = MissinglyImputer(strategy="median", n_neighbors=3).fit(numeric_df)
+
+    cloned = clone(fitted)
+
+    assert cloned.get_params(deep=False) == fitted.get_params(deep=False)
+    assert cloned._is_fitted is False
 
 
 # ---------------------------------------------------------------------------
