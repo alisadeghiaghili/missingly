@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made ``miss_row_profile`` return an annotated axes for empty rows or columns
+  instead of raising a histogram error or emitting an all-NaN runtime warning.
 - Made ``DataFrame.miss.impute`` reject every unsupported strategy through
   ``InvalidStrategyError``, including unhashable Python values that previously
   leaked a mapping ``TypeError``.

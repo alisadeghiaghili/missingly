@@ -1127,9 +1127,35 @@ def miss_row_profile(
 ) -> Any:
     """Histogram of per-row completeness fractions.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input data. The function does not mutate it.
+    figsize : tuple of float, default (8, 4)
+        Figure size used only when *ax* is not supplied.
+    color : str, default "#4C72B0"
+        Histogram bar colour.
+    fontsize : int, default 11
+        Font size for axis labels.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : sequence, optional
+        Additional sentinel values treated as missing.
+    **kwargs : Any
+        Reserved for future compatibility.
+
     Returns
     -------
     matplotlib.axes.Axes
+        The supplied or newly created axes. Empty row or column inputs return
+        annotated axes instead of attempting an undefined histogram.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = miss_row_profile(pd.DataFrame({"score": [1.0, None]}))
+    >>> ax.get_title()
+    'Row Missingness Profile'
     """
     if ax is not None:
         fig = ax.figure
