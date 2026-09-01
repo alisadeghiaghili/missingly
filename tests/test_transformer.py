@@ -389,6 +389,21 @@ def test_clone_preserves_public_parameters_without_fitted_state(numeric_df):
     assert cloned._is_fitted is False
 
 
+def test_pmm_single_feature_uses_only_training_donors_without_mutation():
+    """PMM's no-predictor fallback samples observed donors rather than a mean."""
+    train = pd.DataFrame({"score": [1.0, 3.0]})
+    serving = pd.DataFrame({"score": [np.nan, 99.0, np.nan]})
+    original = serving.copy(deep=True)
+
+    result = MissinglyImputer(strategy="pmm", random_state=7).fit(train).transform(
+        serving
+    )
+
+    assert set(result.loc[[0, 2], "score"]).issubset({1.0, 3.0})
+    assert result.loc[1, "score"] == 99.0
+    pd.testing.assert_frame_equal(serving, original)
+
+
 # ---------------------------------------------------------------------------
 # RF categorical values are valid
 # ---------------------------------------------------------------------------
