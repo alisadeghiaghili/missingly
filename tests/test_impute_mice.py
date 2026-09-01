@@ -161,6 +161,59 @@ class TestSingleImputation:
         with pytest.raises(ValueError, match="observed"):
             impute_mice(small_mixed_df, where=overimpute)
 
+    def test_typed_result_preserves_partial_structural_missingness(self):
+        """Typed MICE results retain where-disabled cells across every chain."""
+        frame = pd.DataFrame(
+            {"a": [1.0, np.nan, 3.0, 4.0], "b": [2.0, 3.0, np.nan, 5.0]}
+        )
+        where = frame.isna()
+        where.loc[1, "a"] = False
+        original = frame.copy(deep=True)
+        original_where = where.copy(deep=True)
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            where=where,
+            return_result=True,
+        )
+
+        assert isinstance(result, ImputationResult)
+        assert result.data.n_imputations == 2
+        pd.testing.assert_frame_equal(result.data.schema.original_mask, frame.isna())
+        pd.testing.assert_frame_equal(
+            result.data.schema.imputation_mask,
+            frame.isna() & where,
+        )
+        assert result.validation["structural_missingness_retained"] is True
+        assert result.data.plan.provenance["where_mask"] == "original_missing_subset"
+        for completed in result.data.imputations:
+            assert pd.isna(completed.loc[1, "a"])
+            assert not pd.isna(completed.loc[2, "b"])
+            assert completed.loc[0, "a"] == frame.loc[0, "a"]
+        pd.testing.assert_frame_equal(frame, original)
+        pd.testing.assert_frame_equal(where, original_where)
+
+    def test_typed_result_all_false_where_retains_every_original_missing_cell(self):
+        """An all-false where mask yields valid typed chains with structural NAs."""
+        frame = pd.DataFrame({"a": [1.0, np.nan, 3.0], "b": [2.0, 4.0, 6.0]})
+        where = pd.DataFrame(False, index=frame.index, columns=frame.columns)
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            where=where,
+            return_result=True,
+        )
+
+        assert not result.data.schema.imputation_mask.any(axis=None)
+        for completed in result.data.imputations:
+            pd.testing.assert_frame_equal(completed, frame)
+
     def test_numeric_bounds_clip_only_imputed_cells(self):
         """Declared bounds constrain draws without changing observed data."""
         class HighRegressor(BaseEstimator, RegressorMixin):
