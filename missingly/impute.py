@@ -1750,6 +1750,8 @@ def impute_polr(
     converge, falls back to sklearn multinomial logistic regression with
     an audible ``UserWarning``. A one-column target has no predictors, so it
     uses its observed mode directly without importing a model backend.
+    That valid baseline is retained when ``strict_mode=True`` because no
+    conditional estimator has failed.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
