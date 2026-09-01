@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -313,6 +314,57 @@ def test_type_error_on_array(numeric_df):
     imputer = MissinglyImputer(strategy="mean")
     with pytest.raises(TypeError):
         imputer.fit(numeric_df.values)
+
+
+@pytest.mark.parametrize(
+    ("container", "expected_type"),
+    [
+        (np.array([[1.0, np.nan], [2.0, 3.0]]), "numpy.ndarray"),
+        (sparse.csr_matrix([[1.0, 0.0], [2.0, 3.0]]), "scipy.sparse"),
+    ],
+    ids=["numpy-array", "scipy-sparse"],
+)
+def test_fit_rejects_non_dataframe_containers_without_mutation(
+    container, expected_type
+):
+    """Unsupported containers fail clearly and retain their original values."""
+    original = container.copy()
+
+    with pytest.raises(
+        TypeError,
+        match=rf"MissinglyImputer expects a pandas DataFrame; got .*{expected_type}",
+    ):
+        MissinglyImputer(strategy="mean").fit(container)
+
+    if sparse.issparse(container):
+        assert (container != original).nnz == 0
+    else:
+        np.testing.assert_array_equal(container, original)
+
+
+def test_fit_rejects_duplicate_column_labels_before_backend_work():
+    """Duplicate schema labels fail with a stable public error before fitting."""
+    frame = pd.DataFrame([[1.0, np.nan], [2.0, 3.0]], columns=["score", "score"])
+    original = frame.copy(deep=True)
+
+    with pytest.raises(ValueError, match="fit X columns must be unique"):
+        MissinglyImputer(strategy="mean").fit(frame)
+
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_transform_rejects_duplicate_column_labels_before_schema_comparison():
+    """Duplicate transform labels fail before ambiguous schema-set comparisons."""
+    imputer = MissinglyImputer(strategy="mean").fit(
+        pd.DataFrame({"score": [1.0, 2.0]})
+    )
+    frame = pd.DataFrame([[np.nan, 3.0]], columns=["score", "score"])
+    original = frame.copy(deep=True)
+
+    with pytest.raises(ValueError, match="transform X columns must be unique"):
+        imputer.transform(frame)
+
+    pd.testing.assert_frame_equal(frame, original)
 
 
 # ---------------------------------------------------------------------------
