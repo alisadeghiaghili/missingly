@@ -9,7 +9,7 @@ import pytest
 from statsmodels.miscmodels import ordinal_model
 
 from missingly.exceptions import ImputationError
-from missingly.impute import impute_polr, impute_polyreg
+from missingly.impute import impute_logreg, impute_polr, impute_polyreg
 
 
 class _ValueErrorLogisticRegression:
@@ -97,6 +97,86 @@ def _assert_preserved_observed_categories(
         original.loc[~missing_mask, column],
     )
     assert not result.loc[missing_mask, column].isna().any()
+
+
+@pytest.mark.parametrize(
+    ("imputer", "target", "dtype"),
+    [
+        (impute_polyreg, ["red", "red", "red", "green", "blue", pd.NA], "category"),
+        (
+            impute_polr,
+            ["low", "low", "low", "medium", "high", pd.NA],
+            pd.CategoricalDtype(["low", "medium", "high"], ordered=True),
+        ),
+    ],
+    ids=["polyreg-nominal", "polr-ordinal"],
+)
+def test_multiclass_imputers_use_mode_without_predictors(
+    imputer,
+    target,
+    dtype,
+) -> None:
+    """Use a typed modal fallback when a conditional target has no predictors.
+
+    The standalone conditional APIs have no feature matrix to fit for a
+    one-column frame. Their documented safe fallback must still fill missing
+    values without mutating caller data or changing categorical metadata.
+    """
+    frame = pd.DataFrame({"target": pd.Series(target, dtype=dtype)})
+    original = frame.copy(deep=True)
+
+    result = imputer(frame, random_state=0)
+
+    assert result.loc[result.index[-1], "target"] == target[0]
+    _assert_preserved_observed_categories(original, result, "target")
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_logreg_uses_mode_without_predictors() -> None:
+    """Use the typed modal baseline for a binary target without predictors."""
+    frame = pd.DataFrame(
+        {"target": pd.Series(["yes", "yes", "yes", "no", pd.NA], dtype="category")}
+    )
+    original = frame.copy(deep=True)
+
+    result = impute_logreg(frame, random_state=0)
+
+    assert result.loc[result.index[-1], "target"] == "yes"
+    _assert_preserved_observed_categories(original, result, "target")
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_polr_does_not_import_a_backend_for_a_no_predictor_fallback(
+    monkeypatch,
+) -> None:
+    """Avoid an optional-model import when a one-column frame needs only its mode."""
+    original_import = builtins.__import__
+
+    def reject_ordinal_model_import(
+        name,
+        globals=None,
+        locals=None,
+        fromlist=(),
+        level=0,
+    ):
+        """Fail the test if the no-predictor path attempts a model import."""
+        if name == "statsmodels.miscmodels.ordinal_model":
+            raise AssertionError("one-column polr must not import OrderedModel")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", reject_ordinal_model_import)
+    frame = pd.DataFrame(
+        {
+            "grade": pd.Series(
+                ["low", "low", "medium", "high", pd.NA],
+                dtype=pd.CategoricalDtype(["low", "medium", "high"], ordered=True),
+            )
+        }
+    )
+
+    result = impute_polr(frame, random_state=0)
+
+    assert result.loc[result.index[-1], "grade"] == "low"
 
 
 def test_polyreg_recovers_from_value_error_or_raises_in_strict_mode(monkeypatch):
