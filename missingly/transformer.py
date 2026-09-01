@@ -441,7 +441,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Examples
         --------
         >>> frame = pd.DataFrame({"score": [1.0, None, 3.0]})
-        >>> bool(MissinglyImputer(strategy="mean").fit(frame).transform(frame).isna().any().any())
+        >>> result = MissinglyImputer(strategy="mean").fit(frame).transform(frame)
+        >>> bool(result.isna().any().any())
         False
         """
         if not isinstance(X, pd.DataFrame):
