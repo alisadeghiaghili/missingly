@@ -114,7 +114,8 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         * ``"mice"``      — Multiple Imputation by Chained Equations.
         * ``"rf"``        — Random Forest.
         * ``"gb"``        — Gradient Boosting.
-        * ``"pmm"``       — Predictive Mean Matching.
+        * ``"pmm"``       — Predictive Mean Matching using training donors;
+          a predictor-free numeric target uses deterministic train-donor draws.
         * ``"hotdeck"``   — Train-donor random hot-deck.
 
         ``"logreg"``, ``"polyreg"``, ``"polr"``, mixed-metric KNN, and
@@ -817,8 +818,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
             feature_cols = [c for c in num_cols if c != col]
             if not feature_cols:
-                fill_val = train_df[col].mean()
-                result.loc[missing_mask, col] = fill_val
+                donors = train_df.loc[train_df[col].notna(), col].to_numpy()
+                result.loc[missing_mask, col] = rng.choice(
+                    donors,
+                    size=int(missing_mask.sum()),
+                    replace=True,
+                )
                 continue
 
             train_obs_mask = ~train_df[col].isna()
