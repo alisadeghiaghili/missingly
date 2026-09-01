@@ -1082,6 +1082,8 @@ def impute_mice(
         containing the original mask, chain seeds, completed datasets, and
         per-iteration histories. This opt-in mode is mutually exclusive with
         ``return_history`` because the result object already includes history.
+        Its schema records the eligible imputation mask, so intentionally
+        retained structural missing cells remain valid in completed chains.
     visit_sequence : list of str, optional
         Exact ordered set of columns with original missing values to update in
         every FCS sweep. ``None`` uses the legacy left-to-right order.
@@ -1092,7 +1094,9 @@ def impute_mice(
     where : pandas.DataFrame, optional
         Boolean mask aligned exactly to ``df``. ``True`` permits imputation of
         an originally missing cell; ``False`` retains it as missing. Over-
-        imputation of originally observed cells is rejected.
+        imputation of originally observed cells is rejected. With
+        ``return_result=True``, retained cells are recorded as structural
+        missingness rather than treated as incomplete chain output.
     bounds : dict of str to tuple of float, optional
         Inclusive numeric bounds per target column. Bounds are applied only to
         newly imputed values and must use finite ascending limits.
@@ -1271,13 +1275,22 @@ def impute_mice(
     if return_result:
         results = [_single_chain(random_state + index) for index in range(n_imputations)]
         frames, histories = zip(*results)
-        schema = MissingnessSchema.from_dataframe(df)
+        schema = MissingnessSchema.from_dataframe(
+            df,
+            imputation_mask=imputation_mask,
+        )
+        provenance = {
+            "engine": "impute_mice",
+            "history": "per_iteration_mean",
+        }
+        if where is not None:
+            provenance["where_mask"] = "original_missing_subset"
         plan = ImputationPlan(
             methods={column: "mice" for column in df.columns},
             n_imputations=n_imputations,
             max_iter=max_iter,
             seed_sequence=tuple(random_state + index for index in range(n_imputations)),
-            provenance={"engine": "impute_mice", "history": "per_iteration_mean"},
+            provenance=provenance,
         )
         data = MIData(df.copy(deep=True), schema, plan, tuple(frames))
         contract_histories = tuple(
@@ -1294,6 +1307,9 @@ def impute_mice(
             validation={
                 "structural_validation_passed": True,
                 "convergence_assessed": False,
+                "structural_missingness_retained": bool(
+                    retained_missing_mask.any(axis=None)
+                ),
             },
         )
 

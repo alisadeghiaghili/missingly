@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Any, Mapping, Protocol, Sequence, Tuple
+from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -59,6 +59,11 @@ class MissingnessSchema:
         alignment must be unambiguous.
     original_mask : pandas.DataFrame
         Boolean mask with ``True`` exactly where original values were missing.
+    imputation_mask : pandas.DataFrame, optional
+        Boolean subset of ``original_mask`` marking cells that a particular
+        imputation plan must fill. ``None`` defaults to a deep copy of
+        ``original_mask``. Original missing cells outside this mask are
+        intentional structural or retained missing values.
 
     Examples
     --------
@@ -72,6 +77,7 @@ class MissingnessSchema:
     dtypes: Tuple[str, ...]
     index: pd.Index
     original_mask: pd.DataFrame
+    imputation_mask: Optional[pd.DataFrame] = None
 
     def __post_init__(self) -> None:
         """Validate structural and mask invariants."""
@@ -89,15 +95,45 @@ class MissingnessSchema:
             raise ValueError("original_mask index must exactly match index")
         if not all(pd.api.types.is_bool_dtype(dtype) for dtype in self.original_mask.dtypes):
             raise TypeError("original_mask must contain only boolean columns")
+        if self.imputation_mask is None:
+            object.__setattr__(
+                self,
+                "imputation_mask",
+                self.original_mask.copy(deep=True),
+            )
+            return
+        _require_dataframe(self.imputation_mask, "imputation_mask")
+        if tuple(self.imputation_mask.columns) != self.columns:
+            raise ValueError("imputation_mask columns must exactly match columns")
+        if not self.imputation_mask.index.equals(self.index):
+            raise ValueError("imputation_mask index must exactly match index")
+        if not all(
+            pd.api.types.is_bool_dtype(dtype) for dtype in self.imputation_mask.dtypes
+        ):
+            raise TypeError("imputation_mask must contain only boolean columns")
+        if (self.imputation_mask & ~self.original_mask).any(axis=None):
+            raise ValueError(
+                "imputation_mask may enable only originally missing cells"
+            )
 
     @classmethod
-    def from_dataframe(cls, frame: pd.DataFrame) -> "MissingnessSchema":
+    def from_dataframe(
+        cls,
+        frame: pd.DataFrame,
+        *,
+        imputation_mask: Optional[pd.DataFrame] = None,
+    ) -> "MissingnessSchema":
         """Create an immutable structural contract from a DataFrame.
 
         Parameters
         ----------
         frame : pandas.DataFrame
             Original incomplete input. It is never modified.
+        imputation_mask : pandas.DataFrame, optional
+            Boolean, exactly aligned subset of the original missing-value mask.
+            ``True`` cells must be filled by completed chains; ``False`` cells
+            may remain structurally missing. Defaults to all original missing
+            cells.
 
         Returns
         -------
@@ -109,17 +145,28 @@ class MissingnessSchema:
         >>> frame = pd.DataFrame({"score": [1.0, np.nan]})
         >>> MissingnessSchema.from_dataframe(frame).columns
         ('score',)
+        >>> retained = pd.DataFrame({"score": [False, False]})
+        >>> schema = MissingnessSchema.from_dataframe(frame, imputation_mask=retained)
+        >>> bool(schema.imputation_mask.any(axis=None))
+        False
         """
         _require_dataframe(frame, "frame")
         if frame.shape[1] == 0:
             raise ValueError("frame must contain at least one column")
         if any(not isinstance(column, str) for column in frame.columns):
             raise TypeError("frame columns must be strings")
+        original_mask = frame.isna().copy(deep=True)
+        mask = (
+            original_mask.copy(deep=True)
+            if imputation_mask is None
+            else imputation_mask.copy(deep=True)
+        )
         return cls(
             columns=tuple(frame.columns),
             dtypes=tuple(str(dtype) for dtype in frame.dtypes),
             index=frame.index.copy(),
-            original_mask=frame.isna().copy(deep=True),
+            original_mask=original_mask,
+            imputation_mask=mask,
         )
 
     def validate_frame(self, frame: pd.DataFrame, *, name: str = "frame") -> None:
@@ -293,7 +340,10 @@ class MIData:
     plan : ImputationPlan
         Reproducible per-column method and seed configuration.
     imputations : tuple of pandas.DataFrame
-        Completed data sets. Observed original cells must be unchanged.
+        Completed data sets. Observed original cells must be unchanged and all
+        cells enabled by ``schema.imputation_mask`` must be filled. Original
+        missing cells outside that mask are structural missingness and may
+        remain null.
 
     Examples
     --------
@@ -301,6 +351,12 @@ class MIData:
     >>> schema = MissingnessSchema.from_dataframe(original)
     >>> plan = ImputationPlan({"x": "pmm"}, 1, 2, (9,))
     >>> MIData(original, schema, plan, (pd.DataFrame({"x": [1.0, 2.0]}),)).n_imputations
+    1
+    >>> retained = pd.DataFrame({"x": [False, False]})
+    >>> structural_schema = MissingnessSchema.from_dataframe(
+    ...     original, imputation_mask=retained
+    ... )
+    >>> MIData(original, structural_schema, plan, (original.copy(),)).n_imputations
     1
     """
 
@@ -320,9 +376,11 @@ class MIData:
             self.schema.validate_frame(imputed, name=f"imputations[{position}]")
             if imputed.where(observed).compare(self.original.where(observed)).shape[0]:
                 raise ValueError("imputations must not change originally observed cells")
-            unfilled = imputed.isna() & self.schema.original_mask
+            unfilled = imputed.isna() & self.schema.imputation_mask
             if unfilled.to_numpy().any():
-                raise ValueError("imputations must fill every originally missing cell")
+                raise ValueError(
+                    "imputations must fill every imputation-eligible missing cell"
+                )
 
     @property
     def n_imputations(self) -> int:
