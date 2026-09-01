@@ -150,6 +150,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Donor pool size for ``hotdeck_method="weighted"``.
         Default is 5.
 
+    Notes
+    -----
+    ``MissinglyImputer`` accepts pandas DataFrames only. Array and sparse
+    containers are rejected so column names, dtypes, and train/transform schema
+    checks remain explicit. DataFrame column labels must be unique.
+
     Examples
     --------
     >>> from sklearn.pipeline import Pipeline
@@ -388,6 +394,28 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     # fit
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _require_unique_columns(X: pd.DataFrame, *, operation: str) -> None:
+        """Reject ambiguous DataFrame schemas before estimator validation.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Input frame whose column labels are checked.
+        operation : str
+            Public operation name used in the actionable error message.
+
+        Raises
+        ------
+        ValueError
+            If ``X`` has duplicate column labels.
+        """
+        if not X.columns.is_unique:
+            raise ValueError(
+                f"{operation} X columns must be unique; "
+                "duplicate labels are not supported."
+            )
+
     def fit(self, X: pd.DataFrame, y=None) -> "MissinglyImputer":
         """Learn imputation parameters from training data.
 
@@ -401,11 +429,26 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Returns
         -------
         self
+            Fitted transformer.
+
+        Raises
+        ------
+        TypeError
+            If ``X`` is not a pandas DataFrame.
+        ValueError
+            If ``X`` has duplicate column labels.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame({"score": [1.0, None, 3.0]})
+        >>> bool(MissinglyImputer(strategy="mean").fit(frame).transform(frame).isna().any().any())
+        False
         """
         if not isinstance(X, pd.DataFrame):
             raise TypeError(
                 f"MissinglyImputer expects a pandas DataFrame; got {type(X)}"
             )
+        self._require_unique_columns(X, operation="fit")
         X = self._normalize(X)
 
         self.feature_names_in_: List[str] = X.columns.tolist()
@@ -625,6 +668,22 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         -------
         pd.DataFrame
             Imputed copy of *X*.
+
+        Raises
+        ------
+        TypeError
+            If ``X`` is not a pandas DataFrame.
+        ValueError
+            If ``X`` has duplicate labels or does not match the fitted schema.
+
+        Examples
+        --------
+        >>> train = pd.DataFrame({"score": [1.0, 3.0]})
+        >>> result = MissinglyImputer().fit(train).transform(
+        ...     pd.DataFrame({"score": [None]})
+        ... )
+        >>> float(result.loc[0, "score"])
+        2.0
         """
         from sklearn.utils.validation import check_is_fitted
         check_is_fitted(self)
@@ -633,6 +692,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             raise TypeError(
                 f"MissinglyImputer expects a pandas DataFrame; got {type(X)}"
             )
+        self._require_unique_columns(X, operation="transform")
 
         missing_cols = set(self.feature_names_in_) - set(X.columns)
         extra_cols = set(X.columns) - set(self.feature_names_in_)
