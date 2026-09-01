@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made ``DataFrame.miss.impute`` reject every unsupported strategy through
+  ``InvalidStrategyError``, including unhashable Python values that previously
+  leaked a mapping ``TypeError``.
 - Made predictor-free ``impute_polr`` calls use their safe observed modal
   baseline without importing ``statsmodels``. This valid no-estimator path is
   unchanged by ``strict_mode=True``.
