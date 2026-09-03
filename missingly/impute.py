@@ -694,6 +694,7 @@ def _run_mice_with_history(
     visit_sequence: Optional[List[str]] = None,
     predictor_matrix: Optional[pd.DataFrame] = None,
     bounds: Optional[Dict[str, Tuple[float, float]]] = None,
+    binary_target_columns: Optional[set[str]] = None,
 ) -> Tuple[np.ndarray, Dict[str, List[float]]]:
     """Run MICE manually iteration-by-iteration to capture per-iteration means.
 
@@ -725,6 +726,9 @@ def _run_mice_with_history(
     bounds : dict of str to tuple of float, optional
         Inclusive lower and upper bounds applied only to newly imputed numeric
         target values.
+    binary_target_columns : set of str, optional
+        Categorical targets with exactly two observed levels. These targets use
+        a logistic conditional model and seeded Bernoulli draws.
 
     Returns
     -------
@@ -735,6 +739,7 @@ def _run_mice_with_history(
         missing values are included.
     """
     rng = np.random.default_rng(seed)
+    binary_target_columns = binary_target_columns or set()
     cols = list(df_work.columns)
     # Initialise missing cells with column means (same as sklearn default)
     X = df_work.values.astype(float).copy()
@@ -763,22 +768,35 @@ def _run_mice_with_history(
             X_train = X[~orig_missing][:, feature_idx]
             y_train = X[~orig_missing, j]
             X_pred_rows = X[orig_missing][:, feature_idx]
+            preds: NDArray[np.float64]
 
-            est = clone(base_estimator)
-            # Seed estimators that accept random_state
-            if hasattr(est, "random_state"):
-                est.set_params(random_state=int(rng.integers(0, 2**31)))
-            try:
-                est.fit(X_train, y_train)
-                if use_sample_posterior:
-                    predictive_mean, predictive_std = est.predict(
-                        X_pred_rows, return_std=True
-                    )
-                    preds = rng.normal(predictive_mean, predictive_std)
-                else:
-                    preds = est.predict(X_pred_rows)
-            except (ValueError, np.linalg.LinAlgError, NotFittedError):
-                preds = np.full(orig_missing.sum(), float(np.mean(y_train)))
+            if col in binary_target_columns:
+                preds = _binary_logistic_draws(
+                    X_train,
+                    X_pred_rows,
+                    y_train,
+                    rng,
+                    column=col,
+                )
+            else:
+                est = clone(base_estimator)
+                # Seed estimators that accept random_state
+                if hasattr(est, "random_state"):
+                    est.set_params(random_state=int(rng.integers(0, 2**31)))
+                try:
+                    est.fit(X_train, y_train)
+                    if use_sample_posterior:
+                        predictive_mean, predictive_std = est.predict(
+                            X_pred_rows, return_std=True
+                        )
+                        preds = np.asarray(
+                            rng.normal(predictive_mean, predictive_std),
+                            dtype=float,
+                        )
+                    else:
+                        preds = np.asarray(est.predict(X_pred_rows), dtype=float)
+                except (ValueError, np.linalg.LinAlgError, NotFittedError):
+                    preds = np.full(orig_missing.sum(), float(np.mean(y_train)))
 
             if bounds is not None and col in bounds:
                 lower, upper = bounds[col]
@@ -793,6 +811,97 @@ def _run_mice_with_history(
 # ---------------------------------------------------------------------------
 # Public imputation functions
 # ---------------------------------------------------------------------------
+
+
+def _binary_categorical_columns(df: pd.DataFrame) -> set[str]:
+    """Return categorical columns with exactly two observed levels.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Normalized source frame whose non-numeric columns are candidates for
+        binary conditional models.
+
+    Returns
+    -------
+    set of str
+        Names of categorical columns with exactly two non-null observed values.
+
+    Examples
+    --------
+    >>> _binary_categorical_columns(
+    ...     pd.DataFrame({"flag": [True, False, pd.NA], "score": [1.0, 2.0, 3.0]})
+    ... )
+    {'flag'}
+    """
+    categorical_columns = df.select_dtypes(exclude=[np.number]).columns
+    return {
+        column
+        for column in categorical_columns
+        if df[column].dropna().nunique() == 2
+    }
+
+
+def _binary_logistic_draws(
+    X_train: np.ndarray,
+    X_pred_rows: np.ndarray,
+    y_train: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    column: str,
+) -> np.ndarray:
+    """Draw binary target codes from a fitted logistic conditional model.
+
+    Parameters
+    ----------
+    X_train : numpy.ndarray
+        Selected predictor values for observed target rows.
+    X_pred_rows : numpy.ndarray
+        Selected predictor values for rows requiring imputation.
+    y_train : numpy.ndarray
+        Observed binary ordinal codes, which must contain zero and one.
+    rng : numpy.random.Generator
+        Chain-specific random generator for reproducible Bernoulli draws.
+    column : str
+        Target name used in an actionable fallback warning.
+
+    Returns
+    -------
+    numpy.ndarray
+        Zero-or-one encoded Bernoulli draws aligned to ``X_pred_rows``.
+
+    Examples
+    --------
+    >>> draws = _binary_logistic_draws(
+    ...     np.array([[0.0], [1.0], [0.0], [1.0]]),
+    ...     np.array([[0.5]]), np.array([0.0, 1.0, 0.0, 1.0]),
+    ...     np.random.default_rng(3), column="flag"
+    ... )
+    >>> draws.tolist()
+    [1.0]
+    """
+    if X_train.shape[1] == 0:
+        X_train = np.ones((X_train.shape[0], 1))
+        X_pred_rows = np.ones((X_pred_rows.shape[0], 1))
+
+    try:
+        model = LogisticRegression(random_state=int(rng.integers(0, 2**31)))
+        model.fit(X_train, y_train.astype(int))
+        class_indices = np.flatnonzero(model.classes_ == 1)
+        if len(class_indices) != 1:
+            raise ValueError("binary target must contain encoded classes 0 and 1")
+        probabilities = model.predict_proba(X_pred_rows)[:, class_indices[0]]
+    except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+        probability = float(np.mean(y_train))
+        warnings.warn(
+            f"impute_mice: binary logistic kernel failed for column {column!r} "
+            f"({type(exc).__name__}: {exc}). Falling back to its observed "
+            "Bernoulli rate.",
+            UserWarning,
+            stacklevel=3,
+        )
+        probabilities = np.full(X_pred_rows.shape[0], probability)
+    return np.asarray(rng.binomial(1, probabilities), dtype=float)
 
 
 def _mice_conditional_model_contract(
@@ -830,8 +939,15 @@ def _mice_conditional_model_contract(
     True
     """
     numeric_columns = set(df.select_dtypes(include=[np.number]).columns)
-    has_categorical = len(numeric_columns) != len(df.columns)
+    binary_columns = _binary_categorical_columns(df)
+    categorical_columns = set(df.columns) - numeric_columns - binary_columns
+    binary_contract = (
+        "binary_logistic_bernoulli" if binary_columns else "not_applicable"
+    )
+    has_categorical = bool(categorical_columns)
     if estimator is not None:
+        custom_categorical_columns = set(df.columns) - numeric_columns
+        has_custom_categorical = bool(custom_categorical_columns)
         methods = {
             column: (
                 "custom_estimator_numeric"
@@ -842,13 +958,13 @@ def _mice_conditional_model_contract(
         }
         categorical_contract = (
             "ordinal_encoded_custom_estimator_approximation"
-            if has_categorical
+            if has_custom_categorical
             else "not_applicable"
         )
         limitation = (
             "Categorical targets use ordinal encoding before the caller-supplied "
             "estimator; this is not a validated multinomial or ordinal FCS kernel."
-            if has_categorical
+            if has_custom_categorical
             else None
         )
         return (
@@ -858,14 +974,14 @@ def _mice_conditional_model_contract(
             limitation,
         )
 
-    methods = {
-        column: (
-            "bayesian_ridge_numeric"
-            if column in numeric_columns
-            else "ordinal_encoded_bayesian_ridge_approximation"
-        )
-        for column in df.columns
-    }
+    methods = {}
+    for column in df.columns:
+        if column in numeric_columns:
+            methods[column] = "bayesian_ridge_numeric"
+        elif column in binary_columns:
+            methods[column] = "binary_logistic_fcs"
+        else:
+            methods[column] = "ordinal_encoded_bayesian_ridge_approximation"
     categorical_contract = (
         "ordinal_encoded_bayesian_ridge_approximation"
         if has_categorical
@@ -880,6 +996,7 @@ def _mice_conditional_model_contract(
     return (
         methods,
         "numeric=bayesian_ridge_posterior; "
+        f"binary={binary_contract}; "
         f"categorical={categorical_contract}",
         limitation,
     )
@@ -1174,12 +1291,14 @@ def impute_mice(
         ``return_history`` because the result object already includes history.
         Its schema records the eligible imputation mask, so intentionally
         retained structural missing cells remain valid in completed chains. The
-        plan records each default target as numeric Bayesian ridge or an
-        ordinal-encoded categorical approximation. With a caller-supplied
-        estimator, the plan instead records numeric custom-estimator targets
-        and categorical targets that were ordinal-encoded before that
-        estimator. Categorical target handling is not a validated
-        multinomial or ordinal FCS kernel in either case.
+        plan records default numeric targets as Bayesian ridge and categorical
+        targets with exactly two observed levels as logistic conditional
+        Bernoulli draws. Categorical targets with more than two observed
+        levels remain ordinal-encoded Bayesian-ridge approximations. With a
+        caller-supplied estimator, the plan instead records numeric
+        custom-estimator targets and categorical targets that were
+        ordinal-encoded before that estimator. Multiclass and ordinal target
+        handling is not a validated multinomial or ordinal FCS kernel.
     visit_sequence : list of str, optional
         Exact ordered set of columns with original missing values to update in
         every FCS sweep. ``None`` uses the legacy left-to-right order.
@@ -1259,6 +1378,8 @@ def impute_mice(
         imputation_mask = original_missing_mask & where
     retained_missing_mask = original_missing_mask & ~imputation_mask
     missing_targets = [column for column in df_norm.columns if imputation_mask[column].any()]
+    binary_target_columns = _binary_categorical_columns(df_norm) if estimator is None else set()
+    requires_binary_fcs = bool(binary_target_columns.intersection(missing_targets))
     if visit_sequence is not None:
         if not isinstance(visit_sequence, list) or not all(
             isinstance(column, str) for column in visit_sequence
@@ -1313,7 +1434,15 @@ def impute_mice(
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
         capture_history = return_history or return_result
 
-        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None or where is not None or bounds is not None:
+        if (
+            return_history
+            or return_result
+            or visit_sequence is not None
+            or predictor_matrix is not None
+            or where is not None
+            or bounds is not None
+            or requires_binary_fcs
+        ):
             # Use our manual per-iteration loop so we can capture history.
             missing_mask_df = imputation_mask.loc[:, df_work.columns]
             if estimator is None:
@@ -1333,6 +1462,7 @@ def impute_mice(
                 visit_sequence=visit_sequence,
                 predictor_matrix=predictor_matrix,
                 bounds=bounds,
+                binary_target_columns=binary_target_columns,
             )
             df_imputed = pd.DataFrame(
                 imputed_array, index=df_norm.index, columns=df_work.columns
