@@ -317,8 +317,31 @@ class TestSingleImputation:
                    for warning in result.warnings)
         for completed in result.data.imputations:
             assert completed["tier"].dtype == frame["tier"].dtype
-            assert completed.loc[1, "tier"] == "low"
+            assert completed.loc[2, "tier"] in frame["tier"].cat.categories
         pd.testing.assert_frame_equal(frame, original)
+
+    def test_typed_result_marks_absent_categorical_contract_not_applicable(self):
+        """Numeric-only MICE provenance does not claim a categorical approximation."""
+        frame = pd.DataFrame(
+            {
+                "income": [10.0, np.nan, 30.0, 40.0],
+                "age": [20.0, 30.0, 40.0, 50.0],
+            }
+        )
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            return_result=True,
+        )
+
+        assert result.data.plan.provenance["conditional_model_contract"] == (
+            "numeric=bayesian_ridge_posterior; categorical=not_applicable"
+        )
+        assert not any("multinomial or ordinal FCS kernel" in warning
+                       for warning in result.warnings)
 
     def test_numeric_bounds_clip_only_imputed_cells(self):
         """Declared bounds constrain draws without changing observed data."""
