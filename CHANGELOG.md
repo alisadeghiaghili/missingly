@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made typed MICE results disclose default numeric Bayesian-ridge and
+  ordinal-encoded categorical approximation contracts, including the latter's
+  multinomial/ordinal FCS limitation.
 - Made MICE ``where`` and typed-result eligibility masks reject null boolean
   entries instead of accepting an ambiguous three-valued imputation policy.
 - Made typed MICE results preserve ``where=False`` structural missingness

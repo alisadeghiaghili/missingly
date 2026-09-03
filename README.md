@@ -25,9 +25,14 @@ missing data** in pandas DataFrames. It provides:
 
 ### Multiple Imputation (advanced)
 
-For statistically valid inference after imputation, generate *m* datasets
-with `impute_mice(..., n_imputations=m)` and pool the model results using
-Rubin's Rules via the utilities in `missingly.mi`:
+`impute_mice(..., n_imputations=m)` can generate multiple completed datasets
+for an analysis workflow. Its default numeric target contract is posterior
+Bayesian ridge; categorical targets use an ordinal-encoded Bayesian-ridge
+approximation. The latter is not a validated multinomial or ordinal FCS kernel,
+and the package does not claim general parity with R `mice` or valid inference
+for every missing-data mechanism. Inspect `return_result=True` provenance and
+warnings, assess convergence, and validate study-specific assumptions before
+pooling model results with Rubin's Rules via `missingly.mi`:
 
 ```python
 import numpy as np
