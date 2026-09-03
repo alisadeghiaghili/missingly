@@ -1378,7 +1378,9 @@ def impute_mice(
         imputation_mask = original_missing_mask & where
     retained_missing_mask = original_missing_mask & ~imputation_mask
     missing_targets = [column for column in df_norm.columns if imputation_mask[column].any()]
-    binary_target_columns = _binary_categorical_columns(df_norm) if estimator is None else set()
+    binary_target_columns = (
+        _binary_categorical_columns(df_norm) if estimator is None else set()
+    )
     requires_binary_fcs = bool(binary_target_columns.intersection(missing_targets))
     if visit_sequence is not None:
         if not isinstance(visit_sequence, list) or not all(
