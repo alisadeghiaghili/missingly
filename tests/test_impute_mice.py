@@ -227,8 +227,11 @@ class TestSingleImputation:
         """Typed MICE metadata distinguishes numeric and categorical approximations."""
         frame = pd.DataFrame(
             {
-                "income": [10.0, np.nan, 30.0, 40.0],
-                "tier": pd.Categorical(["low", "high", None, "low"], ordered=True),
+                "income": [10.0, np.nan, 30.0, 40.0, 50.0],
+                "tier": pd.Categorical(
+                    ["low", "medium", "high", None, "low"],
+                    ordered=True,
+                ),
             }
         )
 
@@ -246,6 +249,7 @@ class TestSingleImputation:
         }
         assert result.data.plan.provenance["conditional_model_contract"] == (
             "numeric=bayesian_ridge_posterior; "
+            "binary=not_applicable; "
             "categorical=ordinal_encoded_bayesian_ridge_approximation"
         )
         assert any("not a validated multinomial or ordinal FCS kernel" in warning
@@ -338,7 +342,8 @@ class TestSingleImputation:
         )
 
         assert result.data.plan.provenance["conditional_model_contract"] == (
-            "numeric=bayesian_ridge_posterior; categorical=not_applicable"
+            "numeric=bayesian_ridge_posterior; "
+            "binary=not_applicable; categorical=not_applicable"
         )
         assert not any("multinomial or ordinal FCS kernel" in warning
                        for warning in result.warnings)
