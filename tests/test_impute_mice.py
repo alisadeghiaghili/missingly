@@ -223,6 +223,126 @@ class TestSingleImputation:
         for completed in result.data.imputations:
             pd.testing.assert_frame_equal(completed, frame)
 
+    def test_typed_result_discloses_default_conditional_target_contract(self):
+        """Typed MICE metadata distinguishes numeric and categorical approximations."""
+        frame = pd.DataFrame(
+            {
+                "income": [10.0, np.nan, 30.0, 40.0],
+                "tier": pd.Categorical(["low", "high", None, "low"], ordered=True),
+            }
+        )
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            return_result=True,
+        )
+
+        assert result.data.plan.methods == {
+            "income": "bayesian_ridge_numeric",
+            "tier": "ordinal_encoded_bayesian_ridge_approximation",
+        }
+        assert result.data.plan.provenance["conditional_model_contract"] == (
+            "numeric=bayesian_ridge_posterior; "
+            "categorical=ordinal_encoded_bayesian_ridge_approximation"
+        )
+        assert any("not a validated multinomial or ordinal FCS kernel" in warning
+                   for warning in result.warnings)
+
+    def test_typed_result_discloses_custom_categorical_approximation(self):
+        """Custom estimators still disclose ordinal encoding for categorical targets."""
+        class ZeroRegressor(BaseEstimator, RegressorMixin):
+            """Return deterministic zero predictions for a contract test."""
+
+            def fit(self, X, y):
+                """Fit the deterministic test estimator.
+
+                Parameters
+                ----------
+                X : np.ndarray
+                    Conditional-model feature matrix.
+                y : np.ndarray
+                    Observed target values.
+
+                Returns
+                -------
+                ZeroRegressor
+                    This fitted estimator.
+                """
+                return self
+
+            def predict(self, X):
+                """Return a zero-valued prediction for each row.
+
+                Parameters
+                ----------
+                X : np.ndarray
+                    Conditional-model feature matrix.
+
+                Returns
+                -------
+                np.ndarray
+                    One deterministic prediction per input row.
+                """
+                return np.zeros(X.shape[0])
+
+        frame = pd.DataFrame(
+            {
+                "income": [10.0, np.nan, 30.0, 40.0],
+                "tier": pd.Categorical(["low", "high", None, "low"], ordered=True),
+            }
+        )
+        original = frame.copy(deep=True)
+
+        result = impute_mice(
+            frame,
+            estimator=ZeroRegressor(),
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            return_result=True,
+        )
+
+        assert result.data.plan.methods == {
+            "income": "custom_estimator_numeric",
+            "tier": "ordinal_encoded_custom_estimator_approximation",
+        }
+        assert result.data.plan.provenance["conditional_model_contract"] == (
+            "numeric=caller_supplied_custom_estimator; "
+            "categorical=ordinal_encoded_custom_estimator_approximation"
+        )
+        assert any("not a validated multinomial or ordinal FCS kernel" in warning
+                   for warning in result.warnings)
+        for completed in result.data.imputations:
+            assert completed["tier"].dtype == frame["tier"].dtype
+            assert completed.loc[2, "tier"] in frame["tier"].cat.categories
+        pd.testing.assert_frame_equal(frame, original)
+
+    def test_typed_result_marks_absent_categorical_contract_not_applicable(self):
+        """Numeric-only MICE provenance does not claim a categorical approximation."""
+        frame = pd.DataFrame(
+            {
+                "income": [10.0, np.nan, 30.0, 40.0],
+                "age": [20.0, 30.0, 40.0, 50.0],
+            }
+        )
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            return_result=True,
+        )
+
+        assert result.data.plan.provenance["conditional_model_contract"] == (
+            "numeric=bayesian_ridge_posterior; categorical=not_applicable"
+        )
+        assert not any("multinomial or ordinal FCS kernel" in warning
+                       for warning in result.warnings)
+
     def test_numeric_bounds_clip_only_imputed_cells(self):
         """Declared bounds constrain draws without changing observed data."""
         class HighRegressor(BaseEstimator, RegressorMixin):
