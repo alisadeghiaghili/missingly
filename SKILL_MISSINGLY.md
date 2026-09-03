@@ -223,7 +223,7 @@ Full details in `CONVENTIONS.md`. Summary:
 - Test file location: `tests/`
 - Shared fixtures: `conftest.py` in root
 - Framework: `pytest`
-- Authoritative coverage baseline (Python 3.12 CI artifact): **92.47% (3830/4142)**.
+- Authoritative coverage baseline (Python 3.12 CI artifact): **92.50% (3846/4158)**.
   Retrieve the `coverage-py312` artifact from the CI run when measuring
   progress. The current enforcement threshold remains 80% until the real
   suite reaches the separately tracked 98% target; do not mask uncovered
