@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an exploratory observed-data association screen and does not identify MAR/MNAR.
 
 ### Added
+
+- Added a default two-level categorical MICE kernel based on logistic
+  conditional models and reproducible Bernoulli draws. Typed MICE plans now
+  distinguish this binary contract from the explicitly limited multiclass and
+  ordinal approximation.
+
 - Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,
   platform, and generator-script SHA-256 provenance from the locked workflow.
 - Added a locked R 4.4.2/``naniar`` v1.1.0 workflow that regenerates and
