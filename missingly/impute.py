@@ -742,7 +742,7 @@ def _run_mice_with_history(
     binary_target_columns = binary_target_columns or set()
     cols = list(df_work.columns)
     # Initialise missing cells with column means (same as sklearn default)
-    X = df_work.values.astype(float).copy()
+    X = df_work.to_numpy(dtype=float, na_value=np.nan).copy()
     for j in range(X.shape[1]):
         col_missing = np.isnan(X[:, j])
         if col_missing.any():
