@@ -111,6 +111,8 @@ class MissingnessSchema:
             pd.api.types.is_bool_dtype(dtype) for dtype in self.imputation_mask.dtypes
         ):
             raise TypeError("imputation_mask must contain only boolean columns")
+        if self.imputation_mask.isna().to_numpy().any():
+            raise ValueError("imputation_mask must not contain missing values")
         if (self.imputation_mask & ~self.original_mask).any(axis=None):
             raise ValueError(
                 "imputation_mask may enable only originally missing cells"
@@ -140,6 +142,15 @@ class MissingnessSchema:
         MissingnessSchema
             Schema with a deep-copied boolean missing-value mask.
 
+        Raises
+        ------
+        TypeError
+            If ``frame`` or ``imputation_mask`` is not a DataFrame, column
+            labels are not strings, or the mask has a non-boolean dtype.
+        ValueError
+            If the frame is empty, the mask is misaligned, contains missing
+            values, or enables an originally observed cell.
+
         Examples
         --------
         >>> frame = pd.DataFrame({"score": [1.0, np.nan]})
@@ -155,6 +166,8 @@ class MissingnessSchema:
             raise ValueError("frame must contain at least one column")
         if any(not isinstance(column, str) for column in frame.columns):
             raise TypeError("frame columns must be strings")
+        if imputation_mask is not None:
+            _require_dataframe(imputation_mask, "imputation_mask")
         original_mask = frame.isna().copy(deep=True)
         mask = (
             original_mask.copy(deep=True)

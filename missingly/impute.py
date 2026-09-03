@@ -1093,8 +1093,9 @@ def impute_mice(
         predictor in the target's conditional model. The diagonal must be zero.
     where : pandas.DataFrame, optional
         Boolean mask aligned exactly to ``df``. ``True`` permits imputation of
-        an originally missing cell; ``False`` retains it as missing. Over-
-        imputation of originally observed cells is rejected. With
+        an originally missing cell; ``False`` retains it as missing. It must
+        not contain missing values. Over-imputation of originally observed
+        cells is rejected. With
         ``return_result=True``, retained cells are recorded as structural
         missingness rather than treated as incomplete chain output.
     bounds : dict of str to tuple of float, optional
@@ -1112,7 +1113,9 @@ def impute_mice(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty or *n_imputations* < 1.
+        If *df* is empty, *n_imputations* < 1, or an execution-control
+        argument is malformed. ``where`` masks must be aligned, two-valued,
+        and may enable only originally missing cells.
     InsufficientDataError
         If an enabled target column has no observed values from which an
         imputation model can learn.
@@ -1151,6 +1154,8 @@ def impute_mice(
             raise ValueError("where must align exactly with df index and columns")
         if not all(pd.api.types.is_bool_dtype(dtype) for dtype in where.dtypes):
             raise TypeError("where must contain only boolean columns")
+        if where.isna().to_numpy().any():
+            raise ValueError("where must not contain missing values")
         if (where & ~original_missing_mask).any(axis=None):
             raise ValueError("where cannot request imputation of observed cells")
         imputation_mask = original_missing_mask & where
