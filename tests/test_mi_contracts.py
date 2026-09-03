@@ -74,17 +74,42 @@ def test_mi_data_preserves_observed_cells_and_result_validates_histories(origina
         ImputationResult(data, histories=({"age": (1.0,)},))
 
 
-def test_mi_data_rejects_chain_that_leaves_an_originally_missing_cell_unfilled(
+def test_mi_data_rejects_chain_that_leaves_an_imputation_eligible_cell_unfilled(
     original, schema, plan
 ):
-    """A completed chain must fill every cell that its schema marks as eligible."""
+    """A completed chain must fill every missing cell eligible for imputation."""
     incomplete_chain = original.copy()
     completed_chain = pd.DataFrame(
         {"age": [20.0, 31.0], "group": ["a", "b"]}, index=[10, 20]
     )
 
-    with pytest.raises(ValueError, match="fill every originally missing cell"):
+    with pytest.raises(ValueError, match="imputation-eligible missing cell"):
         MIData(original, schema, plan, (incomplete_chain, completed_chain))
+
+
+def test_mi_data_allows_only_schema_marked_structural_missing_cells(original, plan):
+    """A structural missing cell may remain null, but an eligible one may not."""
+    mask = pd.DataFrame(
+        {"age": [False, False], "group": [False, False]}, index=original.index
+    )
+    schema = MissingnessSchema.from_dataframe(original, imputation_mask=mask)
+    structural_chain = original.copy()
+
+    data = MIData(original, schema, plan, (structural_chain, structural_chain.copy()))
+
+    assert data.n_imputations == 2
+    eligible_mask = mask.copy()
+    eligible_mask.loc[20, "age"] = True
+    eligible_schema = MissingnessSchema.from_dataframe(
+        original, imputation_mask=eligible_mask
+    )
+    with pytest.raises(ValueError, match="imputation-eligible missing cell"):
+        MIData(
+            original,
+            eligible_schema,
+            plan,
+            (structural_chain, structural_chain.copy()),
+        )
 
 
 @pytest.mark.parametrize(
@@ -118,6 +143,31 @@ def test_schema_factory_rejects_inputs_without_an_unambiguous_tabular_identity(f
     """Schema creation rejects non-tabular, empty, and non-string-column inputs."""
     with pytest.raises(error, match=message):
         MissingnessSchema.from_dataframe(frame)
+
+
+def test_schema_factory_rejects_non_dataframe_imputation_mask(original):
+    """The factory raises a stable type error before copying a bad mask."""
+    with pytest.raises(TypeError, match="imputation_mask must be a pandas DataFrame"):
+        MissingnessSchema.from_dataframe(original, imputation_mask=object())
+
+
+def test_schema_mask_rejects_nullable_boolean_missing_values(original):
+    """Eligibility masks must remain two-valued with pandas BooleanDtype."""
+    nullable_mask = original.isna().astype("boolean")
+    nullable_mask.loc[20, "age"] = pd.NA
+
+    with pytest.raises(
+        ValueError,
+        match="imputation_mask must not contain missing values",
+    ):
+        MissingnessSchema.from_dataframe(original, imputation_mask=nullable_mask)
+
+    complete_nullable_mask = original.isna().astype("boolean")
+    schema = MissingnessSchema.from_dataframe(
+        original,
+        imputation_mask=complete_nullable_mask,
+    )
+    pd.testing.assert_frame_equal(schema.imputation_mask, complete_nullable_mask)
 
 
 def test_schema_validate_frame_rejects_type_columns_index_and_dtype_drift(schema, original):
