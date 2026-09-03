@@ -343,6 +343,111 @@ class TestSingleImputation:
         assert not any("multinomial or ordinal FCS kernel" in warning
                        for warning in result.warnings)
 
+    @pytest.mark.parametrize(
+        ("target", "expected_dtype"),
+        [
+            (
+                pd.Series(["no", "yes", pd.NA, "yes", "no"], dtype="string"),
+                pd.StringDtype(),
+            ),
+            (
+                pd.Series([False, True, pd.NA, True, False], dtype="boolean"),
+                pd.BooleanDtype(),
+            ),
+            (
+                pd.Series(
+                    ["low", "high", pd.NA, "high", "low"],
+                    dtype=pd.CategoricalDtype(["low", "high"], ordered=True),
+                ),
+                pd.CategoricalDtype(["low", "high"], ordered=True),
+            ),
+        ],
+        ids=["string", "boolean", "ordered-categorical"],
+    )
+    def test_default_mice_uses_seeded_binary_logistic_kernel(
+        self,
+        target: pd.Series,
+        expected_dtype: object,
+    ) -> None:
+        """Default MICE uses Bernoulli binary draws without changing caller data."""
+        frame = pd.DataFrame(
+            {
+                "score": [0.0, 1.0, 0.5, 1.0, 0.0],
+                "target": target,
+            }
+        )
+        original = frame.copy(deep=True)
+
+        first = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=19,
+            return_result=True,
+        )
+        second = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=19,
+            return_result=True,
+        )
+
+        assert first.data.plan.methods == {
+            "score": "bayesian_ridge_numeric",
+            "target": "binary_logistic_fcs",
+        }
+        assert first.data.plan.provenance["conditional_model_contract"] == (
+            "numeric=bayesian_ridge_posterior; "
+            "binary=binary_logistic_bernoulli; categorical=not_applicable"
+        )
+        assert not any("ordinal FCS kernel" in warning for warning in first.warnings)
+        for completed, repeated in zip(first.data.imputations, second.data.imputations):
+            assert completed["target"].dtype == expected_dtype
+            assert completed.loc[2, "target"] in set(frame["target"].dropna())
+            pd.testing.assert_series_equal(
+                completed.loc[frame["target"].notna(), "target"],
+                frame.loc[frame["target"].notna(), "target"],
+            )
+            pd.testing.assert_frame_equal(completed, repeated)
+        pd.testing.assert_frame_equal(frame, original)
+
+    def test_binary_mice_kernel_honors_where_predictors_and_numeric_bounds(self):
+        """Binary FCS preserves structural cells and numeric option contracts."""
+        frame = pd.DataFrame(
+            {
+                "score": [0.0, 1.0, np.nan, 1.0, 0.0],
+                "target": pd.Series(["no", "yes", "no", pd.NA, pd.NA], dtype="string"),
+            }
+        )
+        original = frame.copy(deep=True)
+        where = frame.isna()
+        where.loc[4, "target"] = False
+        predictors = pd.DataFrame(
+            [[False, True], [True, False]],
+            index=frame.columns,
+            columns=frame.columns,
+        )
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            random_state=23,
+            return_result=True,
+            where=where,
+            predictor_matrix=predictors,
+            bounds={"score": (0.0, 1.0)},
+        )
+
+        completed = result.data.imputations[0]
+        assert result.data.plan.methods["target"] == "binary_logistic_fcs"
+        assert completed.loc[3, "target"] in {"no", "yes"}
+        assert pd.isna(completed.loc[4, "target"])
+        assert completed.loc[2, "score"] in {0.0, 1.0}
+        assert result.data.schema.imputation_mask.loc[3, "target"]
+        assert not result.data.schema.imputation_mask.loc[4, "target"]
+        pd.testing.assert_frame_equal(frame, original)
+
     def test_numeric_bounds_clip_only_imputed_cells(self):
         """Declared bounds constrain draws without changing observed data."""
         class HighRegressor(BaseEstimator, RegressorMixin):
