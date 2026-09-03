@@ -223,6 +223,34 @@ class TestSingleImputation:
         for completed in result.data.imputations:
             pd.testing.assert_frame_equal(completed, frame)
 
+    def test_typed_result_discloses_default_conditional_target_contract(self):
+        """Typed MICE metadata distinguishes numeric and categorical approximations."""
+        frame = pd.DataFrame(
+            {
+                "income": [10.0, np.nan, 30.0, 40.0],
+                "tier": pd.Categorical(["low", "high", None, "low"], ordered=True),
+            }
+        )
+
+        result = impute_mice(
+            frame,
+            max_iter=2,
+            n_imputations=2,
+            random_state=0,
+            return_result=True,
+        )
+
+        assert result.data.plan.methods == {
+            "income": "bayesian_ridge_numeric",
+            "tier": "ordinal_encoded_bayesian_ridge_approximation",
+        }
+        assert result.data.plan.provenance["conditional_model_contract"] == (
+            "numeric=bayesian_ridge_posterior; "
+            "categorical=ordinal_encoded_bayesian_ridge_approximation"
+        )
+        assert any("not a validated multinomial or ordinal FCS kernel" in warning
+                   for warning in result.warnings)
+
     def test_numeric_bounds_clip_only_imputed_cells(self):
         """Declared bounds constrain draws without changing observed data."""
         class HighRegressor(BaseEstimator, RegressorMixin):
