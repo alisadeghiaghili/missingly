@@ -34,6 +34,11 @@ for every missing-data mechanism. Inspect `return_result=True` provenance and
 warnings, assess convergence, and validate study-specific assumptions before
 pooling model results with Rubin's Rules via `missingly.mi`:
 
+Supplying `estimator=` replaces the numeric target estimator, but categorical
+targets are still ordinal-encoded before the caller-supplied estimator. That
+custom-estimator categorical path remains an approximation rather than a
+validated multinomial or ordinal FCS kernel.
+
 ```python
 import numpy as np
 import pandas as pd

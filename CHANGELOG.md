@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Corrected typed MICE custom-estimator metadata to disclose ordinal encoding
+  and the unvalidated categorical FCS approximation when categorical targets
+  are supplied.
 - Made typed MICE results disclose default numeric Bayesian-ridge and
   ordinal-encoded categorical approximation contracts, including the latter's
   multinomial/ordinal FCS limitation.
