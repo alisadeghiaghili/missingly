@@ -816,7 +816,8 @@ def _mice_conditional_model_contract(
     provenance : str
         Stable summary of the conditional-model contract.
     limitation : str or None
-        Explicit limitation warning for a categorical default approximation.
+        Explicit limitation warning when categorical targets undergo ordinal
+        encoding before either the default or caller-supplied estimator.
 
     Examples
     --------
@@ -828,14 +829,35 @@ def _mice_conditional_model_contract(
     >>> "ordinal_encoded" in methods["group"] and limitation is not None
     True
     """
+    numeric_columns = set(df.select_dtypes(include=[np.number]).columns)
+    has_categorical = len(numeric_columns) != len(df.columns)
     if estimator is not None:
+        methods = {
+            column: (
+                "custom_estimator_numeric"
+                if column in numeric_columns
+                else "ordinal_encoded_custom_estimator_approximation"
+            )
+            for column in df.columns
+        }
+        categorical_contract = (
+            "ordinal_encoded_custom_estimator_approximation"
+            if has_categorical
+            else "not_applicable"
+        )
+        limitation = (
+            "Categorical targets use ordinal encoding before the caller-supplied "
+            "estimator; this is not a validated multinomial or ordinal FCS kernel."
+            if has_categorical
+            else None
+        )
         return (
-            {column: "custom_estimator" for column in df.columns},
-            "all_targets=caller_supplied_custom_estimator",
-            None,
+            methods,
+            "numeric=caller_supplied_custom_estimator; "
+            f"categorical={categorical_contract}",
+            limitation,
         )
 
-    numeric_columns = set(df.select_dtypes(include=[np.number]).columns)
     methods = {
         column: (
             "bayesian_ridge_numeric"
@@ -844,18 +866,21 @@ def _mice_conditional_model_contract(
         )
         for column in df.columns
     }
-    has_categorical = len(numeric_columns) != len(df.columns)
-    limitation = None
-    if has_categorical:
-        limitation = (
-            "Categorical targets use an ordinal-encoded Bayesian ridge "
-            "approximation; this is not a validated multinomial or ordinal "
-            "FCS kernel."
-        )
+    categorical_contract = (
+        "ordinal_encoded_bayesian_ridge_approximation"
+        if has_categorical
+        else "not_applicable"
+    )
+    limitation = (
+        "Categorical targets use ordinal encoding before the default Bayesian ridge "
+        "estimator; this is not a validated multinomial or ordinal FCS kernel."
+        if has_categorical
+        else None
+    )
     return (
         methods,
         "numeric=bayesian_ridge_posterior; "
-        "categorical=ordinal_encoded_bayesian_ridge_approximation",
+        f"categorical={categorical_contract}",
         limitation,
     )
 
@@ -1150,7 +1175,11 @@ def impute_mice(
         Its schema records the eligible imputation mask, so intentionally
         retained structural missing cells remain valid in completed chains. The
         plan records each default target as numeric Bayesian ridge or an
-        ordinal-encoded categorical approximation.
+        ordinal-encoded categorical approximation. With a caller-supplied
+        estimator, the plan instead records numeric custom-estimator targets
+        and categorical targets that were ordinal-encoded before that
+        estimator. Categorical target handling is not a validated
+        multinomial or ordinal FCS kernel in either case.
     visit_sequence : list of str, optional
         Exact ordered set of columns with original missing values to update in
         every FCS sweep. ``None`` uses the legacy left-to-right order.
