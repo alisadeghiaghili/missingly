@@ -794,6 +794,71 @@ def _run_mice_with_history(
 # Public imputation functions
 # ---------------------------------------------------------------------------
 
+
+def _mice_conditional_model_contract(
+    df: pd.DataFrame,
+    estimator: object,
+) -> Tuple[Dict[str, str], str, Optional[str]]:
+    """Describe the conditional-model family recorded in a typed MICE result.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Normalized input frame whose dtypes determine target families.
+    estimator : object
+        Caller-supplied estimator, or ``None`` for the default Bayesian ridge
+        approximation.
+
+    Returns
+    -------
+    methods : dict of str to str
+        Per-target method identifiers suitable for :class:`ImputationPlan`.
+    provenance : str
+        Stable summary of the conditional-model contract.
+    limitation : str or None
+        Explicit limitation warning for a categorical default approximation.
+
+    Examples
+    --------
+    >>> methods, provenance, limitation = _mice_conditional_model_contract(
+    ...     pd.DataFrame({"value": [1.0], "group": ["a"]}), None
+    ... )
+    >>> methods["value"]
+    'bayesian_ridge_numeric'
+    >>> "ordinal_encoded" in methods["group"] and limitation is not None
+    True
+    """
+    if estimator is not None:
+        return (
+            {column: "custom_estimator" for column in df.columns},
+            "all_targets=caller_supplied_custom_estimator",
+            None,
+        )
+
+    numeric_columns = set(df.select_dtypes(include=[np.number]).columns)
+    methods = {
+        column: (
+            "bayesian_ridge_numeric"
+            if column in numeric_columns
+            else "ordinal_encoded_bayesian_ridge_approximation"
+        )
+        for column in df.columns
+    }
+    has_categorical = len(numeric_columns) != len(df.columns)
+    limitation = None
+    if has_categorical:
+        limitation = (
+            "Categorical targets use an ordinal-encoded Bayesian ridge "
+            "approximation; this is not a validated multinomial or ordinal "
+            "FCS kernel."
+        )
+    return (
+        methods,
+        "numeric=bayesian_ridge_posterior; "
+        "categorical=ordinal_encoded_bayesian_ridge_approximation",
+        limitation,
+    )
+
 def impute_mean(
     df: pd.DataFrame,
     numeric_only: bool = False,
@@ -1083,7 +1148,9 @@ def impute_mice(
         per-iteration histories. This opt-in mode is mutually exclusive with
         ``return_history`` because the result object already includes history.
         Its schema records the eligible imputation mask, so intentionally
-        retained structural missing cells remain valid in completed chains.
+        retained structural missing cells remain valid in completed chains. The
+        plan records each default target as numeric Bayesian ridge or an
+        ordinal-encoded categorical approximation.
     visit_sequence : list of str, optional
         Exact ordered set of columns with original missing values to update in
         every FCS sweep. ``None`` uses the legacy left-to-right order.
@@ -1135,6 +1202,8 @@ def impute_mice(
     >>> typed = impute_mice(df, n_imputations=2, return_result=True)
     >>> typed.data.n_imputations
     2
+    >>> typed.data.plan.methods["a"]
+    'bayesian_ridge_numeric'
     """
     validate_dataframe(df, param="df")
     validate_positive_int(n_imputations, param="n_imputations")
@@ -1280,6 +1349,10 @@ def impute_mice(
     if return_result:
         results = [_single_chain(random_state + index) for index in range(n_imputations)]
         frames, histories = zip(*results)
+        methods, conditional_contract, limitation = _mice_conditional_model_contract(
+            df_norm,
+            estimator,
+        )
         schema = MissingnessSchema.from_dataframe(
             df,
             imputation_mask=imputation_mask,
@@ -1287,11 +1360,12 @@ def impute_mice(
         provenance = {
             "engine": "impute_mice",
             "history": "per_iteration_mean",
+            "conditional_model_contract": conditional_contract,
         }
         if where is not None:
             provenance["where_mask"] = "original_missing_subset"
         plan = ImputationPlan(
-            methods={column: "mice" for column in df.columns},
+            methods=methods,
             n_imputations=n_imputations,
             max_iter=max_iter,
             seed_sequence=tuple(random_state + index for index in range(n_imputations)),
@@ -1302,13 +1376,16 @@ def impute_mice(
             {column: tuple(float(value) for value in trace) for column, trace in history.items()}
             for history in histories
         )
+        warnings = [
+            "Convergence has not been assessed. Run mice_convergence on the "
+            "returned histories before interpreting chain stability.",
+        ]
+        if limitation is not None:
+            warnings.append(limitation)
         return ImputationResult(
             data=data,
             histories=contract_histories,
-            warnings=(
-                "Convergence has not been assessed. Run mice_convergence on the "
-                "returned histories before interpreting chain stability.",
-            ),
+            warnings=tuple(warnings),
             validation={
                 "structural_validation_passed": True,
                 "convergence_assessed": False,
