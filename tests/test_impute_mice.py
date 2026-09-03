@@ -161,12 +161,21 @@ class TestSingleImputation:
         with pytest.raises(ValueError, match="observed"):
             impute_mice(small_mixed_df, where=overimpute)
 
+    def test_where_mask_rejects_nullable_boolean_missing_values(self):
+        """Three-valued where masks fail before they can weaken eligibility."""
+        frame = pd.DataFrame({"a": [1.0, np.nan, 3.0], "b": [2.0, 4.0, 6.0]})
+        where = frame.isna().astype("boolean")
+        where.loc[1, "a"] = pd.NA
+
+        with pytest.raises(ValueError, match="where must not contain missing values"):
+            impute_mice(frame, max_iter=2, where=where)
+
     def test_typed_result_preserves_partial_structural_missingness(self):
         """Typed MICE results retain where-disabled cells across every chain."""
         frame = pd.DataFrame(
             {"a": [1.0, np.nan, 3.0, 4.0], "b": [2.0, 3.0, np.nan, 5.0]}
         )
-        where = frame.isna()
+        where = frame.isna().astype("boolean")
         where.loc[1, "a"] = False
         original = frame.copy(deep=True)
         original_where = where.copy(deep=True)

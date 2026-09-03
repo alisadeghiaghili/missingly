@@ -145,6 +145,31 @@ def test_schema_factory_rejects_inputs_without_an_unambiguous_tabular_identity(f
         MissingnessSchema.from_dataframe(frame)
 
 
+def test_schema_factory_rejects_non_dataframe_imputation_mask(original):
+    """The factory raises a stable type error before copying a bad mask."""
+    with pytest.raises(TypeError, match="imputation_mask must be a pandas DataFrame"):
+        MissingnessSchema.from_dataframe(original, imputation_mask=object())
+
+
+def test_schema_mask_rejects_nullable_boolean_missing_values(original):
+    """Eligibility masks must remain two-valued with pandas BooleanDtype."""
+    nullable_mask = original.isna().astype("boolean")
+    nullable_mask.loc[20, "age"] = pd.NA
+
+    with pytest.raises(
+        ValueError,
+        match="imputation_mask must not contain missing values",
+    ):
+        MissingnessSchema.from_dataframe(original, imputation_mask=nullable_mask)
+
+    complete_nullable_mask = original.isna().astype("boolean")
+    schema = MissingnessSchema.from_dataframe(
+        original,
+        imputation_mask=complete_nullable_mask,
+    )
+    pd.testing.assert_frame_equal(schema.imputation_mask, complete_nullable_mask)
+
+
 def test_schema_validate_frame_rejects_type_columns_index_and_dtype_drift(schema, original):
     """Serving data must retain the exact fit-time schema identity."""
     with pytest.raises(TypeError, match="candidate must be a pandas DataFrame"):
