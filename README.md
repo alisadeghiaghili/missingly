@@ -9,7 +9,7 @@
 [![CI](https://github.com/alisadeghiaghili/missingly/actions/workflows/ci.yml/badge.svg)](https://github.com/alisadeghiaghili/missingly/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-0969da)](https://alisadeghiaghili.github.io/missingly/)
 [![codecov](https://codecov.io/gh/alisadeghiaghili/missingly/branch/main/graph/badge.svg)](https://codecov.io/gh/alisadeghiaghili/missingly)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![API stability](https://img.shields.io/badge/API-v1.0.0%20stable-brightgreen)](https://github.com/alisadeghiaghili/missingly/releases/tag/v1.0.0)
 
 🌐 English | [Deutsch](README_DE.md) | [فارسی](README_FA.md)
@@ -221,7 +221,7 @@ result = mi.impute_knn(df_mixed, n_neighbors=3)
 result = mi.impute_knn(df_mixed, n_neighbors=3, metric="mixed")
 ```
 
-> **Performance note:** Gower distance is **O(n²)** in both memory and
+> **Performance note:** Gower distance is **O(n)** in both memory and
 > runtime.  Avoid `metric="mixed"` for datasets with more than ~10 000 rows.
 
 `metric="mixed"` is rejected by `MissinglyImputer` because the current Gower
@@ -337,4 +337,32 @@ pip install missingly[all]
 
 ## License
 
-Apache 2.0 — Copyright 2025 Ali Sadeghi Aghili. See [LICENSE](LICENSE).
+**Business Source License 1.1 (BUSL-1.1)** — see [LICENSE](https://github.com/alisadeghiaghili/missingly/blob/main/LICENSE).
+
+- ✅ Free for non-production, research, and personal use
+- ❌ Commercial/production use requires a written agreement with the author
+- 🔄 Converts to Apache 2.0 on **2030-01-01**
+- 📌 Derivative works must retain [LICENSE](https://github.com/alisadeghiaghili/missingly/blob/main/LICENSE) and include:
+
+  > Based on missingly by Ali Sadeghi Aghili — https://github.com/alisadeghiaghili/missingly
+
+Read the terms carefully rather than assuming either extreme: BUSL-1.1 is neither
+all-rights-reserved nor open source. Copying, modifying, and redistributing are
+permitted. What is **not** permitted without a written agreement is production
+use of any kind — including internal production use inside a company. Deploying
+this to serve real users, real pipelines, or real business data is production
+use, whether or not money changes hands.
+
+Two functions in `missingly/stats.py` (`mcar_test` and `_em_mle_estimation`) are
+adapted from the XeroGraph project and remain licensed under Apache License 2.0
+independently of this BUSL, per [XeroGraph_LICENSE](https://github.com/alisadeghiaghili/missingly/blob/main/XeroGraph_LICENSE).
+This change does not alter, override, or relicense that portion of the code.
+
+### Where the terms are stated
+
+| File | Audience |
+|---|---|
+| [LICENSE](https://github.com/alisadeghiaghili/missingly/blob/main/LICENSE) | The terms themselves |
+| [NOTICE](https://github.com/alisadeghiaghili/missingly/blob/main/NOTICE) | Attribution block a derivative work must carry |
+| [XeroGraph_LICENSE](https://github.com/alisadeghiaghili/missingly/blob/main/XeroGraph_LICENSE) | Apache-2.0 terms for the two adapted functions noted above |
+| SPDX-License-Identifier header | Every `.py` file — travels with a single copied file |

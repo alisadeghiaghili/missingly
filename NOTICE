@@ -1,13 +1,19 @@
 missingly
-Copyright 2025 Ali Sadeghi Aghili
+Copyright 2025-2026 Ali Sadeghi Aghili
 
-This product is licensed under the Apache License, Version 2.0.
-You may obtain a copy of the License at:
+This product is licensed under the Business Source License 1.1 (BUSL-1.1).
+See the LICENSE file for the full terms.
 
-    http://www.apache.org/licenses/LICENSE-2.0
+Commercial or production use of any kind requires a separate written
+agreement with the Licensor. Non-production, research, and personal use
+are permitted without charge.
 
-This NOTICE file is required by the Apache License, Version 2.0.
-Any Derivative Works of this software must retain this NOTICE file
-and include prominent attribution to the original author.
+On 2030-01-01, this software will automatically convert to the Apache
+License, Version 2.0, as specified in the LICENSE file.
+
+Portions of this software (`mcar_test` and `_em_mle_estimation` in
+`missingly/stats.py`) are adapted from the XeroGraph project and remain
+licensed under the Apache License, Version 2.0, independently of this
+BUSL. See `XeroGraph_LICENSE` for the full text and attribution.
 
 Project home: https://github.com/alisadeghiaghili/missingly
