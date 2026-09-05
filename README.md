@@ -27,7 +27,9 @@ missing data** in pandas DataFrames. It provides:
 
 `impute_mice(..., n_imputations=m)` can generate multiple completed datasets
 for an analysis workflow. Its default numeric target contract is posterior
-Bayesian ridge; categorical targets use an ordinal-encoded Bayesian-ridge
+Bayesian ridge. Categorical targets with exactly two observed levels use a
+logistic conditional model and seeded Bernoulli draws; multiclass and ordinal
+targets with more than two observed levels use an ordinal-encoded Bayesian-ridge
 approximation. The latter is not a validated multinomial or ordinal FCS kernel,
 and the package does not claim general parity with R `mice` or valid inference
 for every missing-data mechanism. Inspect `return_result=True` provenance and
