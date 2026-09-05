@@ -6,12 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "missingly"
 dynamic = ["version"]
 authors = [
-  { name="Ali Sadeghi Aghili", email="alisadeghiaghili@gmail.com" },
+    {name = "Ali Sadeghi Aghili", email = "alisadeghiaghili@gmail.com"},
 ]
 description = "A comprehensive package for missing data analysis and visualization."
 readme = "README.md"
 requires-python = ">=3.9"
-license = "Apache-2.0"
+license = "BUSL-1.1"
 license-files = ["LICENSE", "NOTICE"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -19,70 +19,51 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 dependencies = [
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "matplotlib>=3.7.0",
-    "seaborn>=0.12.0",
-    "scipy>=1.10.0",
-    "scikit-learn>=1.2.0",
-    "jinja2>=3.1.0",
-    "statsmodels>=0.14.0",
+    "numpy>=1.21.0",
+    "pandas>=1.3.0",
+    "scipy>=1.7.0",
+    "scikit-learn>=1.0.0",
+    "matplotlib>=3.4.0",
+    "seaborn>=0.11.0",
+    "statsmodels>=0.12.0",
+    "jinja2>=3.0.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/alisadeghiaghili/missingly"
-"Bug Tracker" = "https://github.com/alisadeghiaghili/missingly/issues"
-Documentation = "https://alisadeghiaghili.github.io/missingly/"
 
 [project.optional-dependencies]
-docs = [
-    "sphinx>=7.0.0",
-    "furo>=2023.9.10",
-    "nbsphinx>=0.9.0",
-    "numpydoc>=1.6.0",
-    "ipykernel",
-    "pypandoc-binary>=1.15",
-]
-test = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "upsetplot>=0.9.0",
-]
-quality = [
-    "mypy>=1.13.0",
-    "ruff>=0.12.0",
-]
-interactive = [
-    "plotly>=5.0.0",
-]
-polars = [
-    "polars>=1.0.0",
-]
-rtl = [
-    "arabic-reshaper>=3.0.0",
-    "python-bidi>=0.4.2",
-]
-upset = [
-    "upsetplot>=0.9.0",
-]
+interactive = ["plotly>=5.0.0"]
+rtl = ["arabic-reshaper>=3.0.0", "python-bidi>=0.4.2"]
 all = [
     "plotly>=5.0.0",
     "arabic-reshaper>=3.0.0",
     "python-bidi>=0.4.2",
-    "upsetplot>=0.9.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "hypothesis>=6.0.0",
+    "black>=22.0.0",
+    "ruff>=0.1.0",
+    "mypy>=0.950",
+    "build>=0.7.0",
+    "twine>=4.0.0",
 ]
 
-[tool.setuptools]
-packages = ["missingly", "missingly.visualisation"]
-include-package-data = false
+[project.urls]
+Homepage = "https://github.com/alisadeghiaghili/missingly"
+Documentation = "https://alisadeghiaghili.github.io/missingly/"
+Repository = "https://github.com/alisadeghiaghili/missingly"
+Changelog = "https://github.com/alisadeghiaghili/missingly/blob/main/CHANGELOG.md"
 
-[tool.setuptools.dynamic]
-version = {attr = "missingly._version.__version__"}
+[tool.setuptools.packages.find]
+include = ["missingly", "missingly.visualisation"]
+exclude = ["tests*", "docs*"]
 
 [tool.setuptools.package-data]
 missingly = ["templates/*.html"]
@@ -98,21 +79,4 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 filterwarnings = [
     "ignore::FutureWarning:sklearn",
-]
-
-[tool.ruff]
-target-version = "py39"
-
-[tool.ruff.lint]
-select = ["E9", "F", "BLE001"]
-
-[tool.coverage.run]
-source = ["missingly"]
-omit = ["missingly/templates/*"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "raise NotImplementedError",
 ]
