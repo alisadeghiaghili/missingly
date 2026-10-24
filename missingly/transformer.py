@@ -26,9 +26,11 @@ Design decisions
   at the end of ``fit``). ``check_is_fitted`` inspects this attribute,
   avoiding the false-positive that occurs when mutable defaults such as
   ``[]`` are set in ``__init__``.
-* ``GradientBoostingRegressor`` and ``GradientBoostingClassifier`` do not
-  accept NaN in feature matrices.  Before fitting or predicting with GB,
-  ``_fill_nan_with_col_means`` is applied to feature arrays.
+* ``GradientBoostingRegressor`` and ``GradientBoostingClassifier`` never
+  accept NaN in feature matrices, and the random forests only do from
+  scikit-learn 1.4.  Before fitting or predicting with ``rf`` or ``gb``,
+  incomplete features are filled with column means, so both strategies behave
+  the same on every supported scikit-learn version.
 * ``estimator_kwargs`` is stored as a single ``Optional[dict]`` parameter
   (not ``**kwargs``) so that ``get_params()`` / ``set_params()`` /
   ``clone()`` work correctly per the sklearn estimator contract.
@@ -613,8 +615,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             feature_idx = [col_index[c] for c in X.columns if c != col]
             X_train = X_enc[np.ix_(np.where(train_mask)[0], feature_idx)]
 
-            if not is_rf:
-                X_train = _fill_nan_with_col_means(X_train)
+            # Random forests only accept NaN features from scikit-learn 1.4, so
+            # both tree strategies get filled features on every version.
+            X_train = _fill_nan_with_col_means(X_train)
 
             if col in cat_set:
                 enc_y = OrdinalEncoder(
@@ -803,7 +806,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
 
     def _transform_tree(self, X: pd.DataFrame) -> pd.DataFrame:
         """Apply fitted per-column tree models to impute missing values."""
-        is_gb = self.strategy == "gb"
         cat_set = set(self.cat_cols_)
         X_enc = self._encode_cats(X).values
         col_index = {col: i for i, col in enumerate(X.columns)}
@@ -817,8 +819,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             feature_idx = [col_index[c] for c in X.columns if c != col]
             X_pred = X_enc[np.ix_(np.where(missing_mask)[0], feature_idx)]
 
-            if is_gb:
-                X_pred = self._fill_tree_features_from_training(X_pred, feature_idx)
+            X_pred = self._fill_tree_features_from_training(X_pred, feature_idx)
 
             if col in cat_set and col in self.rf_clf_models_:
                 clf = self.rf_clf_models_[col]

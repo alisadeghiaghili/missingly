@@ -22,9 +22,12 @@ Key design decisions
 * Numeric columns in ML-based imputers use the provided regressor.
 * Categorical columns use a classifier, avoiding the error of treating
   category codes as continuous values.
-* ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` do not
-  accept NaN in feature matrices.  Any remaining NaN in the feature
-  side is filled with column means computed from the training rows.
+* Random-forest and gradient-boosting estimators are fitted on a feature
+  matrix without NaN: scikit-learn only accepts NaN there from version 1.4,
+  and ``GradientBoostingRegressor`` / ``GradientBoostingClassifier`` never
+  did. Any remaining NaN in the feature side is filled with column means
+  computed from the training rows, on every supported scikit-learn version,
+  so an incomplete predictor never makes a fit fail.
 
 Error handling
 --------------
@@ -562,7 +565,8 @@ def _impute_column_by_column(
         Number of imputation passes.
     fill_feature_nan : bool, default False
         If True, fill NaN in the feature matrix with column means before
-        fitting.  Required for GradientBoosting which rejects NaN inputs.
+        fitting. Both tree-based imputers pass True: gradient boosting never
+        accepts NaN features and random forests only do from scikit-learn 1.4.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2060,7 +2064,7 @@ def impute_rf(
         random_state=random_state,
         strategy_name="rf",
         max_iter=max_iter,
-        fill_feature_nan=False,
+        fill_feature_nan=True,
         strict_mode=strict_mode,
     )
 
