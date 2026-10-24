@@ -78,6 +78,7 @@ from missingly.exceptions import (
 from missingly.mi_contracts import ImputationPlan, ImputationResult, MIData, MissingnessSchema
 from missingly._validation import (
     validate_dataframe,
+    validate_model_inputs,
     validate_positive_int,
     validate_strategy,
 )
@@ -1617,7 +1618,8 @@ def impute_logreg(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty.
+        If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
+        has a complex or timedelta column. The message names the columns.
     ImputationError
         If the conditional estimator fails and ``strict_mode=True``.
     ConfigurationError
@@ -1639,6 +1641,7 @@ def impute_logreg(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    validate_model_inputs(df, method="impute_logreg")
 
     effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_logreg")
@@ -1738,7 +1741,8 @@ def impute_polyreg(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty.
+        If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
+        has a complex or timedelta column. The message names the columns.
     ImputationError
         If the conditional estimator fails and ``strict_mode=True``.
     ConfigurationError
@@ -1759,6 +1763,7 @@ def impute_polyreg(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    validate_model_inputs(df, method="impute_polyreg")
 
     effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_polyreg")
@@ -1857,7 +1862,8 @@ def impute_polr(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty.
+        If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
+        has a complex or timedelta column. The message names the columns.
     ImputationError
         If a conditional estimator fails and ``strict_mode=True``.
     ConfigurationError
@@ -1886,6 +1892,7 @@ def impute_polr(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    validate_model_inputs(df, method="impute_polr")
 
     effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_polr")
@@ -2035,7 +2042,8 @@ def impute_rf(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty.
+        If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
+        has a complex or timedelta column. The message names the columns.
     ImputationError
         If an estimator fails and ``strict_mode=True``.
     InsufficientDataError
@@ -2053,6 +2061,7 @@ def impute_rf(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    validate_model_inputs(df, method="impute_rf")
     _warn_if_large(df, "impute_rf")
     df = _normalize_missing(df)
     regressor = RandomForestRegressor(random_state=random_state, **rf_kwargs)
@@ -2106,7 +2115,8 @@ def impute_gb(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty.
+        If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
+        has a complex or timedelta column. The message names the columns.
     ImputationError
         If an estimator fails and ``strict_mode=True``.
     InsufficientDataError
@@ -2124,6 +2134,7 @@ def impute_gb(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    validate_model_inputs(df, method="impute_gb")
     _warn_if_large(df, "impute_gb")
     df = _normalize_missing(df)
     regressor = GradientBoostingRegressor(random_state=random_state, **gb_kwargs)

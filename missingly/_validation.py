@@ -124,10 +124,10 @@ def validate_columns(
     >>> df = pd.DataFrame({"age": [1.0], "city": ["Berlin"]})
     >>> validate_columns(df, ["age"])                        # passes
     >>> validate_columns(df, ["age"], require_numeric=True)  # passes
-    >>> validate_columns(df, ["city"], require_numeric=True)
+    >>> validate_columns(df, ["city"], require_numeric=True)  # doctest: +ELLIPSIS
     Traceback (most recent call last):
         ...
-    TypeError: Column 'city' must be numeric; got dtype object.
+    TypeError: Column 'city' must be numeric; got dtype ....
     """
     missing = [c for c in columns if c not in df.columns]
     if missing:
@@ -229,4 +229,75 @@ def validate_positive_int(
     if value < threshold:
         raise ValueError(
             f"`{param}` must be a {qualifier} integer ({comparator}); got {value}."
+        )
+
+
+def validate_model_inputs(
+    df: pd.DataFrame,
+    *,
+    method: str,
+    param: str = "df",
+) -> None:
+    """Reject values and dtypes that model-based imputers cannot fit on.
+
+    Conditional-model imputers use every column as a predictor of the others,
+    so one infinite value or one unsupported column anywhere makes every fit
+    fail mid-way. Checking up front turns that into one clear error that
+    names the offending columns.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Frame about to be imputed. Missing values are allowed; they are not
+        validated here.
+    method : str
+        Public name of the calling imputer, used in the error message (for
+        example ``"impute_rf"``).
+    param : str, default ``'df'``
+        Parameter name used in error messages.
+
+    Raises
+    ------
+    ValueError
+        If a column has an unsupported dtype (complex or timedelta), or if a
+        numeric column contains ``inf`` or ``-inf``. The message lists every
+        offending column.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from missingly._validation import validate_model_inputs
+    >>> validate_model_inputs(pd.DataFrame({"a": [1.0, np.nan]}), method="impute_rf")
+    >>> validate_model_inputs(pd.DataFrame({"a": [1.0, np.inf]}), method="impute_rf")
+    Traceback (most recent call last):
+        ...
+    ValueError: impute_rf: `df` contains infinite values in column(s) ['a']; replace them with NaN or remove them before imputing.
+    """
+    unsupported = [
+        column
+        for position, column in enumerate(df.columns)
+        if df.iloc[:, position].dtype.kind in {"c", "m"}
+    ]
+    if unsupported:
+        raise ValueError(
+            f"{method}: `{param}` has unsupported dtype in column(s) "
+            f"{unsupported} (complex and timedelta columns cannot be used as "
+            "targets or predictors); convert or drop them before imputing."
+        )
+
+    infinite = []
+    for position, column in enumerate(df.columns):
+        series = df.iloc[:, position]
+        if not pd.api.types.is_numeric_dtype(series.dtype) or pd.api.types.is_bool_dtype(
+            series.dtype
+        ):
+            continue
+        values = series.to_numpy(dtype=float, na_value=np.nan)
+        if np.isinf(values).any():
+            infinite.append(column)
+    if infinite:
+        raise ValueError(
+            f"{method}: `{param}` contains infinite values in column(s) "
+            f"{infinite}; replace them with NaN or remove them before imputing."
         )
