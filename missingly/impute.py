@@ -54,6 +54,7 @@ Functions that are O(n²) or slow on large DataFrames emit a
 
 from __future__ import annotations
 
+import inspect
 import logging
 import warnings
 from typing import Dict, List, Optional, Tuple, Union
@@ -851,6 +852,41 @@ def _run_mice_chain(
 # ---------------------------------------------------------------------------
 
 
+def _predict_supports_return_std(estimator: object) -> bool:
+    """Return whether ``estimator.predict`` accepts ``return_std``.
+
+    An estimator whose ``predict`` takes ``return_std`` (Bayesian ridge, ARD,
+    Gaussian processes, ...) exposes a predictive standard deviation, so
+    imputations can be drawn from its predictive distribution instead of being
+    point predictions.
+
+    Parameters
+    ----------
+    estimator : object
+        Estimator instance to inspect.
+
+    Returns
+    -------
+    bool
+        ``True`` if ``predict`` has a ``return_std`` parameter.
+
+    Examples
+    --------
+    >>> from sklearn.linear_model import BayesianRidge, LinearRegression
+    >>> _predict_supports_return_std(BayesianRidge())
+    True
+    >>> _predict_supports_return_std(LinearRegression())
+    False
+    """
+    predict = getattr(estimator, "predict", None)
+    if predict is None:
+        return False
+    try:
+        return "return_std" in inspect.signature(predict).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def _chain_seeds(random_state: Optional[int], n_chains: int) -> Tuple[int, ...]:
     """Spawn one independent integer seed per chain from a base seed.
 
@@ -1255,11 +1291,17 @@ def impute_mice(
         never share a chain. ``None`` draws fresh entropy; the typed result
         (``return_result=True``) records the chain seeds actually used.
     estimator : sklearn estimator or None, default None
-        Regression estimator used per column.  Defaults to
-        ``BayesianRidge()`` with posterior sampling enabled.
+        Regression estimator used per column.  Defaults to ``BayesianRidge()``.
+        If its ``predict`` accepts ``return_std`` (Bayesian ridge, ARD,
+        Gaussian processes, ...), each imputation is a draw from the normal
+        predictive distribution ``N(mean, std)``; otherwise imputations are
+        its point predictions, which is a single imputation and is refused
+        when ``n_imputations > 1``.
     n_imputations : int, default 1
         Number of independently imputed DataFrames to generate.
-        Returns a single DataFrame when 1, a list when > 1.
+        Returns a single DataFrame when 1, a list when > 1. Values above 1
+        require an estimator that can draw (see ``estimator``) because
+        multiple imputation rests on between-imputation variance.
     return_history : bool, default False
         If True, also return per-iteration imputed means for each variable
         that had missing values.  Used by :func:`~missingly.diagnostics.mice_convergence`
@@ -1328,8 +1370,11 @@ def impute_mice(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty, *n_imputations* < 1, ``random_state`` is neither
-        ``None`` nor a non-negative integer, or an execution-control
+        If *df* is empty, *n_imputations* < 1, ``n_imputations > 1`` is
+        requested with an estimator whose ``predict`` has no ``return_std``
+        argument (the message names the estimator and explains that multiple
+        imputation needs between-imputation variance), ``random_state`` is
+        neither ``None`` nor a non-negative integer, or an execution-control
         argument is malformed. ``where`` masks must be aligned, two-valued,
         and may enable only originally missing cells.
     InsufficientDataError
@@ -1358,6 +1403,14 @@ def impute_mice(
     2
     >>> typed.data.plan.methods["a"]
     'bayesian_ridge_numeric'
+
+    A point-prediction estimator cannot make several imputations:
+
+    >>> from sklearn.linear_model import LinearRegression
+    >>> impute_mice(df, estimator=LinearRegression(), n_imputations=3)
+    Traceback (most recent call last):
+        ...
+    ValueError: impute_mice: n_imputations=3 needs an estimator that draws imputations from a predictive distribution, but LinearRegression returns point predictions only (its predict has no `return_std` argument). Multiple imputation requires between-imputation variance: with point predictions every imputation is identical, Rubin's rules would report zero between-imputation variance (df=inf, fmi=0) and intervals that are too narrow. Use the default estimator (BayesianRidge) or another estimator whose predict accepts return_std=True, or set n_imputations=1 for a single imputation.
 
     Observability arguments never change the imputed values:
 
@@ -1392,7 +1445,7 @@ def impute_mice(
     integers are recorded as ``plan.seed_sequence`` of a typed result. A
     chain's seed feeds one ``numpy.random.default_rng`` that
     supplies, in sweep order, a ``random_state`` for every estimator that has
-    one and the posterior draws of the default Bayesian ridge. Each sweep
+    one and the posterior draws of an estimator with ``return_std``. Each sweep
     visits the columns with something to impute from left to right (or in
     ``visit_sequence`` order); a column's model is trained on its originally
     observed rows only, and a cell kept missing by ``where`` is never used as
@@ -1405,6 +1458,20 @@ def impute_mice(
     effective_strict = _resolve_strict_mode(strict_mode)
     if return_history and return_result:
         raise ValueError("return_result cannot be combined with return_history")
+    draw_from_posterior = estimator is None or _predict_supports_return_std(estimator)
+    if n_imputations > 1 and not draw_from_posterior:
+        raise ValueError(
+            f"impute_mice: n_imputations={n_imputations} needs an estimator that "
+            f"draws imputations from a predictive distribution, but "
+            f"{type(estimator).__name__} returns point predictions only (its "
+            "predict has no `return_std` argument). Multiple imputation requires "
+            "between-imputation variance: with point predictions every imputation "
+            "is identical, Rubin's rules would report zero between-imputation "
+            "variance (df=inf, fmi=0) and intervals that are too narrow. Use the "
+            "default estimator (BayesianRidge) or another estimator whose predict "
+            "accepts return_std=True, or set n_imputations=1 for a single "
+            "imputation."
+        )
 
     chain_seeds = _chain_seeds(random_state, n_imputations)
     _warn_if_large(df, "impute_mice")
@@ -1485,7 +1552,7 @@ def impute_mice(
             base_estimator=BayesianRidge() if estimator is None else estimator,
             max_iter=max_iter,
             seed=seed,
-            use_sample_posterior=estimator is None,
+            use_sample_posterior=draw_from_posterior,
             visit_sequence=visit_sequence,
             predictor_matrix=predictor_matrix,
             bounds=bounds,
@@ -1535,6 +1602,11 @@ def impute_mice(
             "engine": "impute_mice",
             "history": "per_iteration_mean",
             "conditional_model_contract": conditional_contract,
+            "imputation_values": (
+                "posterior_predictive_draws"
+                if draw_from_posterior
+                else "point_predictions"
+            ),
         }
         if where is not None:
             provenance["where_mask"] = "original_missing_subset"

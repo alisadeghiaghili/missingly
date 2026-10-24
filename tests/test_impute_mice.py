@@ -300,7 +300,7 @@ class TestSingleImputation:
             frame,
             estimator=ZeroRegressor(),
             max_iter=2,
-            n_imputations=2,
+            n_imputations=1,
             random_state=0,
             return_result=True,
         )
