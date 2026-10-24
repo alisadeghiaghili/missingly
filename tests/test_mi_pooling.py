@@ -59,7 +59,8 @@ class TestPoolScalarEstimates:
 
     def test_identical_estimates_b_zero(self):
         """When all estimates are identical b should be 0."""
-        result = pool_scalar_estimates([2.0, 2.0, 2.0], [0.1, 0.1, 0.1])
+        with pytest.warns(UserWarning, match="between-imputation variance is 0"):
+            result = pool_scalar_estimates([2.0, 2.0, 2.0], [0.1, 0.1, 0.1])
         assert result["b"] == pytest.approx(0.0, abs=1e-12)
 
 

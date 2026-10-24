@@ -21,6 +21,7 @@ pool_linear_regression_results
 
 from __future__ import annotations
 
+import warnings
 from typing import Dict, Sequence
 
 import numpy as np
@@ -83,6 +84,11 @@ def pool_scalar_estimates(
         fewer than 2 imputations are provided, values are non-finite,
         or a within-imputation variance is negative.
 
+    Warns
+    -----
+    UserWarning
+        If the between-imputation variance is exactly 0.
+
     Notes
     -----
     The combining rules implemented here follow equations (3.1)–(3.6)
@@ -98,7 +104,8 @@ def pool_scalar_estimates(
     which is Rubin's (1987) large-sample formula.  When ``b == 0``
     (all imputed estimates are identical, meaning no between-imputation
     variability) ``df`` is set to ``inf`` and ``r`` / ``lambda`` /
-    ``fmi`` to 0.
+    ``fmi`` to 0, and a :class:`UserWarning` is emitted because identical
+    imputations are the signature of a degenerate multiple imputation.
     When ``u_bar == 0`` but ``b > 0``, ``r`` is ``inf`` and ``df`` is
     set to ``(m - 1)``.
 
@@ -119,9 +126,13 @@ def pool_scalar_estimates(
     >>> result["t"] > result["u_bar"]
     True
 
-    Identical estimates (b == 0) — no between-imputation variance:
+    Identical estimates (b == 0) — no between-imputation variance, reported
+    with a warning:
 
-    >>> result2 = pool_scalar_estimates([2.0, 2.0, 2.0], [0.1, 0.1, 0.1])
+    >>> import warnings
+    >>> with warnings.catch_warnings():
+    ...     warnings.simplefilter("ignore")
+    ...     result2 = pool_scalar_estimates([2.0, 2.0, 2.0], [0.1, 0.1, 0.1])
     >>> result2["b"]
     0.0
     >>> result2["df"]
@@ -162,6 +173,16 @@ def pool_scalar_estimates(
     if b == 0.0:
         # All estimates are identical: no between-imputation variability.
         # r = 0, df = inf, lambda = fmi = 0.
+        warnings.warn(
+            f"pool_scalar_estimates: all m={m} estimates are identical, so the "
+            "between-imputation variance is 0 and Rubin's rules return df=inf and "
+            "fmi=0. This is what identical imputations (for example from a "
+            "point-prediction estimator) look like, and it makes intervals too "
+            "narrow; it is only correct if the estimand does not depend on the "
+            "imputed cells.",
+            UserWarning,
+            stacklevel=2,
+        )
         r = 0.0
         df = float("inf")
         lam = 0.0
