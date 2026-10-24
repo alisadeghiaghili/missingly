@@ -32,12 +32,16 @@ Key design decisions
 Error handling
 --------------
 All public functions validate their inputs eagerly and raise specific
-:mod:`missingly.exceptions` exceptions on failure. No exception is swallowed
-silently. When ``strict_mode=True`` (see :mod:`missingly.config` or the
-global :data:`missingly.config.strict_mode` setting), ``impute_logreg``,
-``impute_polyreg``, ``impute_polr``, ``impute_rf``, and ``impute_gb`` raise
-:class:`~missingly.exceptions.ImputationError` rather than falling back to a
-column mean or mode.
+:mod:`missingly.exceptions` exceptions on failure. The model-based imputers
+(``impute_logreg``, ``impute_polyreg``, ``impute_polr``, ``impute_rf`` and
+``impute_gb``) reject ``inf`` / ``-inf`` and unsupported dtypes up front with a
+``ValueError`` that names the columns. By default (``strict_mode=True``; see
+:mod:`missingly.config` or the global :data:`missingly.config.strict_mode`
+setting) a conditional model that fails to fit raises
+:class:`~missingly.exceptions.ImputationError`, naming the column, the method
+and the underlying error. Only with an explicit ``strict_mode=False`` does a
+failed column fall back to its observed mean or mode, and then a
+:class:`UserWarning` names every column that fell back.
 
 Large-data warnings
 -------------------
@@ -538,6 +542,37 @@ def _decode(
     return result
 
 
+def _observed_baseline(y_observed: np.ndarray, categorical: bool) -> float:
+    """Return the observed mean, or the modal code for an encoded category.
+
+    Parameters
+    ----------
+    y_observed : np.ndarray
+        Observed (non-missing) values of one column; ordinal codes when
+        *categorical* is true.
+    categorical : bool
+        Whether the column holds ordinal category codes.
+
+    Returns
+    -------
+    float
+        ``nanmean(y_observed)``, or the most frequent non-negative code (``0.0``
+        when there is none) for a categorical column.
+
+    Examples
+    --------
+    >>> _observed_baseline(np.array([1.0, 2.0, 6.0]), categorical=False)
+    3.0
+    >>> _observed_baseline(np.array([2.0, 0.0, 2.0]), categorical=True)
+    2.0
+    """
+    if categorical:
+        codes = y_observed[~np.isnan(y_observed)].astype(int)
+        codes = codes[codes >= 0]
+        return float(np.bincount(codes).argmax()) if len(codes) > 0 else 0.0
+    return float(np.nanmean(y_observed))
+
+
 def _impute_column_by_column(
     df: pd.DataFrame,
     regressor,
@@ -570,9 +605,11 @@ def _impute_column_by_column(
         accepts NaN features and random forests only do from scikit-learn 1.4.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
-        estimator failure instead of falling back to the column mean/mode.
-        If None, falls back to :attr:`missingly.config.strict_mode`. Values
-        must be exactly ``True`` or ``False``.
+        estimator failure, chained to the underlying error. If False, fill the
+        failed column with its observed mean (numeric) or mode (categorical)
+        and emit one :class:`UserWarning` per such column after the passes
+        finish. If None, falls back to :attr:`missingly.config.strict_mode`
+        (``True`` by default). Values must be exactly ``True`` or ``False``.
 
     Returns
     -------
@@ -583,12 +620,17 @@ def _impute_column_by_column(
     ------
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    ImputationError
+        If an estimator fails and strict mode is active.
+    InsufficientDataError
+        If a column that needs imputation has no observed value.
     """
     effective_strict = _resolve_strict_mode(strict_mode)
 
     df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
     all_cols = list(df_work.columns)
     df_result = df_work.copy()
+    fallbacks: Dict[str, str] = {}
 
     for _ in range(max_iter):
         for col in all_cols:
@@ -614,12 +656,13 @@ def _impute_column_by_column(
             X_train = X_full[observed_mask]
             y_train = y_full[observed_mask]
             X_pred = X_full[missing_mask.values]
+            is_categorical = col in cat_cols
 
             if fill_feature_nan:
                 X_train = _fill_nan_with_col_means(X_train)
                 X_pred = _fill_nan_with_col_means(X_pred)
 
-            est = classifier if col in cat_cols else regressor
+            est = classifier if is_categorical else regressor
 
             try:
                 est.fit(X_train, y_train)
@@ -629,25 +672,24 @@ def _impute_column_by_column(
                     raise ImputationError(
                         column=col, strategy=strategy_name, original=exc
                     ) from exc
-                if col in cat_cols:
-                    valid_codes = y_train[~np.isnan(y_train)].astype(int)
-                    valid_codes = valid_codes[valid_codes >= 0]
-                    fallback = float(np.bincount(valid_codes).argmax()) if len(valid_codes) > 0 else 0.0
-                    logger.info(
-                        "Categorical fallback for %r (strategy=%r): mode code %d. "
-                        "Set strict_mode=True to raise instead.",
-                        col, strategy_name, int(fallback),
-                    )
-                else:
-                    fallback = float(np.nanmean(y_train))
-                    logger.info(
-                        "Numeric fallback for %r (strategy=%r): mean %.4f. "
-                        "Set strict_mode=True to raise instead.",
-                        col, strategy_name, fallback,
-                    )
+                fallback = _observed_baseline(y_train, is_categorical)
+                kind = "mode" if is_categorical else "mean"
+                fallbacks.setdefault(
+                    col,
+                    f"observed {kind} ({type(exc).__name__}: {exc})",
+                )
                 preds = fallback * np.ones(X_pred.shape[0])
 
             df_result.loc[missing_mask, col] = preds
+
+    for col, detail in fallbacks.items():
+        warnings.warn(
+            f"impute_{strategy_name}: the model for column {col!r} failed and "
+            f"its missing cells were filled with the {detail}. This is not a "
+            "model-based imputation; set strict_mode=True to raise instead.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     return _decode(df_result, cat_cols, encoder, cat_dtypes)
 
@@ -1604,9 +1646,9 @@ def impute_logreg(
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a binary conditional model cannot fit or predict. If ``False``,
-        fill with the observed mode and emit a :class:`UserWarning`. If
-        ``None``, use :attr:`missingly.config.strict_mode`. Values must be
-        exactly ``True`` or ``False``.
+        fill with the observed mode and emit a :class:`UserWarning` naming the
+        column. If ``None``, use :attr:`missingly.config.strict_mode`, which is
+        ``True`` by default. Values must be exactly ``True`` or ``False``.
 
     Returns
     -------
@@ -1621,7 +1663,8 @@ def impute_logreg(
         If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
         has a complex or timedelta column. The message names the columns.
     ImputationError
-        If the conditional estimator fails and ``strict_mode=True``.
+        If the conditional estimator fails and ``strict_mode=True`` (the
+        default).
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
 
@@ -1727,9 +1770,9 @@ def impute_polyreg(
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a multinomial conditional model cannot fit or predict. If
         ``False``, fill with the observed mode and emit a
-        :class:`UserWarning`. If ``None``, use
-        :attr:`missingly.config.strict_mode`. Values must be exactly ``True``
-        or ``False``.
+        :class:`UserWarning` naming the column. If ``None``, use
+        :attr:`missingly.config.strict_mode`, which is ``True`` by default.
+        Values must be exactly ``True`` or ``False``.
 
     Returns
     -------
@@ -1744,7 +1787,8 @@ def impute_polyreg(
         If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
         has a complex or timedelta column. The message names the columns.
     ImputationError
-        If the conditional estimator fails and ``strict_mode=True``.
+        If the conditional estimator fails and ``strict_mode=True`` (the
+        default).
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
 
@@ -1848,9 +1892,9 @@ def impute_polr(
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when an ordinal or multinomial conditional model cannot fit or
         predict. If ``False``, use the documented fallback sequence and emit
-        a :class:`UserWarning`. If ``None``, use
-        :attr:`missingly.config.strict_mode`. Values must be exactly ``True``
-        or ``False``.
+        a :class:`UserWarning` naming the column. If ``None``, use
+        :attr:`missingly.config.strict_mode`, which is ``True`` by default.
+        Values must be exactly ``True`` or ``False``.
 
     Returns
     -------
@@ -1865,7 +1909,8 @@ def impute_polr(
         If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
         has a complex or timedelta column. The message names the columns.
     ImputationError
-        If a conditional estimator fails and ``strict_mode=True``.
+        If a conditional estimator fails and ``strict_mode=True`` (the
+        default).
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
 
@@ -2024,9 +2069,12 @@ def impute_rf(
         Random seed passed to the Random Forest estimators.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
-        estimator failure instead of falling back to the column mean/mode.
-        If None, uses the global :attr:`missingly.config.strict_mode` setting.
-        Values must be exactly ``True`` or ``False``.
+        estimator failure; it names the column and the method and is chained
+        to the underlying error. If False, fill the failed column with its
+        observed mean (numeric) or mode (categorical) and emit a
+        :class:`UserWarning` naming every column that fell back. If None, uses
+        the global :attr:`missingly.config.strict_mode` setting, which is
+        ``True`` by default. Values must be exactly ``True`` or ``False``.
     **rf_kwargs
         Additional keyword arguments forwarded to
         :class:`~sklearn.ensemble.RandomForestRegressor` and
@@ -2045,7 +2093,7 @@ def impute_rf(
         If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
         has a complex or timedelta column. The message names the columns.
     ImputationError
-        If an estimator fails and ``strict_mode=True``.
+        If an estimator fails and ``strict_mode=True`` (the default).
     InsufficientDataError
         If a column has no observed values.
     ConfigurationError
@@ -2054,10 +2102,35 @@ def impute_rf(
     Examples
     --------
     >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
+    >>> df = pd.DataFrame({
+    ...     "a": [1.0, np.nan, 3.0, 4.0, 5.0],
+    ...     "b": [2.0, 4.0, 6.0, 8.0, 10.0],
+    ... })
     >>> result = impute_rf(df, random_state=0)
     >>> bool(result["a"].isna().any())
     False
+
+    Infinite values are rejected before any model is fitted:
+
+    >>> bad = pd.DataFrame({"a": [1.0, np.inf, np.nan], "b": [1.0, 2.0, 3.0]})
+    >>> impute_rf(bad)
+    Traceback (most recent call last):
+        ...
+    ValueError: impute_rf: `df` contains infinite values in column(s) ['a']; replace them with NaN or remove them before imputing.
+
+    Notes
+    -----
+    Missing values in the predictors are filled with the mean of the observed
+    training rows before every fit, on every supported scikit-learn version,
+    so a frame with several incomplete columns never makes a fit fail. A
+    failed fit is not hidden: by default it raises
+    :class:`~missingly.exceptions.ImputationError`. With ``strict_mode=False``
+    the column is filled with its observed mean or mode instead, which is not
+    a model-based imputation, and a :class:`UserWarning` names the column.
+
+    A one-column frame has no predictors to fit on, so it counts as a failed
+    fit: it raises by default and takes the warned fallback only with
+    ``strict_mode=False``.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -2097,9 +2170,12 @@ def impute_gb(
         Random seed passed to the Gradient Boosting estimators.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
-        estimator failure instead of falling back to the column mean/mode.
-        If None, uses the global :attr:`missingly.config.strict_mode` setting.
-        Values must be exactly ``True`` or ``False``.
+        estimator failure; it names the column and the method and is chained
+        to the underlying error. If False, fill the failed column with its
+        observed mean (numeric) or mode (categorical) and emit a
+        :class:`UserWarning` naming every column that fell back. If None, uses
+        the global :attr:`missingly.config.strict_mode` setting, which is
+        ``True`` by default. Values must be exactly ``True`` or ``False``.
     **gb_kwargs
         Additional keyword arguments forwarded to
         :class:`~sklearn.ensemble.GradientBoostingRegressor` and
@@ -2118,7 +2194,7 @@ def impute_gb(
         If *df* is empty, contains ``inf`` / ``-inf`` in a numeric column, or
         has a complex or timedelta column. The message names the columns.
     ImputationError
-        If an estimator fails and ``strict_mode=True``.
+        If an estimator fails and ``strict_mode=True`` (the default).
     InsufficientDataError
         If a column has no observed values.
     ConfigurationError
@@ -2127,10 +2203,35 @@ def impute_gb(
     Examples
     --------
     >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, 5.0]})
+    >>> df = pd.DataFrame({
+    ...     "a": [1.0, np.nan, 3.0, 4.0, 5.0],
+    ...     "b": [2.0, 4.0, 6.0, 8.0, 10.0],
+    ... })
     >>> result = impute_gb(df, random_state=0)
     >>> bool(result["a"].isna().any())
     False
+
+    Infinite values are rejected before any model is fitted:
+
+    >>> bad = pd.DataFrame({"a": [1.0, np.inf, np.nan], "b": [1.0, 2.0, 3.0]})
+    >>> impute_gb(bad)
+    Traceback (most recent call last):
+        ...
+    ValueError: impute_gb: `df` contains infinite values in column(s) ['a']; replace them with NaN or remove them before imputing.
+
+    Notes
+    -----
+    Missing values in the predictors are filled with the mean of the observed
+    training rows before every fit, on every supported scikit-learn version,
+    so a frame with several incomplete columns never makes a fit fail. A
+    failed fit is not hidden: by default it raises
+    :class:`~missingly.exceptions.ImputationError`. With ``strict_mode=False``
+    the column is filled with its observed mean or mode instead, which is not
+    a model-based imputation, and a :class:`UserWarning` names the column.
+
+    A one-column frame has no predictors to fit on, so it counts as a failed
+    fit: it raises by default and takes the warned fallback only with
+    ``strict_mode=False``.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")

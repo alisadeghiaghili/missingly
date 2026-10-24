@@ -46,19 +46,23 @@ class MissinglyConfig:
     strict_mode : bool
         Global default for the ``strict_mode`` parameter accepted by
         ``impute_logreg``, ``impute_polyreg``, ``impute_polr``, ``impute_rf``,
-        and ``impute_gb``. When ``True``, estimator failures raise
-        :class:`~missingly.exceptions.ImputationError` instead of falling
-        back to a column mean/mode. Default is ``False``. The imputation
-        functions validate this value at call time and reject values other
-        than exactly ``True`` or ``False``. Individual call-site
-        ``strict_mode`` kwargs override this setting.
+        and ``impute_gb``. When ``True`` (the
+        default), an estimator failure raises
+        :class:`~missingly.exceptions.ImputationError` naming the column, the
+        method and the underlying error. When ``False``, the failed column is
+        filled with its observed mean or mode and a :class:`UserWarning`
+        names every column that fell back. The imputation functions validate
+        this value at call time and reject values other than exactly
+        ``True`` or ``False``. Individual call-site ``strict_mode`` kwargs
+        override this setting.
 
     Examples
     --------
-    Raise on any imputation failure globally:
+    Allow the documented mean/mode fallback (with a warning) globally:
 
     >>> import missingly
-    >>> missingly.config.strict_mode = True
+    >>> missingly.config.strict_mode = False
+    >>> missingly.config.strict_mode = True  # restore the default
 
     Lower the large-DataFrame warning threshold:
 
@@ -71,7 +75,7 @@ class MissinglyConfig:
 
     large_df_threshold: int = 50_000
     knn_cat_neighbors_threshold: int = 5
-    strict_mode: bool = False
+    strict_mode: bool = True
 
 
 #: Package-level singleton.  Import and mutate this object to change

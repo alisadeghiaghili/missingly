@@ -1,10 +1,19 @@
-"""Model-based imputers must fit on predictors that contain NaN.
+"""Model-based imputers must not degrade to mean imputation without saying so.
 
-Random forests only accept NaN features from scikit-learn 1.4 and gradient
-boosting never does, so a frame with several incomplete columns used to make
-the fit fail and (with the lenient default) degrade to mean imputation.  The
-predictors are now filled before every fit on every scikit-learn version.
+Covers ``impute_rf``, ``impute_gb``, ``impute_logreg``, ``impute_polyreg`` and
+``impute_polr``:
+
+* predictors that contain NaN are filled before an estimator is fitted, so a
+  legitimate multi-incomplete frame never triggers a fallback;
+* ``strict_mode`` defaults to ``True``: a failed fit raises ``ImputationError``
+  that names the column, the method and the underlying error;
+* with an explicit ``strict_mode=False`` the fallback still works but emits a
+  ``UserWarning`` per column that fell back.
+
+Rejection of ``inf`` and unsupported dtypes is covered in
+``test_model_imputer_input_validation.py``.
 """
+
 
 from __future__ import annotations
 
@@ -15,10 +24,15 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.ensemble import (
+    GradientBoostingClassifier,
     GradientBoostingRegressor,
+    RandomForestClassifier,
     RandomForestRegressor,
 )
+from sklearn.linear_model import LogisticRegression
 
+from missingly.config import MissinglyConfig
+from missingly.exceptions import ImputationError
 from missingly.impute import (
     impute_gb,
     impute_logreg,
@@ -152,6 +166,97 @@ def test_legitimate_data_raises_and_warns_about_nothing(name: str) -> None:
     filled = result.loc[frame[target].isna(), target]
     if name in {"rf", "gb"}:
         assert filled.nunique() > 1
+
+
+# ---------------------------------------------------------------------------
+# strict_mode defaults to True: forced estimator failures
+# ---------------------------------------------------------------------------
+
+
+def _boom(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    raise ValueError("forced estimator failure")
+
+
+def _force_failure(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    """Make every conditional model of *name* fail inside ``fit``."""
+    if name == "rf":
+        monkeypatch.setattr(RandomForestRegressor, "fit", _boom)
+        monkeypatch.setattr(RandomForestClassifier, "fit", _boom)
+    elif name == "gb":
+        monkeypatch.setattr(GradientBoostingRegressor, "fit", _boom)
+        monkeypatch.setattr(GradientBoostingClassifier, "fit", _boom)
+    else:
+        monkeypatch.setattr(LogisticRegression, "fit", _boom)
+        if name == "polr":
+            from statsmodels.miscmodels.ordinal_model import OrderedModel
+
+            monkeypatch.setattr(OrderedModel, "fit", _boom)
+
+
+def test_strict_mode_defaults_to_true() -> None:
+    assert MissinglyConfig().strict_mode is True
+
+
+@pytest.mark.parametrize("name", sorted(ALL_IMPUTERS))
+def test_failed_fit_raises_by_default(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    _force_failure(monkeypatch, name)
+    target = _target(name)
+
+    with pytest.raises(ImputationError) as caught:
+        ALL_IMPUTERS[name](_frame_for(name), random_state=0)
+
+    error = caught.value
+    assert error.column == target
+    assert error.strategy == name
+    assert f"column '{target}'" in str(error)
+    assert f"'{name}'" in str(error)
+    assert "forced estimator failure" in str(error)
+    assert isinstance(error.__cause__, ValueError)
+
+
+@pytest.mark.parametrize("name", ["rf", "gb"])
+def test_failed_fit_warns_and_falls_back_when_strict_mode_is_off(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    frame = _frame_for(name)
+    frame.loc[2::9, "x"] = np.nan  # a second incomplete column
+    _force_failure(monkeypatch, name)
+
+    with pytest.warns(UserWarning) as record:
+        result = ALL_IMPUTERS[name](frame, random_state=0, strict_mode=False)
+
+    messages = [str(item.message) for item in record if item.category is UserWarning]
+    assert any("'y'" in message and name in message for message in messages)
+    assert any("'x'" in message and name in message for message in messages)
+    assert len(messages) == 2  # one warning per fallen-back column
+    missing = frame["y"].isna()
+    expected = frame["y"].mean()
+    assert np.allclose(result.loc[missing, "y"], expected)
+    assert not result.isna().any().any()
+
+
+@pytest.mark.parametrize("name", ["logreg", "polyreg", "polr"])
+def test_conditional_models_warn_per_column_when_strict_mode_is_off(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    frame = _frame_for(name)
+    _force_failure(monkeypatch, name)
+
+    with pytest.warns(UserWarning, match="'label'"):
+        result = ALL_IMPUTERS[name](frame, random_state=0, strict_mode=False)
+
+    assert not result["label"].isna().any()
+
+
+def test_global_config_can_restore_the_lenient_behaviour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("missingly.impute._config.strict_mode", False)
+    _force_failure(monkeypatch, "rf")
+    with pytest.warns(UserWarning, match="'y'"):
+        impute_rf(_frame_for("rf"), random_state=0)
 
 
 # ---------------------------------------------------------------------------

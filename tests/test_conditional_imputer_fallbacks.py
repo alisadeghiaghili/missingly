@@ -30,7 +30,8 @@ def test_conditional_imputers_use_numeric_fallback_without_predictors(
     frame = pd.DataFrame({"score": [1.0, np.nan, 3.0]})
     original = frame.copy(deep=True)
 
-    result = imputer(frame, random_state=11, strict_mode=False)
+    with pytest.warns(UserWarning, match="'score'.*observed mean"):
+        result = imputer(frame, random_state=11, strict_mode=False)
 
     assert result["score"].tolist() == [1.0, 2.0, 3.0]
     pd.testing.assert_frame_equal(frame, original)
@@ -45,7 +46,8 @@ def test_conditional_imputers_use_categorical_fallback_without_predictors(
     frame = pd.DataFrame({"grade": pd.Series(["low", "high", pd.NA], dtype=dtype)})
     original = frame.copy(deep=True)
 
-    result = imputer(frame, random_state=11, strict_mode=False)
+    with pytest.warns(UserWarning, match="'grade'.*observed mode"):
+        result = imputer(frame, random_state=11, strict_mode=False)
 
     assert result["grade"].dtype == dtype
     assert result.loc[2, "grade"] in set(frame["grade"].dropna())

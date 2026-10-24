@@ -207,7 +207,8 @@ as read directly from the repository.**
 
 - **C1 (explicit error handling): `[~] IN PROGRESS`**, not `[ ] TODO`.
   `impute.py` already catches `(ValueError, np.linalg.LinAlgError, NotFittedError)`,
-  logs fallbacks at INFO, and honours `strict_mode`. BUT `report.py` (3×),
+  warns on every fallback (UserWarning; INFO logging was replaced because it was
+  silent in practice), and honours `strict_mode` (default `True`). BUT `report.py` (3×),
   `compare.py` (2×), and `diagnostics.py` (1×) still use `except Exception` with
   `# noqa: BLE001`. C1 is NOT done until these are specific and BLE001 passes without noqa.
 
@@ -381,7 +382,7 @@ the record after direct source verification.
 - `MissinglyConfig` dataclass with three fields:
   - `large_df_threshold: int = 50_000`
   - `knn_cat_neighbors_threshold: int = 5`
-  - `strict_mode: bool = False`
+  - `strict_mode: bool = True`
 - Package-level singleton `config: MissinglyConfig = MissinglyConfig()`
 - `__all__ = ["MissinglyConfig", "config"]`
 - No imports from other `missingly` sub-modules (circular-import safe)
@@ -703,7 +704,7 @@ currently resolves to the module rather than the documented singleton, and
 `MissinglyConfig` is not exported from the package root.
 
 - `config.py` exists with `MissinglyConfig` dataclass.
-- Fields: `large_df_threshold=50_000`, `knn_cat_neighbors_threshold=5`, `strict_mode=False`.
+- Fields: `large_df_threshold=50_000`, `knn_cat_neighbors_threshold=5`, `strict_mode=True`.
 - Package singleton `config` and `MissinglyConfig` must be exported from `__init__.py`
   and included in package `__all__`.
 - `impute.py` imports and uses `_config` at all three call sites.
