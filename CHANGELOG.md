@@ -100,6 +100,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime and distribution versions now share one metadata source.
 - Build metadata uses the SPDX license format and explicit package-data configuration,
   eliminating setuptools deprecation and ambiguous-package warnings.
+- **Breaking:** `missingly.config.strict_mode` now defaults to `True`. A conditional
+  model that fails to fit in `impute_rf`, `impute_gb`, `impute_logreg`,
+  `impute_polyreg`, `impute_polr` or `impute_mice` raises `ImputationError`, naming
+  the column, the method and the underlying error (chained). Pass
+  `strict_mode=False` (per call or through `missingly.config`) to keep the mean/mode
+  fallback; it now emits a `UserWarning` naming every column that fell back, instead
+  of an INFO log record. A one-column frame has no predictors, so it counts as a
+  failed fit.
+- **Breaking:** `impute_mice` raises `ValueError` for `n_imputations > 1` when the
+  estimator's `predict` has no `return_std` argument (for example `LinearRegression`
+  or a random forest). Such an estimator returns identical imputations, so Rubin's
+  between-imputation variance is zero (`df=inf`, `fmi=0`). An estimator that does
+  accept `return_std`, including an explicit `BayesianRidge()`, now draws from its
+  predictive distribution instead of returning mean predictions.
+- `impute_mice` chain seeds are spawned with `numpy.random.SeedSequence(random_state)`
+  instead of `random_state + i`. Chain `i` no longer depends on how many chains were
+  requested, adjacent `random_state` values share no chain, and imputed values for a
+  given seed differ from earlier unreleased builds. `random_state` may be `None`; a
+  negative or non-integer value raises `ValueError`. The seeds used are recorded in
+  `plan.seed_sequence` of a typed result.
+- `impute_mice` runs one engine whatever optional arguments are passed (it used to
+  switch between scikit-learn's `IterativeImputer` and a hand-written loop), so
+  `return_history`, `return_result`, `visit_sequence`, `predictor_matrix`, `where` and
+  `bounds` at their neutral values no longer change the imputed values. Custom
+  estimators always run all `max_iter` sweeps (no tolerance-based early stop), and a
+  cell kept missing by `where=False` is no longer used as a training row.
+- `impute_rf` and `MissinglyImputer(strategy="rf")` fill incomplete predictors with
+  training column means before every fit on every scikit-learn version, as the
+  gradient-boosting imputers already did. Results on scikit-learn >= 1.4, which used
+  to pass NaN to the forest, change slightly.
+- `pool_scalar_estimates` emits a `UserWarning` when the between-imputation variance
+  is exactly zero; its return values are unchanged.
 
 ### Fixed
 - Removed public MAR-versus-MNAR identification claims. `mar_mnar_test` remains as a
@@ -108,6 +140,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   handling, and pandas 3-compatible UpSet rendering.
 - Stale Sphinx module references, invalid NumPy-doc sections, and undeclared Pandoc
   requirements that prevented warning-free API and notebook documentation builds.
+- `mcar_test` (and `diagnose_missing`) identified missingness patterns with a 64-bit
+  integer code that overflowed from 64 columns, silently merging patterns and
+  returning a wrong pattern count, degrees of freedom and p-value. Patterns are now
+  identified exactly; results for fewer than 64 columns are unchanged.
+- `impute_rf` returned the observed mean for every missing cell of a column whose
+  predictors contained NaN on scikit-learn below 1.4 (inside the declared floor), and
+  for every column when a predictor held `inf`, without any warning.
+- `impute_rf`, `impute_gb`, `impute_logreg`, `impute_polyreg` and `impute_polr` reject
+  `inf` / `-inf` and complex or timedelta columns up front with a `ValueError` that
+  names the columns, instead of failing in every conditional fit.
+- `impute_mice` replaced a column whose estimator failed by its mean without any
+  message; it now follows `strict_mode` (new keyword argument) and a typed result
+  records fallbacks in `warnings` and `validation["estimator_fallback_used"]`.
 
 ### Removed
 - Placeholder-only test modules that reported skipped work without testing behavior.
