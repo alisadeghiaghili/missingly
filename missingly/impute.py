@@ -60,7 +60,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from sklearn.base import BaseEstimator, RegressorMixin, clone
+from sklearn.base import clone
 from sklearn.ensemble import (
     GradientBoostingClassifier,
     GradientBoostingRegressor,
@@ -68,7 +68,7 @@ from sklearn.ensemble import (
     RandomForestRegressor,
 )
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
-from sklearn.impute import IterativeImputer, KNNImputer, SimpleImputer
+from sklearn.impute import KNNImputer, SimpleImputer
 from sklearn.linear_model import BayesianRidge, LogisticRegression
 from sklearn.preprocessing import OrdinalEncoder
 from sklearn.exceptions import NotFittedError
@@ -695,45 +695,13 @@ def _impute_column_by_column(
 
 
 # ---------------------------------------------------------------------------
-# MICE history tracking helpers
+# MICE engine
 # ---------------------------------------------------------------------------
 
-class _HistoryTrackingEstimator(BaseEstimator, RegressorMixin):
-    """Thin wrapper around a base estimator that records per-predict means.
-
-    Used internally by :func:`impute_mice` when ``return_history=True``.
-    Each call to ``predict`` appends the mean of the predictions to
-    ``self.history_`` for the given column key.
-
-    Parameters
-    ----------
-    base_estimator : sklearn estimator
-        The underlying regression estimator.
-    history : dict
-        Shared mutable dict mapping column-name → list of floats.
-    col_name : str
-        Key into *history* for this column's trace.
-    """
-
-    def __init__(self, base_estimator, history: dict, col_name: str) -> None:
-        self.base_estimator = base_estimator
-        self.history = history
-        self.col_name = col_name
-
-    def fit(self, X, y):
-        self.base_estimator_ = clone(self.base_estimator)
-        self.base_estimator_.fit(X, y)
-        return self
-
-    def predict(self, X):
-        preds = self.base_estimator_.predict(X)
-        self.history.setdefault(self.col_name, []).append(float(np.mean(preds)))
-        return preds
-
-
-def _run_mice_with_history(
+def _run_mice_chain(
     df_work: pd.DataFrame,
-    missing_mask_df: pd.DataFrame,
+    observed_mask_df: pd.DataFrame,
+    imputation_mask_df: pd.DataFrame,
     base_estimator,
     max_iter: int,
     seed: int,
@@ -742,30 +710,38 @@ def _run_mice_with_history(
     predictor_matrix: Optional[pd.DataFrame] = None,
     bounds: Optional[Dict[str, Tuple[float, float]]] = None,
 ) -> Tuple[np.ndarray, Dict[str, List[float]]]:
-    """Run MICE manually iteration-by-iteration to capture per-iteration means.
+    """Run one chain of chained equations: the only MICE engine in the package.
 
-    sklearn's ``IterativeImputer`` does not expose intermediate states after
-    each iteration.  This function replicates the imputation order ("roman"
-    = left-to-right) manually so that we can snapshot the imputed means at
-    the end of every full sweep.
+    Every call of :func:`impute_mice` runs through this function, whatever
+    optional arguments it receives, so a seed determines the result. The sweep
+    order, the estimator seeding and the posterior draws below are therefore
+    the complete seed contract of a chain.
 
     Parameters
     ----------
     df_work : pd.DataFrame
         Ordinal-encoded, numeric-only working DataFrame.
-    missing_mask_df : pd.DataFrame
-        Boolean DataFrame; True where a value was originally missing.
+    observed_mask_df : pd.DataFrame
+        Boolean DataFrame; True where a value was originally observed. Only
+        these cells train a column's model.
+    imputation_mask_df : pd.DataFrame
+        Boolean DataFrame; True where a missing value is to be imputed. It is
+        a subset of the originally missing cells.
     base_estimator : sklearn estimator
         Regressor to use for each column.
     max_iter : int
-        Number of full sweeps.
+        Number of full sweeps. No early stopping: all sweeps always run.
     seed : int
-        Random seed passed to the estimator where applicable.
+        Seed of this chain. It feeds one ``numpy.random.default_rng`` that
+        supplies, in sweep order, a ``random_state`` for each estimator that
+        has one and the posterior draws.
     use_sample_posterior : bool
-        Whether the estimator supports ``sample_posterior`` (BayesianRidge).
+        Whether imputations are draws from the estimator's predictive normal
+        distribution (``predict(..., return_std=True)``) instead of point
+        predictions.
     visit_sequence : list of str, optional
         Ordered incomplete target columns to update in each sweep. ``None``
-        preserves the default left-to-right order.
+        visits the columns with something to impute from left to right.
     predictor_matrix : pandas.DataFrame, optional
         Square validated 0/1 or boolean matrix whose target rows select feature
         columns. ``None`` uses every non-target column.
@@ -776,30 +752,41 @@ def _run_mice_with_history(
     Returns
     -------
     imputed_array : np.ndarray
-        Final imputed values, same shape as ``df_work``.
+        Final imputed values, same shape as ``df_work``. Cells that are
+        missing but not to be imputed keep their initial column-mean value
+        and are restored to missing by the caller.
     history : Dict[str, List[float]]
-        ``{col: [mean_iter1, mean_iter2, ...]}``.  Only columns that had
-        missing values are included.
+        ``{col: [mean_iter1, mean_iter2, ...]}``, the mean of the values
+        imputed in each sweep. Only columns with something to impute are
+        included. The last entry is the mean of the returned imputations.
     """
     rng = np.random.default_rng(seed)
     cols = list(df_work.columns)
     # Initialise missing cells with column means (same as sklearn default)
-    X = df_work.values.astype(float).copy()
+    # ``na_value`` also converts nullable extension dtypes (Float64, Int64).
+    X = df_work.to_numpy(dtype=float, na_value=np.nan).copy()
     for j in range(X.shape[1]):
         col_missing = np.isnan(X[:, j])
         if col_missing.any():
-            col_mean = np.nanmean(X[:, j])
+            col_mean = np.nanmean(X[:, j]) if not col_missing.all() else np.nan
             X[col_missing, j] = col_mean if not np.isnan(col_mean) else 0.0
 
     history: Dict[str, List[float]] = {}
 
-    visit_cols = visit_sequence if visit_sequence is not None else cols
+    visit_cols = (
+        visit_sequence
+        if visit_sequence is not None
+        else [c for c in cols if imputation_mask_df[c].any()]
+    )
     for _ in range(max_iter):
         for col in visit_cols:
             j = cols.index(col)
-            orig_missing = missing_mask_df[col].values
-            if not orig_missing.any():
+            # Nullable "boolean" masks (a ``where`` of that dtype) are not valid
+            # numpy indexers on older pandas, so convert explicitly.
+            to_impute = imputation_mask_df[col].to_numpy(dtype=bool)
+            if not to_impute.any():
                 continue
+            observed = observed_mask_df[col].to_numpy(dtype=bool)
 
             if predictor_matrix is None:
                 feature_idx = [k for k in range(len(cols)) if k != j]
@@ -807,9 +794,9 @@ def _run_mice_with_history(
                 feature_idx = np.flatnonzero(
                     predictor_matrix.loc[col, cols].to_numpy(dtype=bool)
                 ).tolist()
-            X_train = X[~orig_missing][:, feature_idx]
-            y_train = X[~orig_missing, j]
-            X_pred_rows = X[orig_missing][:, feature_idx]
+            X_train = X[observed][:, feature_idx]
+            y_train = X[observed, j]
+            X_pred_rows = X[to_impute][:, feature_idx]
 
             est = clone(base_estimator)
             # Seed estimators that accept random_state
@@ -825,13 +812,13 @@ def _run_mice_with_history(
                 else:
                     preds = est.predict(X_pred_rows)
             except (ValueError, np.linalg.LinAlgError, NotFittedError):
-                preds = np.full(orig_missing.sum(), float(np.mean(y_train)))
+                preds = np.full(to_impute.sum(), float(np.mean(y_train)))
 
             if bounds is not None and col in bounds:
                 lower, upper = bounds[col]
                 preds = np.clip(preds, lower, upper)
 
-            X[orig_missing, j] = preds
+            X[to_impute, j] = preds
             history.setdefault(col, []).append(float(np.mean(preds)))
 
     return X, history
@@ -1280,6 +1267,36 @@ def impute_mice(
     2
     >>> typed.data.plan.methods["a"]
     'bayesian_ridge_numeric'
+
+    Observability arguments never change the imputed values:
+
+    >>> two_columns = pd.DataFrame({
+    ...     "a": [1.0, np.nan, 3.0, 4.0, 5.0],
+    ...     "b": [2.0, 4.1, 5.9, 8.2, np.nan],
+    ... })
+    >>> plain = impute_mice(two_columns, random_state=3)
+    >>> traced, _ = impute_mice(two_columns, random_state=3, return_history=True)
+    >>> plain.equals(traced)
+    True
+
+    Notes
+    -----
+    **One engine.** Every call runs the same chained-equations loop, whichever
+    optional arguments are passed, so ``random_state`` alone determines the
+    imputed values. ``return_history``, ``return_result``, ``visit_sequence``,
+    ``predictor_matrix``, ``where`` and ``bounds`` only control what is
+    recorded or restricted; passing any of them at a value that asks for no
+    restriction gives exactly the plain result.
+
+    **Seed contract.** Chain ``i`` (``0 <= i < n_imputations``) is seeded with
+    ``random_state + i``. Its seed feeds one ``numpy.random.default_rng`` that
+    supplies, in sweep order, a ``random_state`` for every estimator that has
+    one and the posterior draws of the default Bayesian ridge. Each sweep
+    visits the columns with something to impute from left to right (or in
+    ``visit_sequence`` order); a column's model is trained on its originally
+    observed rows only, and a cell kept missing by ``where`` is never used as
+    a training row. All ``max_iter`` sweeps always run; there is no early
+    stopping.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(n_imputations, param="n_imputations")
@@ -1356,60 +1373,20 @@ def impute_mice(
 
     def _single_chain(
         seed: int,
-    ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, List[float]]]]:
+    ) -> Tuple[pd.DataFrame, Dict[str, List[float]]]:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
-        capture_history = return_history or return_result
-
-        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None or where is not None or bounds is not None:
-            # Use our manual per-iteration loop so we can capture history.
-            missing_mask_df = imputation_mask.loc[:, df_work.columns]
-            if estimator is None:
-                base_est = BayesianRidge()
-                use_posterior = True
-            else:
-                base_est = estimator
-                use_posterior = False
-
-            imputed_array, history = _run_mice_with_history(
-                df_work=df_work,
-                missing_mask_df=missing_mask_df,
-                base_estimator=base_est,
-                max_iter=max_iter,
-                seed=seed,
-                use_sample_posterior=use_posterior,
-                visit_sequence=visit_sequence,
-                predictor_matrix=predictor_matrix,
-                bounds=bounds,
-            )
-            df_imputed = pd.DataFrame(
-                imputed_array, index=df_norm.index, columns=df_work.columns
-            )
-            result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
-            for col in cat_cols:
-                if result[col].isna().any():
-                    observed = df_norm[col].dropna()
-                    if len(observed) > 0:
-                        result[col] = result[col].fillna(observed.mode().iloc[0])
-            result = result.mask(retained_missing_mask.loc[:, result.columns])
-            if capture_history:
-                return result, history
-            return result
-
-        # Fast path: delegate to sklearn's IterativeImputer (no history).
-        if estimator is None:
-            est = BayesianRidge()
-            use_sample_posterior = True
-        else:
-            est = estimator
-            use_sample_posterior = False
-        imputer = IterativeImputer(
-            estimator=est,
+        imputed_array, history = _run_mice_chain(
+            df_work=df_work,
+            observed_mask_df=~original_missing_mask.loc[:, df_work.columns],
+            imputation_mask_df=imputation_mask.loc[:, df_work.columns],
+            base_estimator=BayesianRidge() if estimator is None else estimator,
             max_iter=max_iter,
-            random_state=seed,
-            imputation_order="roman",
-            sample_posterior=use_sample_posterior,
+            seed=seed,
+            use_sample_posterior=estimator is None,
+            visit_sequence=visit_sequence,
+            predictor_matrix=predictor_matrix,
+            bounds=bounds,
         )
-        imputed_array = imputer.fit_transform(df_work)
         df_imputed = pd.DataFrame(
             imputed_array, index=df_norm.index, columns=df_work.columns
         )
@@ -1418,9 +1395,9 @@ def impute_mice(
             if result[col].isna().any():
                 observed = df_norm[col].dropna()
                 if len(observed) > 0:
-                    fallback = observed.mode().iloc[0]
-                    result[col] = result[col].fillna(fallback)
-        return result
+                    result[col] = result[col].fillna(observed.mode().iloc[0])
+        result = result.mask(retained_missing_mask.loc[:, result.columns])
+        return result, history
 
     if return_result:
         results = [_single_chain(random_state + index) for index in range(n_imputations)]
@@ -1472,13 +1449,14 @@ def impute_mice(
         )
 
     if n_imputations == 1:
-        return _single_chain(random_state)
+        frame, history = _single_chain(random_state)
+        return (frame, history) if return_history else frame
 
     results = [_single_chain(random_state + i) for i in range(n_imputations)]
     if return_history:
         dfs, histories = zip(*results)
         return list(dfs), list(histories)
-    return list(results)
+    return [frame for frame, _ in results]
 
 
 def impute_pmm(
