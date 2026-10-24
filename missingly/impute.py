@@ -851,6 +851,56 @@ def _run_mice_chain(
 # ---------------------------------------------------------------------------
 
 
+def _chain_seeds(random_state: Optional[int], n_chains: int) -> Tuple[int, ...]:
+    """Spawn one independent integer seed per chain from a base seed.
+
+    ``numpy.random.SeedSequence.spawn`` derives child ``i`` from the base
+    entropy and the child's index only, so chain ``i`` is the same whatever
+    ``n_chains`` is, and no two ``(random_state, chain)`` pairs share a seed
+    (``random_state + i`` made chain 1 of seed 0 identical to chain 0 of seed 1).
+
+    Parameters
+    ----------
+    random_state : int or None
+        Non-negative base seed. ``None`` draws fresh operating-system entropy;
+        the returned seeds are then the only record of the run.
+    n_chains : int
+        Number of chains, at least 1.
+
+    Returns
+    -------
+    tuple of int
+        One 64-bit seed per chain, each usable with
+        :func:`numpy.random.default_rng`.
+
+    Raises
+    ------
+    ValueError
+        If ``random_state`` is neither ``None`` nor a non-negative integer.
+
+    Examples
+    --------
+    >>> _chain_seeds(0, 3) == _chain_seeds(0, 3)
+    True
+    >>> _chain_seeds(0, 3)[:2] == _chain_seeds(0, 2)
+    True
+    >>> set(_chain_seeds(0, 3)) & set(_chain_seeds(1, 3))
+    set()
+    """
+    if random_state is not None and (
+        isinstance(random_state, bool)
+        or not isinstance(random_state, (int, np.integer))
+        or random_state < 0
+    ):
+        raise ValueError(
+            f"random_state must be None or a non-negative integer; got {random_state!r}."
+        )
+    children = np.random.SeedSequence(
+        None if random_state is None else int(random_state)
+    ).spawn(n_chains)
+    return tuple(int(child.generate_state(1, dtype=np.uint64)[0]) for child in children)
+
+
 def _mice_conditional_model_contract(
     df: pd.DataFrame,
     estimator: object,
@@ -1171,7 +1221,7 @@ def impute_knn(
 def impute_mice(
     df: pd.DataFrame,
     max_iter: int = 10,
-    random_state: int = 0,
+    random_state: Optional[int] = 0,
     estimator=None,
     n_imputations: int = 1,
     return_history: bool = False,
@@ -1190,8 +1240,8 @@ def impute_mice(
 ]:
     """Impute missing values using MICE (Multiple Imputation by Chained Equations).
 
-    When ``n_imputations > 1`` runs independent chains each with a distinct
-    random seed so the returned DataFrames differ from one another.
+    When ``n_imputations > 1`` runs independent chains, each with its own
+    spawned random seed, so the returned DataFrames differ from one another.
 
     Parameters
     ----------
@@ -1199,8 +1249,11 @@ def impute_mice(
         Input DataFrame with missing values.
     max_iter : int, default 10
         Maximum number of MICE imputation iterations per chain.
-    random_state : int, default 0
-        Base random seed.
+    random_state : int or None, default 0
+        Non-negative base seed. The seed of chain ``i`` is derived from it with
+        :class:`numpy.random.SeedSequence` (see Notes), so different base seeds
+        never share a chain. ``None`` draws fresh entropy; the typed result
+        (``return_result=True``) records the chain seeds actually used.
     estimator : sklearn estimator or None, default None
         Regression estimator used per column.  Defaults to
         ``BayesianRidge()`` with posterior sampling enabled.
@@ -1275,7 +1328,8 @@ def impute_mice(
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
-        If *df* is empty, *n_imputations* < 1, or an execution-control
+        If *df* is empty, *n_imputations* < 1, ``random_state`` is neither
+        ``None`` nor a non-negative integer, or an execution-control
         argument is malformed. ``where`` masks must be aligned, two-valued,
         and may enable only originally missing cells.
     InsufficientDataError
@@ -1330,8 +1384,13 @@ def impute_mice(
     recorded or restricted; passing any of them at a value that asks for no
     restriction gives exactly the plain result.
 
-    **Seed contract.** Chain ``i`` (``0 <= i < n_imputations``) is seeded with
-    ``random_state + i``. Its seed feeds one ``numpy.random.default_rng`` that
+    **Seed contract.** The seeds of the ``n_imputations`` chains are
+    ``numpy.random.SeedSequence(random_state).spawn(n_imputations)``, each
+    reduced to a 64-bit integer. Chain ``i`` therefore depends on
+    ``random_state`` and ``i`` only: it is the same whether one or ten chains
+    are requested, and no two ``(random_state, i)`` pairs share a seed. The
+    integers are recorded as ``plan.seed_sequence`` of a typed result. A
+    chain's seed feeds one ``numpy.random.default_rng`` that
     supplies, in sweep order, a ``random_state`` for every estimator that has
     one and the posterior draws of the default Bayesian ridge. Each sweep
     visits the columns with something to impute from left to right (or in
@@ -1347,6 +1406,7 @@ def impute_mice(
     if return_history and return_result:
         raise ValueError("return_result cannot be combined with return_history")
 
+    chain_seeds = _chain_seeds(random_state, n_imputations)
     _warn_if_large(df, "impute_mice")
     df_norm = _normalize_missing(df)
     original_missing_mask = df_norm.isna()
@@ -1460,7 +1520,7 @@ def impute_mice(
         return merged
 
     if return_result:
-        results = [_single_chain(random_state + index) for index in range(n_imputations)]
+        results = [_single_chain(seed) for seed in chain_seeds]
         frames, histories, chain_fallbacks = zip(*results)
         fallback_columns = _report_fallbacks(list(chain_fallbacks))
         methods, conditional_contract, limitation = _mice_conditional_model_contract(
@@ -1482,7 +1542,7 @@ def impute_mice(
             methods=methods,
             n_imputations=n_imputations,
             max_iter=max_iter,
-            seed_sequence=tuple(random_state + index for index in range(n_imputations)),
+            seed_sequence=chain_seeds,
             provenance=provenance,
         )
         data = MIData(df.copy(deep=True), schema, plan, tuple(frames))
@@ -1515,7 +1575,7 @@ def impute_mice(
             },
         )
 
-    results = [_single_chain(random_state + i) for i in range(n_imputations)]
+    results = [_single_chain(seed) for seed in chain_seeds]
     _report_fallbacks([chain_fallbacks for _, _, chain_fallbacks in results])
     if n_imputations == 1:
         frame, history, _ = results[0]

@@ -481,7 +481,10 @@ class TestMultipleImputation:
         )
 
         assert isinstance(result, ImputationResult)
-        assert result.data.plan.seed_sequence == (17, 18)
+        seeds = result.data.plan.seed_sequence
+        assert len(seeds) == len(set(seeds)) == 2
+        assert all(isinstance(seed, int) for seed in seeds)
+        assert seeds != (17, 18)  # spawned from SeedSequence, not random_state + i
         assert result.data.n_imputations == 2
         assert set(result.data.plan.methods) == {"age", "score", "category"}
         assert len(result.histories) == 2
