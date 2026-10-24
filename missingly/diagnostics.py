@@ -49,7 +49,7 @@ plot_mice_convergence
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import warnings
 
 import numpy as np
@@ -488,6 +488,46 @@ def _em_mle_estimation(data, max_iter=500, tol=1e-7, ridge=1e-8):
     )
 
 
+def _missingness_patterns(mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Identify the distinct missingness patterns of a boolean mask exactly.
+
+    Rows are compared as boolean vectors, so the result does not depend on the
+    number of columns. Packing each row into one integer (one bit per column)
+    overflows a 64-bit integer from 64 columns on and silently merges
+    distinct patterns.
+
+    Parameters
+    ----------
+    mask : np.ndarray of bool, shape (n, d)
+        ``True`` where a cell is missing.
+
+    Returns
+    -------
+    patterns : np.ndarray of bool, shape (k, d)
+        The ``k`` distinct rows of *mask*. They are ordered as the integer
+        codes ``sum(mask[:, j] * 2**j)`` would order them, i.e. the last
+        column is the most significant, so the order is deterministic and
+        identical to the former encoding for fewer than 64 columns.
+    inverse : np.ndarray of int, shape (n,)
+        For every row of *mask*, the index into *patterns* of its pattern.
+
+    Examples
+    --------
+    >>> mask = np.array([[False, True], [True, False], [False, True]])
+    >>> patterns, inverse = _missingness_patterns(mask)
+    >>> patterns.tolist()
+    [[True, False], [False, True]]
+    >>> inverse.tolist()
+    [1, 0, 1]
+    """
+    # Reversing the columns makes the lexicographic order of np.unique agree
+    # with the order of the little-endian integer codes (False < True).
+    reversed_patterns, inverse = np.unique(
+        mask[:, ::-1], axis=0, return_inverse=True
+    )
+    return reversed_patterns[:, ::-1], np.asarray(inverse).reshape(-1)
+
+
 def mcar_test(
     X: pd.DataFrame,
     max_iter: int = 500,
@@ -583,23 +623,17 @@ def mcar_test(
             "mcar_test requires more informative rows than numeric columns."
         )
 
-    r = np.isnan(data_np).astype(int)
-    nmis = r.sum(axis=0)
-    powers_of_2: np.ndarray = 2 ** np.arange(d)
-    mdp = r.dot(powers_of_2) + 1
+    mask = np.isnan(data_np)
+    nmis = mask.sum(axis=0)
+    patterns, pattern_index = _missingness_patterns(mask)
+    n_mis_pat = len(patterns)
 
     df_wp = pd.DataFrame(data_np.copy(), columns=X.columns)
-    df_wp["MisPat"] = mdp
-
-    unique_patterns = np.sort(df_wp["MisPat"].unique())
-    n_mis_pat = len(unique_patterns)
+    df_wp["MisPat"] = pattern_index + 1
 
     mu_hat, Sigma_hat, em_iterations = _em_mle_estimation(
         data_np, max_iter=max_iter, tol=tol, ridge=ridge
     )
-
-    pattern_map = {pat: i + 1 for i, pat in enumerate(unique_patterns)}
-    df_wp["MisPat"] = df_wp["MisPat"].map(pattern_map)
 
     datasets = {
         pat_id: df_wp[df_wp["MisPat"] == pat_id].iloc[:, :d]
