@@ -18,7 +18,14 @@ def test_runtime_version_matches_distribution_metadata():
     """Runtime and build metadata expose one consistent release version."""
     from importlib.metadata import version
 
-    assert missingly.__version__ == version("missingly") == "1.0.0"
+    from missingly._version import __version__ as declared_version
+
+    # ``_version`` is the single source the build reads (pyproject.toml,
+    # ``tool.setuptools.dynamic``), so the installed metadata and the runtime
+    # attribute must both equal it. A literal here would go stale at every
+    # release.
+    assert missingly.__version__ == declared_version
+    assert version("missingly") == declared_version
 
 
 # ---------------------------------------------------------------------------
