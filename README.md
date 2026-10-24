@@ -189,7 +189,7 @@ mi.impute_mean(df)           # mean imputation
 mi.impute_median(df)         # median imputation
 mi.impute_mode(df)           # mode imputation
 mi.impute_knn(df)            # k-NN imputation (Euclidean distance, numeric-safe)
-mi.impute_mice(df)           # MICE (IterativeImputer + BayesianRidge)
+mi.impute_mice(df)           # MICE (chained equations, Bayesian ridge draws)
 mi.impute_rf(df)             # Random Forest imputation
 mi.impute_gb(df)             # Gradient Boosting imputation
 

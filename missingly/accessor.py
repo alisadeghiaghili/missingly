@@ -568,7 +568,10 @@ class MissinglyAccessor:
         Examples
         --------
         >>> import pandas as pd, numpy as np, missingly
-        >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0, np.nan]})
+        >>> df = pd.DataFrame({
+        ...     "a": [1.0, np.nan, 3.0, 4.0, np.nan],
+        ...     "b": [2.0, 4.1, 5.9, 8.2, 9.8],
+        ... })
         >>> _, histories = missingly.impute_mice(
         ...     df, n_imputations=3, max_iter=5, return_history=True
         ... )

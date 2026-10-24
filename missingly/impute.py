@@ -41,7 +41,8 @@ setting) a conditional model that fails to fit raises
 :class:`~missingly.exceptions.ImputationError`, naming the column, the method
 and the underlying error. Only with an explicit ``strict_mode=False`` does a
 failed column fall back to its observed mean or mode, and then a
-:class:`UserWarning` names every column that fell back.
+:class:`UserWarning` names every column that fell back. ``impute_mice`` follows
+the same ``strict_mode`` contract.
 
 Large-data warnings
 -------------------
@@ -709,7 +710,8 @@ def _run_mice_chain(
     visit_sequence: Optional[List[str]] = None,
     predictor_matrix: Optional[pd.DataFrame] = None,
     bounds: Optional[Dict[str, Tuple[float, float]]] = None,
-) -> Tuple[np.ndarray, Dict[str, List[float]]]:
+    strict: bool = True,
+) -> Tuple[np.ndarray, Dict[str, List[float]], Dict[str, str]]:
     """Run one chain of chained equations: the only MICE engine in the package.
 
     Every call of :func:`impute_mice` runs through this function, whatever
@@ -748,6 +750,11 @@ def _run_mice_chain(
     bounds : dict of str to tuple of float, optional
         Inclusive lower and upper bounds applied only to newly imputed numeric
         target values.
+    strict : bool, default True
+        If True, an estimator failure raises
+        :class:`~missingly.exceptions.ImputationError`. If False, the column's
+        cells are filled with the mean of its training values and the column
+        is reported in the third return value.
 
     Returns
     -------
@@ -759,6 +766,15 @@ def _run_mice_chain(
         ``{col: [mean_iter1, mean_iter2, ...]}``, the mean of the values
         imputed in each sweep. Only columns with something to impute are
         included. The last entry is the mean of the returned imputations.
+    fallbacks : Dict[str, str]
+        Columns that were filled with their training mean after an estimator
+        failure (always empty when ``strict`` is True), mapped to the first
+        error message.
+
+    Raises
+    ------
+    ImputationError
+        If an estimator fails and ``strict`` is True.
     """
     rng = np.random.default_rng(seed)
     cols = list(df_work.columns)
@@ -772,6 +788,7 @@ def _run_mice_chain(
             X[col_missing, j] = col_mean if not np.isnan(col_mean) else 0.0
 
     history: Dict[str, List[float]] = {}
+    fallbacks: Dict[str, str] = {}
 
     visit_cols = (
         visit_sequence
@@ -811,8 +828,13 @@ def _run_mice_chain(
                     preds = rng.normal(predictive_mean, predictive_std)
                 else:
                     preds = est.predict(X_pred_rows)
-            except (ValueError, np.linalg.LinAlgError, NotFittedError):
+            except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
+                if strict:
+                    raise ImputationError(
+                        column=col, strategy="mice", original=exc
+                    ) from exc
                 preds = np.full(to_impute.sum(), float(np.mean(y_train)))
+                fallbacks.setdefault(col, f"{type(exc).__name__}: {exc}")
 
             if bounds is not None and col in bounds:
                 lower, upper = bounds[col]
@@ -821,7 +843,7 @@ def _run_mice_chain(
             X[to_impute, j] = preds
             history.setdefault(col, []).append(float(np.mean(preds)))
 
-    return X, history
+    return X, history, fallbacks
 
 
 # ---------------------------------------------------------------------------
@@ -1158,6 +1180,7 @@ def impute_mice(
     predictor_matrix: Optional[pd.DataFrame] = None,
     where: Optional[pd.DataFrame] = None,
     bounds: Optional[Dict[str, Tuple[float, float]]] = None,
+    strict_mode: Optional[bool] = None,
 ) -> Union[
     pd.DataFrame,
     List[pd.DataFrame],
@@ -1231,6 +1254,15 @@ def impute_mice(
     bounds : dict of str to tuple of float, optional
         Inclusive numeric bounds per target column. Bounds are applied only to
         newly imputed values and must use finite ascending limits.
+    strict_mode : bool or None, default None
+        If ``True``, an estimator that fails to fit or predict raises
+        :class:`~missingly.exceptions.ImputationError`, naming the column and
+        chained to the underlying error. If ``False``, that column is filled
+        with the mean of its observed values, a :class:`UserWarning` names
+        every column that fell back, and a typed result records them in its
+        ``warnings`` and in ``validation["estimator_fallback_used"]``. If
+        ``None``, use :attr:`missingly.config.strict_mode`, which is ``True``
+        by default. Values must be exactly ``True`` or ``False``.
 
     Returns
     -------
@@ -1249,11 +1281,16 @@ def impute_mice(
     InsufficientDataError
         If an enabled target column has no observed values from which an
         imputation model can learn.
+    ImputationError
+        If a conditional estimator fails and ``strict_mode`` is ``True`` (the
+        default).
+    ConfigurationError
+        If ``strict_mode`` or the selected package default is not a boolean.
 
     Examples
     --------
     >>> import pandas as pd, numpy as np
-    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0]})
+    >>> df = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0], "b": [2.0, 4.0, 6.0, 8.0]})
     >>> result = impute_mice(df, max_iter=2, random_state=0)
     >>> bool(result["a"].isna().any())
     False
@@ -1281,6 +1318,11 @@ def impute_mice(
 
     Notes
     -----
+    A conditional model needs at least one predictor, so a frame with a single
+    column (or a ``predictor_matrix`` row without predictors) counts as a
+    failed fit: it raises :class:`~missingly.exceptions.ImputationError` by
+    default and takes the warned mean fallback only with ``strict_mode=False``.
+
     **One engine.** Every call runs the same chained-equations loop, whichever
     optional arguments are passed, so ``random_state`` alone determines the
     imputed values. ``return_history``, ``return_result``, ``visit_sequence``,
@@ -1301,6 +1343,7 @@ def impute_mice(
     validate_dataframe(df, param="df")
     validate_positive_int(n_imputations, param="n_imputations")
     validate_positive_int(max_iter, param="max_iter")
+    effective_strict = _resolve_strict_mode(strict_mode)
     if return_history and return_result:
         raise ValueError("return_result cannot be combined with return_history")
 
@@ -1373,9 +1416,9 @@ def impute_mice(
 
     def _single_chain(
         seed: int,
-    ) -> Tuple[pd.DataFrame, Dict[str, List[float]]]:
+    ) -> Tuple[pd.DataFrame, Dict[str, List[float]], Dict[str, str]]:
         df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
-        imputed_array, history = _run_mice_chain(
+        imputed_array, history, fallbacks = _run_mice_chain(
             df_work=df_work,
             observed_mask_df=~original_missing_mask.loc[:, df_work.columns],
             imputation_mask_df=imputation_mask.loc[:, df_work.columns],
@@ -1386,6 +1429,7 @@ def impute_mice(
             visit_sequence=visit_sequence,
             predictor_matrix=predictor_matrix,
             bounds=bounds,
+            strict=effective_strict,
         )
         df_imputed = pd.DataFrame(
             imputed_array, index=df_norm.index, columns=df_work.columns
@@ -1397,11 +1441,28 @@ def impute_mice(
                 if len(observed) > 0:
                     result[col] = result[col].fillna(observed.mode().iloc[0])
         result = result.mask(retained_missing_mask.loc[:, result.columns])
-        return result, history
+        return result, history, fallbacks
+
+    def _report_fallbacks(chains: List[Dict[str, str]]) -> Dict[str, str]:
+        """Warn once per fallen-back column across chains; return column -> error."""
+        merged: Dict[str, str] = {}
+        for chain_fallbacks in chains:
+            for column, error in chain_fallbacks.items():
+                merged.setdefault(column, error)
+        for column, error in merged.items():
+            warnings.warn(
+                f"impute_mice: the model for column {column!r} failed ({error}) and "
+                "its missing cells were filled with the observed mean. This is not "
+                "a model-based imputation; set strict_mode=True to raise instead.",
+                UserWarning,
+                stacklevel=3,
+            )
+        return merged
 
     if return_result:
         results = [_single_chain(random_state + index) for index in range(n_imputations)]
-        frames, histories = zip(*results)
+        frames, histories, chain_fallbacks = zip(*results)
+        fallback_columns = _report_fallbacks(list(chain_fallbacks))
         methods, conditional_contract, limitation = _mice_conditional_model_contract(
             df_norm,
             estimator,
@@ -1429,34 +1490,39 @@ def impute_mice(
             {column: tuple(float(value) for value in trace) for column, trace in history.items()}
             for history in histories
         )
-        warnings = [
+        result_warnings = [
             "Convergence has not been assessed. Run mice_convergence on the "
             "returned histories before interpreting chain stability.",
         ]
         if limitation is not None:
-            warnings.append(limitation)
+            result_warnings.append(limitation)
+        for column in fallback_columns:
+            result_warnings.append(
+                f"Column {column!r} was filled with its observed mean after its "
+                "estimator failed; it is not a model-based imputation."
+            )
         return ImputationResult(
             data=data,
             histories=contract_histories,
-            warnings=tuple(warnings),
+            warnings=tuple(result_warnings),
             validation={
                 "structural_validation_passed": True,
                 "convergence_assessed": False,
+                "estimator_fallback_used": bool(fallback_columns),
                 "structural_missingness_retained": bool(
                     retained_missing_mask.any(axis=None)
                 ),
             },
         )
 
-    if n_imputations == 1:
-        frame, history = _single_chain(random_state)
-        return (frame, history) if return_history else frame
-
     results = [_single_chain(random_state + i) for i in range(n_imputations)]
+    _report_fallbacks([chain_fallbacks for _, _, chain_fallbacks in results])
+    if n_imputations == 1:
+        frame, history, _ = results[0]
+        return (frame, history) if return_history else frame
     if return_history:
-        dfs, histories = zip(*results)
-        return list(dfs), list(histories)
-    return [frame for frame, _ in results]
+        return [frame for frame, _, _ in results], [history for _, history, _ in results]
+    return [frame for frame, _, _ in results]
 
 
 def impute_pmm(

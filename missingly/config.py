@@ -46,7 +46,7 @@ class MissinglyConfig:
     strict_mode : bool
         Global default for the ``strict_mode`` parameter accepted by
         ``impute_logreg``, ``impute_polyreg``, ``impute_polr``, ``impute_rf``,
-        and ``impute_gb``. When ``True`` (the
+        ``impute_gb`` and ``impute_mice``. When ``True`` (the
         default), an estimator failure raises
         :class:`~missingly.exceptions.ImputationError` naming the column, the
         method and the underlying error. When ``False``, the failed column is
