@@ -54,6 +54,7 @@ Requires Python 3.9+ and pandas 2.0+.
 
 from __future__ import annotations
 
+import functools
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -79,56 +80,165 @@ from .impute import (
 )
 
 _SELF_PARAMETER = inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)
+_POSITIONAL = inspect.Parameter.POSITIONAL_OR_KEYWORD
+_KEYWORD_ONLY = inspect.Parameter.KEYWORD_ONLY
+_VAR_KEYWORD = inspect.Parameter.VAR_KEYWORD
+_CallArguments = Tuple[tuple, Dict[str, Any]]
+
+
+def _mirrored_signature(
+    function: Callable,
+    legacy: Tuple[str, ...],
+    extras: Dict[str, Any],
+    names: Dict[str, str],
+) -> inspect.Signature:
+    """Build the accessor signature for a wrapped *function*.
+
+    Parameters
+    ----------
+    function : callable
+        Wrapped public function; its first (DataFrame) parameter is dropped.
+    legacy : tuple of str
+        Names of parameters that v1 accessor methods accepted positionally,
+        in their v1 order.  They become positional-or-keyword.
+    extras : dict
+        v1 parameters the function does not have, ``{name: default}``; used
+        for the names in *legacy* that are not parameters of *function*.
+    names : dict
+        Deliberate renames ``{wrapped_name: accessor_name}``.
+
+    Returns
+    -------
+    inspect.Signature
+        Signature with ``self`` first.
+
+    Examples
+    --------
+    >>> def target(df, column, *, ax=None, flag=True): ...
+    >>> str(_mirrored_signature(target, ("ax",), {}, {}))
+    '(self, column, ax=None, *, flag=True)'
+    """
+    signature = inspect.signature(function)
+    params = {
+        names.get(p.name, p.name): p.replace(name=names.get(p.name, p.name))
+        for p in list(signature.parameters.values())[1:]
+    }
+    promoted = []
+    for name in legacy:
+        if name in params:
+            promoted.append(params.pop(name).replace(kind=_POSITIONAL))
+        else:
+            promoted.append(inspect.Parameter(name, _POSITIONAL, default=extras[name]))
+    ordered = [p for p in params.values() if p.kind is _POSITIONAL]
+    ordered += promoted
+    ordered += [p for p in params.values() if p.kind is _KEYWORD_ONLY]
+    ordered += [p for p in params.values() if p.kind is _VAR_KEYWORD]
+    return signature.replace(parameters=[_SELF_PARAMETER, *ordered])
 
 
 def _mirror(
     function: Callable,
     *,
+    legacy: Tuple[str, ...] = (),
+    extras: Optional[Dict[str, Any]] = None,
     rename: Optional[Dict[str, str]] = None,
+    adapt: Optional[Callable[[tuple, Dict[str, Any]], _CallArguments]] = None,
 ) -> Callable[[Callable], Callable]:
     """Give an accessor method the signature of the function it wraps.
 
     The wrapped function's first (DataFrame) parameter is replaced by
-    ``self``; every other parameter keeps its name, kind and default, except
-    for the explicit renames in *rename*.
+    ``self``; every other parameter keeps its name and default.  Parameters
+    that the v1 accessor took positionally (*legacy*) stay positional, in
+    their v1 order, even where the function makes them keyword-only, so
+    every v1 call form keeps working.  The decorated method receives every
+    explicitly given argument by keyword.
 
     Parameters
     ----------
     function : callable
         Public function wrapped by the accessor method.
+    legacy : tuple of str, optional
+        v1 positional parameter order (see :func:`_mirrored_signature`).
+    extras : dict, optional
+        v1 parameters that the function does not have, ``{name: default}``.
     rename : dict of str to str, optional
         Deliberate parameter renames, ``{wrapped_name: accessor_name}``.
+    adapt : callable, optional
+        Hook ``(args, kwargs) -> (args, kwargs)`` that maps v1 call forms
+        onto the new signature before binding.
 
     Returns
     -------
     callable
-        Decorator that sets ``__signature__`` on the accessor method.
+        Decorator that returns the signature-mirroring wrapper.
 
     Examples
     --------
     >>> import inspect
     >>> def target(df, *, flag=True): ...
     >>> @_mirror(target)
-    ... def method(self, *args, **kwargs): ...
+    ... def method(self, **kwargs):
+    ...     return kwargs
     >>> str(inspect.signature(method))
     '(self, *, flag=True)'
+    >>> method(None, flag=False)
+    {'flag': False}
     """
-    names = rename or {}
+    renames = rename or {}
+    original = {new: old for old, new in renames.items()}
 
     def decorator(method: Callable) -> Callable:
-        signature = inspect.signature(function)
-        parameters = [
-            parameter.replace(name=names.get(parameter.name, parameter.name))
-            for parameter in list(signature.parameters.values())[1:]
-        ]
-        setattr(
-            method,
-            "__signature__",
-            signature.replace(parameters=[_SELF_PARAMETER, *parameters]),
-        )
-        return method
+        signature = _mirrored_signature(function, legacy, extras or {}, renames)
+
+        @functools.wraps(method)
+        def wrapper(self, *args: Any, **kwargs: Any):
+            if adapt is not None:
+                args, kwargs = adapt(args, kwargs)
+            bound = signature.bind(self, *args, **kwargs)
+            call: Dict[str, Any] = {}
+            for name, value in list(bound.arguments.items())[1:]:
+                if signature.parameters[name].kind is _VAR_KEYWORD:
+                    call.update(value)
+                else:
+                    call[original.get(name, name)] = value
+            return method(self, **call)
+
+        setattr(wrapper, "__signature__", signature)
+        return wrapper
 
     return decorator
+
+
+def _legacy_impute_dist_call(args: tuple, kwargs: Dict[str, Any]) -> _CallArguments:
+    """Map the v1 call ``vis_impute_dist(imputed, ax, column=...)`` to the new signature.
+
+    Parameters
+    ----------
+    args : tuple
+        Positional arguments of the accessor call.
+    kwargs : dict
+        Keyword arguments of the accessor call.
+
+    Returns
+    -------
+    tuple
+        ``(args, kwargs)`` with ``column`` moved to the second positional slot
+        when the second positional argument is not a column name.
+
+    Examples
+    --------
+    >>> axes = object()
+    >>> _legacy_impute_dist_call(("imp", axes), {"column": "a"}) == (
+    ...     ("imp", "a", axes), {})
+    True
+    >>> _legacy_impute_dist_call(("imp", "a"), {})
+    (('imp', 'a'), {})
+    """
+    if len(args) >= 2 and "column" in kwargs and not isinstance(args[1], str):
+        rest = dict(kwargs)
+        column = rest.pop("column")
+        return (args[0], column, args[1], *args[2:]), rest
+    return args, kwargs
 
 
 def _warn_ignored(kwargs: Dict[str, Any], name: str, method: str, reason: str) -> None:
@@ -162,7 +272,7 @@ def _warn_ignored(kwargs: Dict[str, Any], name: str, method: str, reason: str) -
         f"`DataFrame.miss.{method}({name}=...)` is deprecated and has no effect: "
         f"{reason}. The argument will be removed in a future release.",
         FutureWarning,
-        stacklevel=3,
+        stacklevel=4,
     )
 
 
@@ -415,12 +525,12 @@ class MissinglyAccessor:
         return imputer(self._df, **kwargs)
 
     @_mirror(_impute.impute_mean)
-    def impute_mean(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def impute_mean(self, **kwargs: Any) -> pd.DataFrame:
         """Impute missing values with column means.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_mean` (for
             example ``numeric_only``), without the DataFrame.
 
@@ -435,15 +545,15 @@ class MissinglyAccessor:
         >>> float(pd.DataFrame({"a": [1.0, None, 3.0]}).miss.impute_mean().loc[1, "a"])
         2.0
         """
-        return impute_mean(self._df, *args, **kwargs)
+        return impute_mean(self._df, **kwargs)
 
     @_mirror(_impute.impute_median)
-    def impute_median(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def impute_median(self, **kwargs: Any) -> pd.DataFrame:
         """Impute missing values with column medians.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_median` (for
             example ``numeric_only``), without the DataFrame.
 
@@ -459,15 +569,15 @@ class MissinglyAccessor:
         >>> float(frame.miss.impute_median().loc[1, "a"])
         3.0
         """
-        return impute_median(self._df, *args, **kwargs)
+        return impute_median(self._df, **kwargs)
 
     @_mirror(_impute.impute_mode)
-    def impute_mode(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def impute_mode(self, **kwargs: Any) -> pd.DataFrame:
         """Impute missing values with column modes.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_mode`, without
             the DataFrame.
 
@@ -483,15 +593,15 @@ class MissinglyAccessor:
         >>> frame.miss.impute_mode().loc[2, "a"]
         'x'
         """
-        return impute_mode(self._df, *args, **kwargs)
+        return impute_mode(self._df, **kwargs)
 
     @_mirror(_impute.impute_knn)
-    def impute_knn(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def impute_knn(self, **kwargs: Any) -> pd.DataFrame:
         """Impute missing values using k-nearest neighbours.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_knn` (for
             example ``n_neighbors``, ``metric``), without the DataFrame.
 
@@ -507,15 +617,15 @@ class MissinglyAccessor:
         >>> int(frame.miss.impute_knn(n_neighbors=2).isna().sum().sum())
         0
         """
-        return impute_knn(self._df, *args, **kwargs)
+        return impute_knn(self._df, **kwargs)
 
     @_mirror(_impute.impute_mice)
-    def impute_mice(self, *args: Any, **kwargs: Any):
+    def impute_mice(self, **kwargs: Any):
         """Impute missing values using MICE (iterative imputer).
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_mice` (for
             example ``max_iter``, ``n_imputations``, ``return_history``),
             without the DataFrame.
@@ -533,15 +643,15 @@ class MissinglyAccessor:
         >>> int(frame.miss.impute_mice(max_iter=2).isna().sum().sum())
         0
         """
-        return impute_mice(self._df, *args, **kwargs)
+        return impute_mice(self._df, **kwargs)
 
     @_mirror(_impute.impute_rf)
-    def impute_rf(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def impute_rf(self, **kwargs: Any) -> pd.DataFrame:
         """Impute missing values using a random-forest model.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_rf` (for
             example ``max_iter``, ``random_state``), without the DataFrame.
 
@@ -557,15 +667,15 @@ class MissinglyAccessor:
         >>> int(frame.miss.impute_rf(n_estimators=5).isna().sum().sum())
         0
         """
-        return impute_rf(self._df, *args, **kwargs)
+        return impute_rf(self._df, **kwargs)
 
     @_mirror(_impute.impute_gb)
-    def impute_gb(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def impute_gb(self, **kwargs: Any) -> pd.DataFrame:
         """Impute missing values using a gradient-boosting model.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.impute.impute_gb` (for
             example ``max_iter``, ``random_state``), without the DataFrame.
 
@@ -581,7 +691,7 @@ class MissinglyAccessor:
         >>> int(frame.miss.impute_gb(n_estimators=5).isna().sum().sum())
         0
         """
-        return impute_gb(self._df, *args, **kwargs)
+        return impute_gb(self._df, **kwargs)
 
     # ------------------------------------------------------------------
     # Summary — return natural output type (not DataFrame)
@@ -919,13 +1029,16 @@ class MissinglyAccessor:
     # Visualisation — return Axes (or dict of Axes)
     # ------------------------------------------------------------------
 
-    @_mirror(visualise.matrix)
-    def matrix(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.matrix,
+        legacy=("ax", "missing_values"),
+    )
+    def matrix(self, **kwargs: Any):
         """Render a missingness matrix plot.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.matrix`, without
             the DataFrame.
 
@@ -938,15 +1051,18 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.matrix()
         """
-        return visualise.matrix(self._df, *args, **kwargs)
+        return visualise.matrix(self._df, **kwargs)
 
-    @_mirror(visualise.bar)
-    def bar(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.bar,
+        legacy=("ax", "missing_values"),
+    )
+    def bar(self, **kwargs: Any):
         """Render a bar chart of missing counts per column.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.bar`, without the
             DataFrame.
 
@@ -959,15 +1075,18 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.bar()
         """
-        return visualise.bar(self._df, *args, **kwargs)
+        return visualise.bar(self._df, **kwargs)
 
-    @_mirror(visualise.upset)
-    def upset(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.upset,
+        legacy=("missing_values",),
+    )
+    def upset(self, **kwargs: Any):
         """Render an UpSet plot of missing value combinations.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.upset`, without
             the DataFrame.
 
@@ -982,15 +1101,18 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1, np.nan, 3], "b": [np.nan, 2, 3]})
         >>> panels = frame.miss.upset()
         """
-        return visualise.upset(self._df, *args, **kwargs)
+        return visualise.upset(self._df, **kwargs)
 
-    @_mirror(visualise.heatmap)
-    def heatmap(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.heatmap,
+        legacy=("ax", "missing_values"),
+    )
+    def heatmap(self, **kwargs: Any):
         """Render a nullity-correlation heatmap.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.heatmap`, without
             the DataFrame.
 
@@ -1004,15 +1126,19 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1, np.nan, 3, 4], "b": [np.nan, 2, 3, np.nan]})
         >>> ax = frame.miss.heatmap()
         """
-        return visualise.heatmap(self._df, *args, **kwargs)
+        return visualise.heatmap(self._df, **kwargs)
 
-    @_mirror(visualise.vis_miss)
-    def vis_miss(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.vis_miss,
+        legacy=("ax", "missing_values", "show_pct", "cluster"),
+        extras={"show_pct": True},
+    )
+    def vis_miss(self, **kwargs: Any):
         """Render an annotated missingness overview matrix.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.vis_miss`, without
             the DataFrame.  The v1 ``show_pct`` argument is deprecated: it
             only has an effect for the interactive (Plotly) backend and is
@@ -1040,15 +1166,18 @@ class MissinglyAccessor:
                 "vis_miss",
                 "the matplotlib backend does not draw percentages",
             )
-        return visualise.vis_miss(self._df, *args, **kwargs)
+        return visualise.vis_miss(self._df, **kwargs)
 
-    @_mirror(visualise.miss_var_pct)
-    def miss_var_pct(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.miss_var_pct,
+        legacy=("ax", "missing_values", "sort"),
+    )
+    def miss_var_pct(self, **kwargs: Any):
         """Render a horizontal bar chart of missingness % per variable.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.miss_var_pct`,
             without the DataFrame.
 
@@ -1061,15 +1190,19 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.miss_var_pct()
         """
-        return visualise.miss_var_pct(self._df, *args, **kwargs)
+        return visualise.miss_var_pct(self._df, **kwargs)
 
-    @_mirror(visualise.miss_cluster)
-    def miss_cluster(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.miss_cluster,
+        legacy=("ax", "missing_values", "method"),
+        extras={"method": "ward"},
+    )
+    def miss_cluster(self, **kwargs: Any):
         """Render a clustered missingness heatmap.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.miss_cluster`,
             without the DataFrame.  The v1 ``method`` argument is deprecated:
             the clustering always uses Ward linkage, so it is ignored with a
@@ -1096,15 +1229,18 @@ class MissinglyAccessor:
             "miss_cluster",
             "the clustering always uses Ward linkage",
         )
-        return visualise.miss_cluster(self._df, *args, **kwargs)
+        return visualise.miss_cluster(self._df, **kwargs)
 
-    @_mirror(visualise.miss_which)
-    def miss_which(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.miss_which,
+        legacy=("ax", "missing_values"),
+    )
+    def miss_which(self, **kwargs: Any):
         """Render a binary tile plot showing which columns have missing data.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.miss_which`,
             without the DataFrame.
 
@@ -1117,15 +1253,19 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.miss_which()
         """
-        return visualise.miss_which(self._df, *args, **kwargs)
+        return visualise.miss_which(self._df, **kwargs)
 
-    @_mirror(visualise.scatter_miss)
-    def scatter_miss(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.scatter_miss,
+        legacy=("ax", "missing_values"),
+        extras={"ax": None, "missing_values": None},
+    )
+    def scatter_miss(self, **kwargs: Any):
         """Render a scatter plot highlighting missing values.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.scatter_miss`
             (``x``, ``y`` and plot options), without the DataFrame.
 
@@ -1139,15 +1279,18 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1, np.nan, 3, 4], "b": [1, 2, np.nan, 4]})
         >>> ax = frame.miss.scatter_miss("a", "b")
         """
-        return visualise.scatter_miss(self._df, *args, **kwargs)
+        return visualise.scatter_miss(self._df, **kwargs)
 
-    @_mirror(visualise.miss_case)
-    def miss_case(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.miss_case,
+        legacy=("ax", "missing_values"),
+    )
+    def miss_case(self, **kwargs: Any):
         """Render a bar chart of missing values per row.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.miss_case`,
             without the DataFrame.
 
@@ -1160,15 +1303,20 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.miss_case()
         """
-        return visualise.miss_case(self._df, *args, **kwargs)
+        return visualise.miss_case(self._df, **kwargs)
 
-    @_mirror(visualise.vis_impute_dist, rename={"df_after": "imputed_df"})
-    def vis_impute_dist(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.vis_impute_dist,
+        legacy=("ax",),
+        rename={"df_after": "imputed_df"},
+        adapt=_legacy_impute_dist_call,
+    )
+    def vis_impute_dist(self, **kwargs: Any):
         """Compare distributions before and after imputation.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.vis_impute_dist`
             without the "before" DataFrame: ``imputed_df`` (the "after"
             DataFrame, ``df_after`` in the function), the required
@@ -1184,17 +1332,15 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1.0, np.nan, 3.0, 4.0]})
         >>> ax = frame.miss.vis_impute_dist(frame.miss.impute_mean(), "a")
         """
-        if "imputed_df" in kwargs:
-            kwargs["df_after"] = kwargs.pop("imputed_df")
-        return visualise.vis_impute_dist(self._df, *args, **kwargs)
+        return visualise.vis_impute_dist(self._df, **kwargs)
 
     @_mirror(visualise.vis_miss_fct)
-    def vis_miss_fct(self, *args: Any, **kwargs: Any):
+    def vis_miss_fct(self, **kwargs: Any):
         """Render missingness by a categorical factor variable.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.vis_miss_fct`
             (the required ``fct`` and plot options), without the DataFrame.
             The function creates its own facet axes, so it has no ``ax``.
@@ -1210,15 +1356,18 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1, np.nan, 3, 4], "g": ["u", "u", "v", "v"]})
         >>> ax = frame.miss.vis_miss_fct("g")
         """
-        return visualise.vis_miss_fct(self._df, *args, **kwargs)
+        return visualise.vis_miss_fct(self._df, **kwargs)
 
-    @_mirror(visualise.vis_miss_cumsum_var)
-    def vis_miss_cumsum_var(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.vis_miss_cumsum_var,
+        legacy=("ax", "missing_values"),
+    )
+    def vis_miss_cumsum_var(self, **kwargs: Any):
         """Render cumulative missing count per variable.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as
             :func:`missingly.visualise.vis_miss_cumsum_var`, without the
             DataFrame.
@@ -1232,15 +1381,18 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.vis_miss_cumsum_var()
         """
-        return visualise.vis_miss_cumsum_var(self._df, *args, **kwargs)
+        return visualise.vis_miss_cumsum_var(self._df, **kwargs)
 
-    @_mirror(visualise.vis_miss_cumsum_case)
-    def vis_miss_cumsum_case(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.vis_miss_cumsum_case,
+        legacy=("ax", "missing_values"),
+    )
+    def vis_miss_cumsum_case(self, **kwargs: Any):
         """Render cumulative missing count per row.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as
             :func:`missingly.visualise.vis_miss_cumsum_case`, without the
             DataFrame.
@@ -1254,15 +1406,18 @@ class MissinglyAccessor:
         >>> import numpy as np, pandas as pd, missingly
         >>> ax = pd.DataFrame({"a": [1, np.nan, 3]}).miss.vis_miss_cumsum_case()
         """
-        return visualise.vis_miss_cumsum_case(self._df, *args, **kwargs)
+        return visualise.vis_miss_cumsum_case(self._df, **kwargs)
 
-    @_mirror(visualise.vis_miss_span)
-    def vis_miss_span(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.vis_miss_span,
+        legacy=("ax", "missing_values"),
+    )
+    def vis_miss_span(self, **kwargs: Any):
         """Render rolling missing count for a single variable.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.vis_miss_span`:
             the required ``column``, the window size ``span_every`` (default
             20) or its alias ``span``, and plot options.
@@ -1277,15 +1432,18 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1, np.nan, 3, 4, np.nan, 6]})
         >>> ax = frame.miss.vis_miss_span("a", span_every=3)
         """
-        return visualise.vis_miss_span(self._df, *args, **kwargs)
+        return visualise.vis_miss_span(self._df, **kwargs)
 
-    @_mirror(visualise.vis_parallel_coords)
-    def vis_parallel_coords(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.vis_parallel_coords,
+        legacy=("missing_values",),
+    )
+    def vis_parallel_coords(self, **kwargs: Any):
         """Render a parallel coordinates missingness plot.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as
             :func:`missingly.visualise.vis_parallel_coords`, without the
             DataFrame.
@@ -1300,15 +1458,18 @@ class MissinglyAccessor:
         >>> frame = pd.DataFrame({"a": [1, np.nan, 3], "b": [4.0, 5.0, 6.0]})
         >>> ax = frame.miss.vis_parallel_coords()
         """
-        return visualise.vis_parallel_coords(self._df, *args, **kwargs)
+        return visualise.vis_parallel_coords(self._df, **kwargs)
 
-    @_mirror(visualise.dendrogram)
-    def dendrogram(self, *args: Any, **kwargs: Any):
+    @_mirror(
+        visualise.dendrogram,
+        legacy=("ax", "missing_values", "method"),
+    )
+    def dendrogram(self, **kwargs: Any):
         """Render a dendrogram clustering variables by nullity correlation.
 
         Parameters
         ----------
-        *args, **kwargs
+        **kwargs
             Same parameters as :func:`missingly.visualise.dendrogram`
             (``method`` is the linkage method, default ``"average"``),
             without the DataFrame.
@@ -1324,4 +1485,4 @@ class MissinglyAccessor:
         ...                       "c": [1, 2, np.nan, np.nan]})
         >>> ax = frame.miss.dendrogram(method="complete")
         """
-        return visualise.dendrogram(self._df, *args, **kwargs)
+        return visualise.dendrogram(self._df, **kwargs)

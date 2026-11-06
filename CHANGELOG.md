@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (F-209, F-210). Accessor methods now mirror the signature of the function
   they wrap, so parameters such as ``missing_values`` and the ``mcar_test``
   tuning arguments (``max_iter``, ``tol``, ``ridge``) are forwarded (F-205);
-  plot options that are keyword-only in the functions are keyword-only on the
-  accessor too. ``DataFrame.miss.mar_mnar_test`` now raises for a partly
+  every v1 positional call form (for example ``df.miss.matrix(ax)``) keeps
+  working. ``DataFrame.miss.mar_mnar_test`` now raises for a partly
   missing target exactly like ``missingness_association_test`` instead of
   silently dropping rows (F-070, F-206, F-207). ``dendrogram`` gained an
   honoured ``method`` linkage argument (default ``"average"``, the previous
