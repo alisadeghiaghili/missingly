@@ -88,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to ``LICENSE`` and ``NOTICE``. The sdist no longer contains a partial
   ``tests/`` tree that could not run without ``conftest.py`` and the test
   fixtures (``MANIFEST.in`` prunes it); run the tests from a git checkout. A
-  packaging contract test builds both artefacts and checks their contents
+  packaging contract test builds both artefacts and checks their contents;
+  the ``test`` extra therefore installs ``build`` and ``setuptools>=77.0.0``
   (WP-01; F-153, F-383).
 
 ### Added
