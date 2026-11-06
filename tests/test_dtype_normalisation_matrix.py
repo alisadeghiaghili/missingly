@@ -21,7 +21,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.exceptions import InsufficientDataError, MissinglyError
+from missingly.exceptions import (
+    InsufficientDataError,
+    MissinglyError,
+    UnsupportedDtypeError,
+)
 from missingly.impute import (
     FittedImputer,
     impute_gb,
@@ -144,7 +148,9 @@ def _targets(frame: pd.DataFrame) -> List[str]:
 
 def _predictor_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     k = len(frame.columns)
-    return pd.DataFrame(1 - np.eye(k, dtype=int), index=frame.columns, columns=frame.columns)
+    return pd.DataFrame(
+        1 - np.eye(k, dtype=int), index=frame.columns, columns=frame.columns
+    )
 
 
 def _fitted(strategy: str) -> Callable[[pd.DataFrame], pd.DataFrame]:
@@ -185,15 +191,37 @@ IMPUTERS: Dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
 }
 
 MODEL_IMPUTERS = {
-    "knn", "knn_mixed", "mice", "mice_history", "mice_where", "mice_bounds",
-    "mice_visit", "mice_predictors", "mice_result", "rf", "gb",
+    "knn",
+    "knn_mixed",
+    "mice",
+    "mice_history",
+    "mice_where",
+    "mice_bounds",
+    "mice_visit",
+    "mice_predictors",
+    "mice_result",
+    "rf",
+    "gb",
 }
 CONDITIONAL_IMPUTERS = {"logreg", "polyreg", "polr"}
-REAL_VALUED_IMPUTERS = {"mean", "median", "fitted_mean", "fitted_median", "fitted_split"}
+# logreg only targets two-level columns, so the ten-level subject is never its target.
+MULTILEVEL_CONDITIONAL_IMPUTERS = {"polyreg", "polr"}
+REAL_VALUED_IMPUTERS = {
+    "mean",
+    "median",
+    "fitted_mean",
+    "fitted_median",
+    "fitted_split",
+}
 KEEP_COLUMN_ORDER = set(IMPUTERS) - MODEL_IMPUTERS | {"mice_result"}
 
 CASES = [
-    pytest.param(imputer, dtype, with_missing, id=f"{imputer}-{dtype}-{'na' if with_missing else 'full'}")
+    pytest.param(
+        imputer,
+        dtype,
+        with_missing,
+        id=f"{imputer}-{dtype}-{'na' if with_missing else 'full'}",
+    )
     for imputer in IMPUTERS
     for dtype, can_hold_na in SUBJECT_DTYPES.items()
     for with_missing in ((False, True) if can_hold_na else (False,))
@@ -201,13 +229,19 @@ CASES = [
 
 
 def _expects_unsupported(imputer: str, dtype: str, with_missing: bool) -> bool:
-    return imputer in MODEL_IMPUTERS and dtype in OPAQUE_DTYPES and with_missing
+    refuses_opaque = MODEL_IMPUTERS | MULTILEVEL_CONDITIONAL_IMPUTERS
+    return imputer in refuses_opaque and dtype in OPAQUE_DTYPES and with_missing
 
 
-def _expected_dtype(imputer: str, original) -> object:
-    if imputer in REAL_VALUED_IMPUTERS and str(original) == "Int64":
-        return pd.Float64Dtype()
-    return original
+def _expected_dtype(imputer: str, original, with_missing: bool) -> object:
+    """Dtype rule: a mean / median keeps ``Int64`` only if the statistic is integral."""
+    if not (
+        with_missing and imputer in REAL_VALUED_IMPUTERS and str(original) == "Int64"
+    ):
+        return original
+    observed = [v for i, v in enumerate(_INTS) if i not in MISSING_POSITIONS]
+    statistic = np.median(observed) if "median" in imputer else np.mean(observed)
+    return original if float(statistic).is_integer() else pd.Float64Dtype()
 
 
 def _run(imputer: str, frame: pd.DataFrame) -> Optional[pd.DataFrame]:
@@ -222,7 +256,7 @@ def test_imputer_dtype_matrix(imputer: str, dtype: str, with_missing: bool) -> N
     if _expects_unsupported(imputer, dtype, with_missing):
         with pytest.raises(MissinglyError) as excinfo:
             _run(imputer, frame)
-        assert type(excinfo.value).__name__ == "UnsupportedDtypeError"
+        assert isinstance(excinfo.value, UnsupportedDtypeError)
         assert "s" in str(excinfo.value)
         pd.testing.assert_frame_equal(frame, original)
         return
@@ -245,10 +279,12 @@ def test_imputer_dtype_matrix(imputer: str, dtype: str, with_missing: bool) -> N
 
     assert not result.isna().any().any()
     assert result["x"].dtype == frame["x"].dtype
-    assert result["s"].dtype == _expected_dtype(imputer, frame["s"].dtype)
+    assert result["s"].dtype == _expected_dtype(imputer, frame["s"].dtype, with_missing)
 
 
-@pytest.mark.parametrize("imputer", sorted(MODEL_IMPUTERS | {"pmm", "mean", "median", "mode"}))
+@pytest.mark.parametrize(
+    "imputer", sorted(MODEL_IMPUTERS | {"pmm", "mean", "median", "mode"})
+)
 @pytest.mark.parametrize("dtype", ["Int64", "Float64"])
 def test_nullable_frame_matches_float64_frame(imputer: str, dtype: str) -> None:
     nullable = make_frame(dtype, True)[["x", "y", "s"]]
@@ -264,7 +300,9 @@ def test_nullable_frame_matches_float64_frame(imputer: str, dtype: str) -> None:
     pd.testing.assert_frame_equal(got_values, want, check_exact=True)
 
 
-@pytest.mark.parametrize("imputer", sorted(set(IMPUTERS) - CONDITIONAL_IMPUTERS - {"mode"}))
+@pytest.mark.parametrize(
+    "imputer", sorted(set(IMPUTERS) - CONDITIONAL_IMPUTERS - {"mode"})
+)
 @pytest.mark.parametrize("dtype", ["float32", "Int64", "string", "category"])
 def test_all_missing_column_raises_insufficient_data(imputer: str, dtype: str) -> None:
     frame = make_frame(dtype, False)
@@ -289,7 +327,58 @@ def test_single_observed_value_is_defined(imputer: str) -> None:
     except MissinglyError:
         return  # a clear, typed refusal is an accepted outcome
     assert not result.isna().any().any()
-    np.testing.assert_allclose(result["s"].to_numpy(dtype="float64"), 4.0, atol=1e-3)
+    if not imputer.startswith(
+        "mice"
+    ):  # chained-equation draws extrapolate from one row
+        np.testing.assert_allclose(
+            result["s"].to_numpy(dtype="float64"), 4.0, atol=1e-3
+        )
+
+
+@pytest.mark.parametrize(
+    ("imputer", "dates"),
+    [
+        (
+            impute_logreg,
+            [
+                "2024-01-01",
+                None,
+                "2024-01-01",
+                "2024-01-02",
+                "2024-01-02",
+                "2024-01-01",
+            ],
+        ),
+        (
+            impute_polyreg,
+            [
+                "2024-01-01",
+                None,
+                "2024-01-03",
+                "2024-01-02",
+                "2024-01-03",
+                "2024-01-01",
+            ],
+        ),
+        (
+            impute_polr,
+            [
+                "2024-01-01",
+                None,
+                "2024-01-03",
+                "2024-01-02",
+                "2024-01-03",
+                "2024-01-01",
+            ],
+        ),
+    ],
+)
+def test_conditional_imputers_refuse_incomplete_opaque_targets(imputer, dates) -> None:
+    frame = pd.DataFrame(
+        {"x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "when": pd.to_datetime(dates)}
+    )
+    with pytest.raises(UnsupportedDtypeError, match="'when'"):
+        imputer(frame)
 
 
 def test_mixed_object_column_is_mode_filled_by_simple_imputers() -> None:

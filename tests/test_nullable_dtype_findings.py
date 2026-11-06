@@ -33,7 +33,9 @@ def _nullable_frame(dtype: str) -> pd.DataFrame:
 
 @pytest.mark.parametrize("dtype", ["Int64", "Float64"])
 @pytest.mark.parametrize("imputer", [impute_rf, impute_gb])
-def test_f051_f058_f093_forest_imputers_accept_nullable_numeric_columns(imputer, dtype) -> None:
+def test_f051_f058_f093_forest_imputers_accept_nullable_numeric_columns(
+    imputer, dtype
+) -> None:
     # Reproduced: IndexError from ``X_full[observed_mask]`` for Int64 and Float64.
     result = imputer(_nullable_frame(dtype), n_estimators=3, random_state=0)
     assert not result.isna().any().any()
@@ -48,7 +50,9 @@ def test_f058_boolean_column_is_not_affected(imputer) -> None:
     frame = pd.DataFrame(
         {
             "y": np.arange(8.0),
-            "b": pd.array([True, False, None, True, False, True, False, True], dtype="boolean"),
+            "b": pd.array(
+                [True, False, None, True, False, True, False, True], dtype="boolean"
+            ),
         }
     )
     result = imputer(frame, n_estimators=3, random_state=0)
@@ -59,7 +63,9 @@ def test_f058_boolean_column_is_not_affected(imputer) -> None:
 def test_f051_f020_mice_history_accepts_nullable_integers() -> None:
     # Reproduced: TypeError (float() of pd.NA) in ``_run_mice_with_history``.
     frame = _nullable_frame("Int64")
-    result, history = impute_mice(frame, max_iter=2, random_state=0, return_history=True)
+    result, history = impute_mice(
+        frame, max_iter=2, random_state=0, return_history=True
+    )
     assert result["x"].dtype == "Int64"
     assert not result.isna().any().any()
     assert set(history) == {"x", "y"}

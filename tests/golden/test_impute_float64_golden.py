@@ -97,7 +97,10 @@ CASES: Dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
 
 
 def _encode(frame: pd.DataFrame) -> dict:
-    payload: dict = {"columns": list(frame.columns), "dtypes": [str(d) for d in frame.dtypes]}
+    payload: dict = {
+        "columns": list(frame.columns),
+        "dtypes": [str(d) for d in frame.dtypes],
+    }
     values = {}
     for column in frame.columns:
         series = frame[column]
@@ -126,7 +129,9 @@ def golden() -> dict:
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_float64_output_is_bit_identical_to_recorded_golden(name: str, golden: dict) -> None:
+def test_float64_output_is_bit_identical_to_recorded_golden(
+    name: str, golden: dict
+) -> None:
     result = CASES[name](build_frame())
     expected = _decode(golden[name])
     pd.testing.assert_frame_equal(
