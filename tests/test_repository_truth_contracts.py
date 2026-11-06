@@ -34,19 +34,41 @@ def _read(relative_path: str) -> str:
     return (REPOSITORY_ROOT / relative_path).read_text(encoding="utf-8")
 
 
-def test_skill_describes_the_supported_runtime_and_documentation_contract() -> None:
-    """Keep the AI context aligned with packaged Python and docstring policy."""
-    skill = _read("SKILL_MISSINGLY.md")
+def _coverage_gate() -> int:
+    """Return the enforced coverage threshold from ``pyproject.toml``.
 
-    assert "**Target Python**: 3.9+" in skill
-    assert "Parameters, Returns, Examples" in skill
-    assert "**92.50% (3846/4158)**" in skill
-    assert "coverage-py312" in skill
+    Returns
+    -------
+    int
+        The ``[tool.coverage.report] fail_under`` value.
+
+    Examples
+    --------
+    >>> _coverage_gate() > 0
+    True
+    """
+    from tests.test_packaging_contract import _pyproject
+
+    pyproject = _pyproject()
+    assert pyproject["tool"]["coverage"]["run"]["branch"] is True
+    return int(pyproject["tool"]["coverage"]["report"]["fail_under"])
 
 
-def test_skill_only_names_supported_accessor_and_imputation_apis() -> None:
-    """Reject stale API names that would cause generated user code to fail."""
-    skill = _read("SKILL_MISSINGLY.md")
+def test_contributing_guide_states_the_runtime_and_documentation_contract() -> None:
+    """Keep contributor policy aligned with packaged Python and docstring rules."""
+    contributing = _read("CONTRIBUTING.md")
+    gate = _coverage_gate()
+
+    assert "**Target Python**: 3.9+" in contributing
+    assert "Parameters, Returns, Examples" in contributing
+    assert f"currently {gate}% line and branch coverage" in contributing
+    assert "`fail_under`" in contributing
+    assert "`pyproject.toml`" in contributing
+
+
+def test_contributing_guide_only_names_supported_accessor_and_imputation_apis() -> None:
+    """Reject stale API names in contributor-facing examples."""
+    guidance = _read("CONTRIBUTING.md") + _read("README.md")
 
     for unsupported in (
         "df.miss.summary()",
@@ -67,17 +89,23 @@ def test_skill_only_names_supported_accessor_and_imputation_apis() -> None:
         "MissinglyReport",
         "TimeSeriesMissingnessAnalyzer",
     ):
-        assert unsupported not in skill
+        assert unsupported not in guidance
 
-    assert "df.miss.impute(strategy=\"mean\")" in skill
-    assert "frac=0.2" in skill
-    assert "from missingly.report import create_report" in skill
-    assert "from missingly.timeseries import gap_table, miss_ts_summary, vis_ts_miss, impute_ts" in skill
+    contributing = _read("CONTRIBUTING.md")
+    assert 'df.miss.impute(strategy="mean")' in contributing
+    assert "frac=0.2" in contributing
+    assert "from missingly.report import create_report" in contributing
+    assert (
+        "from missingly.timeseries import gap_table, miss_ts_summary, vis_ts_miss, impute_ts"
+        in contributing
+    )
 
 
-def test_skill_only_documents_real_domain_exceptions_and_maturity() -> None:
+def test_contributing_guide_only_documents_real_domain_exceptions_and_maturity() -> (
+    None
+):
     """Reject fictional exception names and unverified maturity claims."""
-    skill = _read("SKILL_MISSINGLY.md")
+    guidance = _read("CONTRIBUTING.md") + _read("CONVENTIONS.md")
 
     for stale_claim in (
         "production-grade Python package",
@@ -87,8 +115,9 @@ def test_skill_only_documents_real_domain_exceptions_and_maturity() -> None:
         "requirements.txt          # pinned dependencies",
         "MCAR/MAR/MNAR tests, Little's test, etc.",
     ):
-        assert stale_claim not in skill
+        assert stale_claim not in guidance
 
+    contributing = _read("CONTRIBUTING.md")
     for public_exception in (
         "MissinglyError",
         "ImputationError",
@@ -97,7 +126,7 @@ def test_skill_only_documents_real_domain_exceptions_and_maturity() -> None:
         "MissingColumnError",
         "ConfigurationError",
     ):
-        assert f"`{public_exception}`" in skill
+        assert f"`{public_exception}`" in contributing
 
 
 def test_readme_time_series_example_matches_the_current_return_schema() -> None:
@@ -142,24 +171,29 @@ def test_translated_readmes_match_time_series_and_mixed_knn_contracts() -> None:
         assert 'metric="mixed"' in readme
 
     assert "Python-Version:** 3.9" in german
-    assert "lehnt `metric=\"mixed\"` ab" in german
+    assert 'lehnt `metric="mixed"` ab' in german
     assert "۳.۹ و بالاتر" in persian
     assert "رد می‌کند" in persian
 
 
-def test_instruction_files_and_conventions_publish_current_verified_status() -> None:
-    """Prevent stale development instructions from overriding source truth."""
-    instructions = _read("instructions.md")
-    developer_skill = _read("missingly-dev-skills.md")
+def test_conventions_and_contributing_publish_current_verified_status() -> None:
+    """Prevent stale status text from overriding the enforced source of truth."""
+    contributing = _read("CONTRIBUTING.md")
     conventions = _read("CONVENTIONS.md")
+    gate = _coverage_gate()
+    stated_gate = f"currently {gate}% line and branch coverage"
 
-    assert "Target Python 3.9+" in instructions
-    assert "NumPy-style docstrings" in instructions
-    assert "92.50%, 3846/4158" in instructions
-    assert "Python 3.9+" in developer_skill
-    assert "92.50% (3846/4158)" in developer_skill
-    assert "**92.50%\n  (3846/4158)**" in conventions
-    assert "92.50% (3846/4158)" in conventions
+    assert "Target Python 3.9+" in contributing
+    assert "NumPy-style docstrings" in contributing
+    assert stated_gate in contributing
+    assert stated_gate in conventions
+    for document in ("README.md", "README_DE.md", "README_FA.md", "CHANGELOG.md"):
+        assert "92.50%" not in _read(document)
+    for document in (contributing, conventions):
+        assert "92.50%" not in document
+        assert "3846/4158" not in document
+        assert "enforcement remains 80%" not in document
+        assert "threshold remains 80%" not in document
     assert "## [2026-08-15] Current verified status" in conventions
     assert "### Current active issue map" in conventions
     for issue in (
@@ -175,6 +209,26 @@ def test_instruction_files_and_conventions_publish_current_verified_status() -> 
         "#84",
     ):
         assert issue in conventions
+
+
+def test_removed_working_notes_are_gone_and_unreferenced() -> None:
+    """Keep local working notes out of the repository and out of references."""
+    root_markdown = {path.name for path in REPOSITORY_ROOT.glob("*.md")}
+    assert not any(name.endswith("Visualiz.md") for name in root_markdown)
+    for removed in (
+        "SKILL_MISSINGLY.md",
+        "instructions.md",
+        "missingly-dev-skills.md",
+        "BRANCH_INTEGRATION.md",
+    ):
+        assert removed not in root_markdown
+        for document in (
+            "README.md",
+            "CONTRIBUTING.md",
+            "CONVENTIONS.md",
+            "TESTING.md",
+        ):
+            assert removed not in _read(document)
 
 
 def test_repository_declares_a_cross_platform_text_normalization_policy() -> None:
