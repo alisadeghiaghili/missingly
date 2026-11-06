@@ -170,9 +170,7 @@ class TestSignatureParity:
         accessor = list(
             inspect.signature(getattr(MissinglyAccessor, name)).parameters.values()
         )[1:]
-        assert _normalised(accessor, {}) == _normalised(
-            wrapped, RENAMED.get(name, {})
-        )
+        assert _normalised(accessor, {}) == _normalised(wrapped, RENAMED.get(name, {}))
 
     def test_allow_list_entries_are_documented(self):
         """Every allow-list entry carries a reason."""
@@ -233,7 +231,8 @@ class TestWrapperContract:
         assert fake_cleaning["coalesce_columns"][0] == ("x1", "x2")
 
     def test_miss_as_feature(self, frame):
-        out = frame.miss.miss_as_feature(["x1"])
+        with pytest.warns(FutureWarning):
+            out = frame.miss.miss_as_feature(["x1"])
         assert isinstance(out, pd.DataFrame)
         assert int(out["x1_NA"].sum()) == int(frame["x1"].isna().sum())
 
@@ -295,13 +294,15 @@ class TestWrapperContract:
         numeric = frame[["x1", "x2", "x3"]]
         coded = numeric.fillna(-99.0)
         expected = diagnostics.mcar_test(
-            coded, max_iter=3, tol=1e-3, ridge=1e-6, missing_values=[-99.0]
+            coded, max_iter=50, tol=1e-3, ridge=1e-6, missing_values=[-99.0]
         )
         got = coded.miss.mcar_test(
-            max_iter=3, tol=1e-3, ridge=1e-6, missing_values=[-99.0]
+            max_iter=50, tol=1e-3, ridge=1e-6, missing_values=[-99.0]
         )
         assert got["p_value"] == pytest.approx(expected["p_value"])
         assert got["em_iterations"] == expected["em_iterations"]
+        with pytest.raises(RuntimeError, match="max_iter=1"):
+            coded.miss.mcar_test(max_iter=1, missing_values=[-99.0])
 
     def test_missingness_association_test(self, frame):
         out = frame[["x1", "x2", "x3", "y"]].miss.missingness_association_test("y")
