@@ -143,11 +143,23 @@ def _wrapped_function(name: str):
     return None
 
 
-def _normalised(parameters, rename):
-    return [
-        (rename.get(p.name, p.name), p.kind, p.default, p.default is p.empty)
-        for p in parameters
-    ]
+# v1 parameters that the wrapped function does not have; the accessor keeps
+# them (deprecated, no effect) so v1 call forms keep working.
+EXTRA_PARAMETERS = {
+    "vis_miss": {"show_pct"},
+    "miss_cluster": {"method"},
+    "scatter_miss": {"ax", "missing_values"},
+}
+
+
+def _kind_compatible(function_kind, accessor_kind) -> bool:
+    """Accessor may be more lenient: positional-or-keyword for keyword-only."""
+    if function_kind == accessor_kind:
+        return True
+    return (
+        function_kind is inspect.Parameter.KEYWORD_ONLY
+        and accessor_kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    )
 
 
 class TestSignatureParity:
@@ -162,15 +174,26 @@ class TestSignatureParity:
         [n for n in _public_methods() if n not in NOT_MIRRORED],
     )
     def test_accessor_signature_matches_wrapped_function(self, name):
-        """Names, kinds, defaults and required-ness match the function."""
+        """Names, defaults and required-ness match; kinds may only be looser."""
         function = _wrapped_function(name)
         wrapped = list(inspect.signature(function).parameters.values())
         if name not in NO_FRAME_ARGUMENT:
             wrapped = wrapped[1:]
-        accessor = list(
-            inspect.signature(getattr(MissinglyAccessor, name)).parameters.values()
-        )[1:]
-        assert _normalised(accessor, {}) == _normalised(wrapped, RENAMED.get(name, {}))
+        rename = RENAMED.get(name, {})
+        accessor = {
+            p.name: p
+            for p in list(
+                inspect.signature(getattr(MissinglyAccessor, name)).parameters.values()
+            )[1:]
+        }
+        expected = {rename.get(p.name, p.name): p for p in wrapped}
+        assert set(accessor) - set(expected) == EXTRA_PARAMETERS.get(name, set())
+        assert set(expected) <= set(accessor)
+        for param_name, param in expected.items():
+            actual = accessor[param_name]
+            assert actual.default == param.default, param_name
+            assert (actual.default is actual.empty) == (param.default is param.empty)
+            assert _kind_compatible(param.kind, actual.kind), param_name
 
     def test_allow_list_entries_are_documented(self):
         """Every allow-list entry carries a reason."""
@@ -420,9 +443,76 @@ class TestIgnoredParametersWarn:
             frame.miss.vis_miss()
             frame.miss.miss_cluster()
 
-    def test_vis_miss_show_pct_is_honoured_by_plotly(self, frame):
-        pytest.importorskip("plotly")
+    def test_vis_miss_show_pct_is_honoured_by_plotly(self, frame, monkeypatch):
+        from missingly.visualisation import interactive, static
+
+        seen: dict = {}
+
+        def _fake(df, **kwargs):
+            seen.update(kwargs)
+            return "figure"
+
+        monkeypatch.setattr(static, "_require_plotly", lambda: None)
+        monkeypatch.setattr(interactive, "_vis_miss_plotly", _fake)
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            fig = frame.miss.vis_miss(interactive=True, show_pct=False)
-        assert hasattr(fig, "data")
+            out = frame.miss.vis_miss(interactive=True, show_pct=False)
+        assert out == "figure"
+        assert seen["show_pct"] is False
+
+
+# ---------------------------------------------------------------------------
+# v1 positional call forms keep working
+# ---------------------------------------------------------------------------
+
+_DEPRECATED = pytest.warns(FutureWarning)
+
+
+def _v1_positional_calls(frame, ax):
+    """(method, positional args, keyword args, expect-warning) of the v1 accessor."""
+    imputed = frame.miss.impute_mean()
+    return [
+        ("matrix", (ax, None), {}, False),
+        ("bar", (ax, None), {}, False),
+        ("heatmap", (ax, None), {}, False),
+        ("miss_which", (ax, None), {}, False),
+        ("miss_case", (ax, None), {}, False),
+        ("vis_miss_cumsum_var", (ax, None), {}, False),
+        ("vis_miss_cumsum_case", (ax, None), {}, False),
+        ("miss_var_pct", (ax, None, True), {}, False),
+        ("vis_miss", (ax, None, True, False), {}, True),
+        ("vis_miss", (ax, None), {"cluster": False}, False),
+        ("miss_cluster", (ax, None, "ward"), {}, True),
+        ("dendrogram", (ax, None, "average"), {}, False),
+        ("scatter_miss", ("x1", "x2", ax, None), {}, False),
+        ("vis_miss_span", ("x1", 5, ax, None), {}, False),
+        ("vis_impute_dist", (imputed, ax), {"column": "x1"}, False),
+        ("vis_impute_dist", (imputed, "x1"), {"ax": ax}, False),
+    ]
+
+
+class TestV1PositionalCalls:
+    def test_every_v1_call_form_still_works(self, frame):
+        """Positional-or-keyword v1 parameters stay positional, same meaning."""
+        for method, args, kwargs, warns in _v1_positional_calls(
+            frame, plt.subplots()[1]
+        ):
+            _, ax = plt.subplots()
+            args = tuple(ax if isinstance(a, Axes) else a for a in args)
+            kwargs = {k: ax if isinstance(v, Axes) else v for k, v in kwargs.items()}
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                out = getattr(frame.miss, method)(*args, **kwargs)
+            assert out is ax, method
+            assert any(w.category is FutureWarning for w in caught) is warns, method
+
+    def test_upset_and_parallel_coords_positional_missing_values(self, frame):
+        assert isinstance(frame.miss.upset(None), dict)
+        assert isinstance(frame.miss.vis_parallel_coords(None), Axes)
+
+    def test_vis_miss_fct_v1_form(self, frame):
+        assert isinstance(frame.miss.vis_miss_fct("grp"), Axes)
+
+    def test_v1_defaults_of_other_methods_unchanged(self, frame):
+        assert frame.miss.n_miss() == int(frame.isna().sum().sum())
+        assert isinstance(frame.miss.miss_var_summary(None), pd.DataFrame)
