@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed local working notes from the repository root; project rules now live in
+  CONVENTIONS.md and CONTRIBUTING.md; documentation states the enforced coverage
+  gate from pyproject.toml instead of a pinned measured figure (HYG-01, HYG-02,
+  F-326, F-197).
 - Raised the dependency floors to what the code uses: ``pandas>=2.1.0``
   (``DataFrame.map``) and ``scikit-learn>=1.4.0`` (random-forest imputation
   with missing feature values; ``OrdinalEncoder(encoded_missing_value=...)``
