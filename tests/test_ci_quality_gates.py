@@ -39,7 +39,9 @@ ORACLE_FIXTURE_PATHS = (
 MINIMUM_COVERAGE = 90
 COVERAGE_FLAG = "--cov-fail-under"
 _SHA_PIN = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
-_SHA_PIN_WITH_TAG_COMMENT = re.compile(r"uses:\s*\S+@[0-9a-f]{40}\s+#\s*v\d+\.\d+\.\d+\s*$")
+_SHA_PIN_WITH_TAG_COMMENT = re.compile(
+    r"uses:\s*\S+@[0-9a-f]{40}\s+#\s*v\d+\.\d+\.\d+\s*$"
+)
 _USES_LINE = re.compile(r"^\s*(?:-\s*)?uses:\s*\S")
 
 
@@ -108,12 +110,16 @@ def test_coverage_is_configured_in_pyproject_with_branch_and_threshold() -> None
 def test_no_workflow_overrides_the_pyproject_coverage_threshold() -> None:
     for path in WORKFLOW_DIR.glob("*.yml"):
         text = path.read_text(encoding="utf-8")
-        assert COVERAGE_FLAG not in text, f"{path.name} must rely on pyproject fail_under"
+        assert COVERAGE_FLAG not in text, (
+            f"{path.name} must rely on pyproject fail_under"
+        )
 
 
 def test_ci_pytest_measures_branch_coverage() -> None:
     commands = [step.get("run", "") for step in _steps(_load_workflow(CI_WORKFLOW))]
-    pytest_runs = [command for command in commands if "pytest" in command and "--cov=" in command]
+    pytest_runs = [
+        command for command in commands if "pytest" in command and "--cov=" in command
+    ]
     assert pytest_runs, "ci.yml must run pytest with coverage"
     assert all("--cov-branch" in command for command in pytest_runs)
 
@@ -134,7 +140,9 @@ def test_fixture_csv_path_is_not_ignored_for_new_fixtures() -> None:
 
 def test_ci_lints_workflows_with_actionlint() -> None:
     steps = _steps(_load_workflow(CI_WORKFLOW))
-    lint_runs = [step.get("run", "") for step in steps if "actionlint" in step.get("run", "")]
+    lint_runs = [
+        step.get("run", "") for step in steps if "actionlint" in step.get("run", "")
+    ]
     assert any("actionlint-py" in command for command in lint_runs)
     assert any(command.strip().endswith("actionlint") for command in lint_runs)
 
@@ -144,11 +152,17 @@ def test_third_party_actions_are_pinned_to_commit_shas(path: Path) -> None:
     for uses in _uses_values(path):
         if uses.startswith("./"):
             continue
-        assert _SHA_PIN.match(uses), f"{path.name}: {uses} is not pinned to a 40-char SHA"
+        assert _SHA_PIN.match(uses), (
+            f"{path.name}: {uses} is not pinned to a 40-char SHA"
+        )
 
 
 @pytest.mark.parametrize("path", PINNED_WORKFLOWS, ids=lambda p: p.name)
 def test_pinned_actions_carry_a_version_comment(path: Path) -> None:
     for line in path.read_text(encoding="utf-8").splitlines():
-        if _USES_LINE.match(line) and not line.strip().split("uses:")[1].strip().startswith("./"):
-            assert _SHA_PIN_WITH_TAG_COMMENT.search(line), f"{path.name}: missing '# vX.Y.Z': {line}"
+        if _USES_LINE.match(line) and not line.strip().split("uses:")[
+            1
+        ].strip().startswith("./"):
+            assert _SHA_PIN_WITH_TAG_COMMENT.search(line), (
+                f"{path.name}: missing '# vX.Y.Z': {line}"
+            )
