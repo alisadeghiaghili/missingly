@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restored the packaging metadata lost when the license field was updated:
+  the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
+  CI and documentation workflows install, the dynamic version source, the
+  explicit package list, the ruff and coverage configuration, the Python 3.13
+  and 3.14 classifiers and the previous dependency floors (for example
+  ``pandas>=2.0.0``). The license remains ``BUSL-1.1``; the redundant
+  ``License ::`` classifier is removed because PEP 639 does not allow it next
+  to a license expression. The unused ``dev`` extra introduced by the same
+  edit is removed in favour of ``test`` and ``quality``. A packaging contract
+  test now fails if a workflow installs an undeclared extra or the version
+  source, tool configuration or Python classifiers drift.
 - Corrected typed MICE custom-estimator metadata to disclose ordinal encoding
   and the unvalidated categorical FCS approximation when categorical targets
   are supplied.

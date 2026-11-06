@@ -22,7 +22,9 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on Python < 3.11
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = REPOSITORY_ROOT / ".github" / "workflows"
-_EXTRAS_PATTERN = re.compile(r"\.\[([A-Za-z0-9_,\- ]+)\]")
+# Extra names start with a letter, which keeps regex classes such as ``\.[0-9]``
+# inside workflow shell scripts from being mistaken for pip extras.
+_EXTRAS_PATTERN = re.compile(r"\.\[([A-Za-z][A-Za-z0-9_\-]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_\-]*)*)\]")
 _PY_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
 
 
