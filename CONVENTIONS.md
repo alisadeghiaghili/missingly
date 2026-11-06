@@ -116,9 +116,9 @@ not mix benchmark provenance changes with correctness fixes in the same pull req
 
 ### [2026-08-03] Unrelated-branch reconciliation and statistical credibility
 
-- Verified that `origin/main` and `agent/missingly-analytics-upgrade` have unrelated Git
-  histories; the package branch remains canonical and the web/statistics product is not
-  force-merged.
+- Verified that `origin/main` and a separate web/statistics product branch (since
+  deleted) had unrelated Git histories; the package branch remains canonical and the
+  web/statistics product was not force-merged.
 - Selectively ported the compatible strengths: evidence-gated competitor analysis,
   statistical conformance policy, and deterministic provenance.
 - Recorded the keep/drop audit: FastAPI, auth, payments, general statistics, and
