@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added one internal dtype normalisation layer (`missingly._dtypes`) and routed
+  the imputers in `missingly.impute` through it (WP-04). Nullable `Int64` /
+  `Float64`, `float32`, `int64`, `bool`, `boolean`, `string`, `category`,
+  datetime (naive and time-zone aware), timedelta and mixed-type `object`
+  columns no longer crash the imputers or silently change dtype (F-014,
+  F-018, F-020, F-023, F-027, F-051, F-055, F-058, F-091, F-093, F-098, F-100,
+  F-105, F-107, F-234, F-235, F-252, F-343):
+  - nullable numeric columns are modelled as `float64` instead of crashing
+    `impute_rf`, `impute_gb`, `impute_mice` (`return_history`, `where`,
+    `bounds`, `visit_sequence`, `predictor_matrix`) and `impute_pmm`, and are
+    restored to their original dtype; integer imputations from KNN, MICE, RF,
+    GB and PMM are rounded to the nearest integer, so `Int64` stays `Int64`;
+  - `impute_mean`, `impute_median` and `FittedImputer` rewrite only incomplete
+    columns, treat `bool` / `boolean` / datetime / timedelta / `string` columns
+    as non-numeric (mode fill) and keep a nullable integer dtype when the fill
+    value is integral (otherwise `Float64`); `float32` stays `float32`;
+  - `impute_mice(..., return_result=True)` accepts `int64`, `float32`, `Int64`
+    and interleaved string columns because the completed frames now keep the
+    original column order and dtypes;
+  - the logistic imputers (`impute_logreg`, `impute_polyreg`, `impute_polr`)
+    encode nullable numeric predictors by value instead of lexical rank and
+    cast predicted labels to the column dtype;
+  - an all-missing column raises `InsufficientDataError` in `impute_mean`,
+    `impute_median` and `impute_knn` (both metrics), matching `impute_mode`
+    and `impute_mice`; `impute_knn(metric="mixed")` uses the donor mode for
+    boolean columns and rounds integer columns;
+  - model-based imputers (`impute_knn`, `impute_mice`, `impute_rf`,
+    `impute_gb`, `impute_polyreg`, `impute_polr`, `impute_logreg`) no longer
+    treat datetime, timedelta or mixed-type `object` columns as numbers or
+    ordinal categories: complete ones pass through unchanged (and are not
+    predictors), incomplete ones raise the new
+    `missingly.exceptions.UnsupportedDtypeError`;
+  - `impute_mice(bounds=...)` now rejects boolean columns as non-numeric.
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
   CI and documentation workflows install, the dynamic version source, the

@@ -60,6 +60,7 @@ missingly/
 ├── visualisation/        # Visualisation subpackage (heatmap, matrix, bar, etc.)
 ├── templates/            # Jinja2 HTML templates for reports
 ├── _distance.py          # Distance metrics for imputation
+├── _dtypes.py            # Dtype normalisation layer shared by the imputers
 ├── _validation.py        # Input validation utilities
 └── _deprecation.py       # Deprecation warning utilities
 ```
@@ -199,6 +200,7 @@ built-in exception must still carry an actionable message.
 | `InsufficientDataError` | Not enough rows/cols for operation |
 | `InvalidStrategyError` | Unknown or misconfigured strategy value |
 | `MissingColumnError` | Referenced column missing from DataFrame |
+| `UnsupportedDtypeError` | A model-based imputer meets an incomplete datetime, timedelta or mixed-type object column |
 | `ConfigurationError` | Invalid config values |
 
 ---
@@ -317,6 +319,7 @@ When fixing a bug:
 | `exceptions.py` | Custom exception hierarchy |
 | `_validation.py` | Reusable input validators |
 | `_distance.py` | Distance metrics for KNN imputation |
+| `_dtypes.py` | Column-kind classification, float64 normalisation and dtype restoration for imputers |
 | `_deprecation.py` | Deprecation warning decorators |
 | `performance.py` | Memory/time profiling utilities |
 | `stats_extra.py` | Extra stats helpers (not in scipy/statsmodels) |
