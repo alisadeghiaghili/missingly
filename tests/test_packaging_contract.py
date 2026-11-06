@@ -105,6 +105,19 @@ def test_test_extra_provides_the_tools_ci_invokes() -> None:
         assert re.search(rf"(^|\s){re.escape(requirement)}\b", test_extra), requirement
 
 
+def test_test_extra_can_build_distributions_without_isolation() -> None:
+    """The distribution content tests run ``build --no-isolation`` in CI.
+
+    The ``test`` extra therefore has to install ``build`` and the same
+    setuptools requirement that ``[build-system]`` declares.
+    """
+    pyproject = _pyproject()
+    test_extra = pyproject["project"]["optional-dependencies"]["test"]
+    for requirement in pyproject["build-system"]["requires"]:
+        assert requirement in test_extra, requirement
+    assert any(re.match(r"build\b", entry) for entry in test_extra)
+
+
 def test_dynamic_version_has_a_source() -> None:
     """A dynamic version without a source makes every build fail."""
     data = _pyproject()
