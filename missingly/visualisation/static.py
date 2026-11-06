@@ -1,9 +1,32 @@
 """Static (matplotlib / seaborn) visualisations for missing-data analysis.
 
-All public functions return a :class:`matplotlib.axes.Axes` unless
-otherwise noted.  Every function accepts an optional *ax* keyword that,
-when provided, draws into that :class:`~matplotlib.axes.Axes` instead of
-creating a new figure.
+Return types and the ``ax`` keyword
+-----------------------------------
+Unless noted below, every public function accepts an optional *ax* keyword
+that draws into an existing :class:`~matplotlib.axes.Axes` and returns the
+:class:`~matplotlib.axes.Axes` that was drawn on.  The exceptions are:
+
+* :func:`upset` always creates its own figure and returns a ``dict`` of axes
+  keyed by ``intersections``, ``matrix`` and ``totals``.
+* :func:`vis_miss_fct` creates one figure with a facet per group, has no
+  *ax* keyword and returns only the last facet's axes (the others are
+  reachable through ``ax.figure.axes``).
+* :func:`miss_impute_compare` creates a grid of histograms, has no *ax*
+  keyword and returns the :class:`~matplotlib.figure.Figure`.
+
+Interactive output
+------------------
+Only :func:`vis_miss`, :func:`heatmap`, :func:`matrix`, :func:`bar`,
+:func:`miss_var_pct`, :func:`miss_cooccurrence`, :func:`miss_case`,
+:func:`upset` and :func:`miss_patterns` have a Plotly backend, selected with
+``backend="plotly"`` or ``interactive=True``.  Styling arguments that the
+Plotly backend cannot honour are reported with a warning.
+
+Unsupported keyword arguments
+-----------------------------
+Functions that accept ``**kwargs`` without a documented target currently
+ignore unsupported keywords.  Each such call emits a :class:`FutureWarning`
+naming the argument; a future release will raise :class:`TypeError` instead.
 
 RTL support
 -----------
@@ -14,9 +37,11 @@ before being passed to matplotlib.
 
 from __future__ import annotations
 
+import inspect
 import warnings
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, Optional, Sequence
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
@@ -27,23 +52,127 @@ from numpy.typing import NDArray
 from missingly.visualisation._base import (
     _apply_rtl_font,
     _is_rtl,
+    _require_plotly,
     _rtl_safe,
     _rtl_safe_labels,
 )
+
+_BACKENDS = frozenset({"matplotlib", "plotly"})
+_MISS_CASE_SORTED_LABEL = "Row (sorted by # missing)"
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _require_plotly():
-    """Raise a helpful ImportError when plotly is not installed."""
-    try:
-        import plotly  # noqa: F401
-    except (ImportError, TypeError):
-        raise ImportError(
-            "Interactive plots require plotly.  "
-            "Install it with:  pip install plotly"
+def _warn_unsupported_kwargs(
+    func_name: str,
+    kwargs: Dict[str, Any],
+    stacklevel: int = 3,
+) -> None:
+    """Warn that unsupported keyword arguments were ignored.
+
+    Parameters
+    ----------
+    func_name : str
+        Public function that received the keywords.
+    kwargs : dict
+        Keyword arguments the function does not use.
+    stacklevel : int, default 3
+        Stack level of the reported warning; the default points at the caller
+        of the public function.
+
+    Warns
+    -----
+    FutureWarning
+        If *kwargs* is not empty. A future release will raise ``TypeError``.
+
+    Examples
+    --------
+    >>> _warn_unsupported_kwargs("bar", {})
+    """
+    if not kwargs:
+        return
+    names = ", ".join(sorted(kwargs))
+    warnings.warn(
+        f"{func_name}() ignored unsupported keyword argument(s): {names}; "
+        "passing unsupported keyword arguments will raise TypeError in a "
+        "future release.",
+        FutureWarning,
+        stacklevel=stacklevel,
+    )
+
+
+def _use_plotly(func_name: str, backend: str, interactive: bool) -> bool:
+    """Return whether the Plotly backend is selected, validating ``backend``.
+
+    Parameters
+    ----------
+    func_name : str
+        Public function that received the arguments.
+    backend : str
+        Requested backend name.
+    interactive : bool
+        Whether interactive output was requested.
+
+    Returns
+    -------
+    bool
+        ``True`` when ``backend == "plotly"`` or *interactive* is true.
+
+    Warns
+    -----
+    FutureWarning
+        If *backend* is neither ``"matplotlib"`` nor ``"plotly"``. The call
+        falls back to Matplotlib; a future release will raise ``ValueError``.
+
+    Examples
+    --------
+    >>> _use_plotly("bar", "matplotlib", False)
+    False
+    """
+    if backend not in _BACKENDS:
+        warnings.warn(
+            f"{func_name}() received unknown backend {backend!r}; falling back "
+            "to 'matplotlib'. Unknown backends will raise ValueError in a "
+            "future release.",
+            FutureWarning,
+            stacklevel=3,
+        )
+    return backend == "plotly" or interactive
+
+
+def _warn_ignored_on_plotly(func: Callable[..., Any], **given: Any) -> None:
+    """Warn about styling arguments the Plotly backend does not honour.
+
+    Parameters
+    ----------
+    func : callable
+        Public function whose signature supplies the defaults.
+    **given : Any
+        Argument names mapped to the values the caller passed.
+
+    Warns
+    -----
+    UserWarning
+        If any value differs from the parameter default of *func*.
+
+    Examples
+    --------
+    >>> _warn_ignored_on_plotly(bar, color="#4C72B0")
+    """
+    parameters = inspect.signature(func).parameters
+    ignored = sorted(
+        name
+        for name, value in given.items()
+        if value is not parameters[name].default and value != parameters[name].default
+    )
+    if ignored:
+        warnings.warn(
+            f"{func.__name__}() ignored styling argument(s) not supported by "
+            f"the Plotly backend: {', '.join(ignored)}.",
+            UserWarning,
+            stacklevel=3,
         )
 
 
@@ -138,7 +267,7 @@ def matrix(
     df: pd.DataFrame,
     *,
     figsize: tuple[float, float] | None = None,
-    color: tuple[float, float, float] = (0.25, 0.25, 0.25),
+    color: str | tuple[float, float, float] = (0.25, 0.25, 0.25),
     fontsize: int = 12,
     labels: bool = True,
     sparkline: bool = True,
@@ -151,15 +280,81 @@ def matrix(
 ) -> Any:
     """Nullity matrix.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missing cells are drawn.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    color : str or tuple of float, default (0.25, 0.25, 0.25)
+        Colour of present values and of the sparkline.  Any Matplotlib colour
+        specification accepted by :func:`matplotlib.colors.to_rgb` is allowed.
+    fontsize : int, default 12
+        Font size for tick labels.
+    labels : bool, default True
+        Whether to display column labels.
+    sparkline : bool, default True
+        Whether to draw the per-row completeness sparkline.  It is only
+        drawn when the figure is created here, not when *ax* is supplied.
+    freq : str, optional
+        Date offset alias for y-axis ticks when the index is a
+        :class:`pandas.DatetimeIndex`.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to the Plotly backend.  On the Matplotlib backend they are
+        ignored.
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        The matrix axes, or an interactive Plotly figure.
+
+    Raises
+    ------
+    ValueError
+        If *color* is not a valid Matplotlib colour.
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unsupported keyword argument or an unknown *backend* is given;
+        a future release will raise instead.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"a": [1.0, None], "b": [2.0, 3.0]})
+    >>> ax = matrix(frame, color="red", sparkline=False)
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("matrix", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            matrix,
+            figsize=figsize,
+            color=color,
+            fontsize=fontsize,
+            labels=labels,
+            sparkline=sparkline,
+            freq=freq,
+            ax=ax,
+        )
         from missingly.visualisation.interactive import _matrix_plotly
         return _matrix_plotly(_apply_sentinels(df, missing_values), **kwargs)
 
+    _warn_unsupported_kwargs("matrix", kwargs)
+    rgb = mcolors.to_rgb(color)
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     n_rows, n_cols = null_mat.shape
@@ -184,7 +379,7 @@ def matrix(
     rgba = np.ones((n_rows, n_cols, 4))
     present = ~null_mat.to_numpy()
     for c in range(3):
-        rgba[:, :, c] = np.where(present, color[c], 1.0)
+        rgba[:, :, c] = np.where(present, rgb[c], 1.0)
 
     main_ax.imshow(rgba, aspect="auto", interpolation="none")
     main_ax.set_xlim(-0.5, n_cols - 0.5)
@@ -209,7 +404,7 @@ def matrix(
 
     if spark_ax is not None:
         completeness = present.sum(axis=1) / n_cols
-        spark_ax.plot(completeness, range(n_rows), color=color, linewidth=1)
+        spark_ax.plot(completeness, range(n_rows), color=rgb, linewidth=1)
         spark_ax.set_ylim(n_rows - 0.5, -0.5)
         spark_ax.set_xlim(0, 1)
         spark_ax.set_xticks([0, 1])
@@ -267,12 +462,27 @@ def bar(
     missing_values : optional
         Additional sentinel value or values treated as missing.
     **kwargs : Any
-        Backend-specific options forwarded to the Plotly implementation.
+        Forwarded to the Plotly backend.  On the Matplotlib backend they are
+        ignored.
 
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
         A chart whose bar heights are the number of missing values per column.
+
+    Raises
+    ------
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unsupported keyword argument or an unknown *backend* is given;
+        a future release will raise instead.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
 
     Examples
     --------
@@ -281,8 +491,12 @@ def bar(
     >>> [int(patch.get_height()) for patch in axis.patches]
     [1, 0]
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("bar", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            bar, figsize=figsize, color=color, log=log, labels=labels,
+            fontsize=fontsize, ax=ax,
+        )
         from missingly.visualisation.interactive import _bar_plotly
         return _bar_plotly(
             _apply_sentinels(df, missing_values),
@@ -290,6 +504,7 @@ def bar(
             **kwargs,
         )
 
+    _warn_unsupported_kwargs("bar", kwargs)
     df = _apply_sentinels(df, missing_values)
     counts = df.isnull().sum()
     if sort:
@@ -342,12 +557,63 @@ def miss_case(
 ) -> Any:
     """Bar chart of missing-value counts per row (case).
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missing values are counted by row.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    color : str, default "#4C72B0"
+        Bar colour for the Matplotlib backend.
+    fontsize : int, default 12
+        Font size for axis labels.
+    sort : bool, default True
+        Whether to order the bars by descending count.  When sorted, the
+        x positions are ranks and the axis is labelled accordingly.  Row
+        identifiers are shown as tick labels for at most 50 rows.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to the Plotly backend.  On the Matplotlib backend they are
+        ignored.
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        A bar chart with one bar per row.
+
+    Raises
+    ------
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unsupported keyword argument or an unknown *backend* is given;
+        a future release will raise instead.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = miss_case(pd.DataFrame({"a": [1.0, None], "b": [None, None]}))
+    >>> ax.get_ylabel()
+    '# Missing'
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("miss_case", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            miss_case, figsize=figsize, color=color, fontsize=fontsize, ax=ax,
+        )
         from missingly.visualisation.interactive import _miss_case_plotly
         return _miss_case_plotly(
             _apply_sentinels(df, missing_values),
@@ -355,6 +621,7 @@ def miss_case(
             **kwargs,
         )
 
+    _warn_unsupported_kwargs("miss_case", kwargs)
     df = _apply_sentinels(df, missing_values)
     counts = df.isnull().sum(axis=1)
     if sort:
@@ -370,7 +637,8 @@ def miss_case(
         fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
 
     ax.bar(np.arange(n), counts.values, color=color)
-    ax.set_xlabel("Row index", fontsize=fontsize)
+    x_label = _MISS_CASE_SORTED_LABEL if sort else "Row index"
+    ax.set_xlabel(x_label, fontsize=fontsize)
     ax.set_ylabel("# Missing", fontsize=fontsize)
     ax.set_title("Missing values per case (row)")
     if n <= 50:
@@ -401,12 +669,61 @@ def miss_var_pct(
 ) -> Any:
     """Horizontal bar chart of percentage missing per variable.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missing share is computed per column.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    color : str, default "#4C72B0"
+        Bar colour for the Matplotlib backend.
+    fontsize : int, default 12
+        Font size for tick and axis labels.
+    sort : bool, default True
+        Whether to order the bars by ascending percentage.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to the Plotly backend.  On the Matplotlib backend they are
+        ignored.
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        A horizontal bar chart of the percentage missing per column.
+
+    Raises
+    ------
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unsupported keyword argument or an unknown *backend* is given;
+        a future release will raise instead.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = miss_var_pct(pd.DataFrame({"a": [1.0, None], "b": [2.0, 3.0]}))
+    >>> ax.get_xlabel()
+    '% Missing'
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("miss_var_pct", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            miss_var_pct, figsize=figsize, color=color, fontsize=fontsize, ax=ax,
+        )
         from missingly.visualisation.interactive import _miss_var_pct_plotly
         return _miss_var_pct_plotly(
             _apply_sentinels(df, missing_values),
@@ -414,6 +731,7 @@ def miss_var_pct(
             **kwargs,
         )
 
+    _warn_unsupported_kwargs("miss_var_pct", kwargs)
     df = _apply_sentinels(df, missing_values)
     pct = df.isnull().mean() * 100
     if sort:
@@ -455,10 +773,40 @@ def miss_which(
 ) -> Any:
     """Heatmap showing *which* cells are missing (rows x columns).
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data.  Only columns with at least one missing value are shown.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    fontsize : int, default 10
+        Font size for column labels; row labels are one point smaller.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Unsupported; this function has no interactive backend.
+
     Returns
     -------
     matplotlib.axes.Axes
+        The axes that were drawn on.
+
+    Warns
+    -----
+    FutureWarning
+        If any keyword argument (including ``interactive`` or ``backend``) is
+        given; it is ignored and a future release will raise ``TypeError``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = miss_which(pd.DataFrame({"a": [1.0, None], "b": [2.0, 3.0]}))
+    >>> ax.get_title()
+    'Which values are missing?'
     """
+    _warn_unsupported_kwargs("miss_which", kwargs)
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
     cols_miss = [c for c in null_mat.columns if null_mat[c].any()]
@@ -531,6 +879,15 @@ def upset(
     TypeError
         If an unsupported Matplotlib keyword argument is supplied.
 
+    Warns
+    -----
+    FutureWarning
+        If *backend* is neither ``"matplotlib"`` nor ``"plotly"``; the call
+        falls back to Matplotlib and a future release will raise.
+    UserWarning
+        If ``figsize`` is given together with the Plotly backend, which does
+        not honour it.
+
     Examples
     --------
     >>> import numpy as np
@@ -541,8 +898,9 @@ def upset(
     >>> sorted(axes)
     ['intersections', 'matrix', 'totals']
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("upset", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(upset, figsize=figsize)
         from missingly.visualisation.interactive import _upset_plotly
         return _upset_plotly(
             _apply_sentinels(df, missing_values),
@@ -662,15 +1020,65 @@ def miss_patterns(
 ) -> Any:
     """Bar chart of the most common missingness patterns.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose row-wise missingness patterns are counted.
+    top_n : int, default 10
+        Maximum number of patterns to display.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    color : str, default "#4C72B0"
+        Bar colour for the Matplotlib backend.
+    fontsize : int, default 11
+        Font size for tick and axis labels.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to the Plotly backend.  On the Matplotlib backend they are
+        ignored.
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        A horizontal bar chart of pattern frequencies.
+
+    Raises
+    ------
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unsupported keyword argument or an unknown *backend* is given;
+        a future release will raise instead.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = miss_patterns(pd.DataFrame({"a": [1.0, None], "b": [2.0, 3.0]}))
+    >>> ax.get_xlabel()
+    'Row count'
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("miss_patterns", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            miss_patterns, figsize=figsize, color=color, fontsize=fontsize, ax=ax,
+        )
         from missingly.visualisation.interactive import _miss_patterns_plotly
         return _miss_patterns_plotly(_apply_sentinels(df, missing_values), top_n=top_n, **kwargs)
 
+    _warn_unsupported_kwargs("miss_patterns", kwargs)
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
 
@@ -722,12 +1130,66 @@ def miss_cooccurrence(
 ) -> Any:
     """Co-occurrence heatmap of column missingness.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose columns' joint missingness is counted.
+    normalize : bool, default True
+        Whether to divide counts by the number of rows.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    cmap : str, default "Blues"
+        Matplotlib colormap.
+    fontsize : int, default 11
+        Tick-label font size.
+    annot : bool, default True
+        Whether to annotate cells with their values.
+    fmt : str, default ".2f"
+        Numeric format used for annotations.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to :func:`seaborn.heatmap` (or to the Plotly backend).
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        The heatmap axes, or an interactive Plotly figure.
+
+    Raises
+    ------
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unknown *backend* is given; the call falls back to Matplotlib
+        and a future release will raise.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"a": [1.0, None], "b": [None, 2.0]})
+    >>> ax = miss_cooccurrence(frame, fontsize=9)
+    >>> ax.get_title()
+    'Missingness co-occurrence (fraction)'
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("miss_cooccurrence", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            miss_cooccurrence, figsize=figsize, cmap=cmap, fontsize=fontsize,
+            annot=annot, fmt=fmt, ax=ax,
+        )
         from missingly.visualisation.interactive import _miss_cooccurrence_plotly
         return _miss_cooccurrence_plotly(_apply_sentinels(df, missing_values), normalize=normalize, **kwargs)
 
@@ -751,6 +1213,7 @@ def miss_cooccurrence(
     cooc.columns = col_labels
     cooc.index = col_labels
     sns.heatmap(cooc, ax=ax_, cmap=cmap, annot=annot, fmt=fmt, linewidths=0.4, **kwargs)
+    ax_.tick_params(axis="both", labelsize=fontsize)
     ax_.set_title("Missingness co-occurrence" + (" (fraction)" if normalize else " (count)"))
     return ax_
 
@@ -817,7 +1280,8 @@ def heatmap(
     missing_values : optional
         Additional sentinel value or values treated as missing.
     **kwargs : Any
-        Additional keyword arguments forwarded to :func:`seaborn.heatmap`.
+        Additional keyword arguments forwarded to :func:`seaborn.heatmap`
+        (or to the Plotly backend).
 
     Returns
     -------
@@ -833,6 +1297,15 @@ def heatmap(
     ImportError
         If Plotly output is requested but Plotly is not installed.
 
+    Warns
+    -----
+    FutureWarning
+        If an unknown *backend* is given; the call falls back to Matplotlib
+        and a future release will raise.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
     Examples
     --------
     >>> import numpy as np
@@ -846,8 +1319,13 @@ def heatmap(
     if mask_insignificant and not 0 < significance <= 1:
         raise ValueError("significance must be in the interval (0, 1]")
 
-    if backend == "plotly" or interactive:
+    if _use_plotly("heatmap", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(
+            heatmap, figsize=figsize, cmap=cmap, fontsize=fontsize, annot=annot,
+            fmt=fmt, vmin=vmin, vmax=vmax, center=center, linewidths=linewidths,
+            ax=ax,
+        )
         from missingly.visualisation.interactive import _heatmap_plotly
         return _heatmap_plotly(
             _apply_sentinels(df, missing_values),
@@ -914,6 +1392,7 @@ def heatmap(
             vmin=vmin, vmax=vmax, center=center, linewidths=linewidths,
             **kwargs,
         )
+    ax_.tick_params(axis="both", labelsize=fontsize)
     return ax_
 
 
@@ -941,7 +1420,8 @@ def dendrogram(
     figsize : tuple of float, default (10, 4)
         Figure size used when ``ax`` is not given.
     fontsize : int, default 12
-        Tick label size.
+        Size of the leaf labels (the x axis for ``"top"``/``"bottom"``, the
+        y axis for ``"left"``/``"right"``).
     orientation : str, default "bottom"
         Dendrogram orientation passed to :func:`scipy.cluster.hierarchy.dendrogram`.
     method : str, default "average"
@@ -1006,7 +1486,8 @@ def dendrogram(
     col_labels = _rtl_safe_labels(cols_with_missing, ax=ax_)
     hierarchy.dendrogram(linkage, labels=col_labels, orientation=orientation, ax=ax_, **kwargs)
     ax_.set_title("Dendrogram of Variables by Missing Data Patterns")
-    ax_.tick_params(axis="x", labelsize=fontsize)
+    label_axis = "y" if orientation in {"left", "right"} else "x"
+    ax_.tick_params(axis=label_axis, labelsize=fontsize)
     _clean_ax(ax_)
     return ax_
 
@@ -1030,12 +1511,59 @@ def vis_miss(
 ) -> Any:
     """Pixel-level heatmap of present / missing values (naniar-style).
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missing cells are drawn.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    fontsize : int, default 12
+        Font size for tick and axis labels.
+    sort : bool, default False
+        Whether to order columns by descending missing share.
+    cluster : bool, default False
+        Whether to order rows by hierarchical clustering.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    backend : {"matplotlib", "plotly"}, default "matplotlib"
+        Rendering backend.  ``interactive=True`` also selects Plotly.
+    interactive : bool, default False
+        Whether to return an interactive Plotly figure.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to the Plotly backend.  On the Matplotlib backend they are
+        ignored.
+
     Returns
     -------
     matplotlib.axes.Axes or plotly Figure
+        The heatmap axes, or an interactive Plotly figure.
+
+    Raises
+    ------
+    ImportError
+        If Plotly output is requested but Plotly is not installed.
+
+    Warns
+    -----
+    FutureWarning
+        If an unsupported keyword argument or an unknown *backend* is given;
+        a future release will raise instead.
+    UserWarning
+        If styling arguments are given together with the Plotly backend,
+        which does not honour them.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> ax = vis_miss(pd.DataFrame({"a": [1.0, None], "b": [2.0, 3.0]}))
+    >>> ax.get_xlabel()
+    '25.0% missing'
     """
-    if backend == "plotly" or interactive:
+    if _use_plotly("vis_miss", backend, interactive):
         _require_plotly()
+        _warn_ignored_on_plotly(vis_miss, figsize=figsize, fontsize=fontsize, ax=ax)
         from missingly.visualisation.interactive import _vis_miss_plotly
         return _vis_miss_plotly(
             _apply_sentinels(df, missing_values),
@@ -1044,6 +1572,7 @@ def vis_miss(
             **kwargs,
         )
 
+    _warn_unsupported_kwargs("vis_miss", kwargs)
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df)
 
@@ -1106,10 +1635,46 @@ def miss_cluster(
 ) -> Any:
     """Clustered heatmap of missing indicator matrix.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data whose missing indicators are clustered by rows and columns.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    cmap : str, default "gray_r"
+        Matplotlib colormap.
+    fontsize : int, default 10
+        Font size for column labels.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Unsupported; this function has no interactive backend.
+
     Returns
     -------
     matplotlib.axes.Axes
+        The axes that were drawn on.
+
+    Warns
+    -----
+    FutureWarning
+        If any keyword argument (including ``interactive`` or ``method``) is
+        given; it is ignored and a future release will raise ``TypeError``.
+    UserWarning
+        If clustering cannot form valid distances and the original order is
+        used.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"a": [1.0, None, 3.0], "b": [None, 2.0, 3.0]})
+    >>> ax = miss_cluster(frame)
+    >>> ax.get_title()
+    'Clustered missing indicator matrix'
     """
+    _warn_unsupported_kwargs("miss_cluster", kwargs)
     df = _apply_sentinels(df, missing_values)
     null_mat = _null_matrix(df).astype(float)
     try:
@@ -1176,13 +1741,19 @@ def miss_row_profile(
     missing_values : sequence, optional
         Additional sentinel values treated as missing.
     **kwargs : Any
-        Reserved for future compatibility.
+        Unsupported.
 
     Returns
     -------
     matplotlib.axes.Axes
         The supplied or newly created axes. Empty row or column inputs return
         annotated axes instead of attempting an undefined histogram.
+
+    Warns
+    -----
+    FutureWarning
+        If any keyword argument is given; it is ignored and a future release
+        will raise ``TypeError``.
 
     Examples
     --------
@@ -1191,6 +1762,7 @@ def miss_row_profile(
     >>> ax.get_title()
     'Row Missingness Profile'
     """
+    _warn_unsupported_kwargs("miss_row_profile", kwargs)
     if ax is not None:
         fig = ax.figure
         ax_ = ax
@@ -1245,13 +1817,47 @@ def shadow_scatter(
 
     Parameters
     ----------
+    df : pandas.DataFrame
+        Input data.
+    x, y : str
+        Columns plotted on the horizontal and vertical axes.
     shadow_col : str, optional
         Column to use for colouring shadow points (alias for hue).
+    hue : str, optional
+        Column whose categories colour the present points.
+    figsize : tuple of float, default (7, 5)
+        Figure size used when *ax* is not given.
+    color_present, color_missing : str
+        Colours of present points and of the missing-value rug.
+    alpha : float, default 0.7
+        Point opacity.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Unsupported; this function has no interactive backend.
 
     Returns
     -------
     matplotlib.axes.Axes
+        The axes that were drawn on.
+
+    Warns
+    -----
+    FutureWarning
+        If any keyword argument (including ``interactive``) is given; it is
+        ignored and a future release will raise ``TypeError``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"x": [1.0, None, 3.0], "y": [2.0, 2.0, None]})
+    >>> ax = shadow_scatter(frame, "x", "y")
+    >>> ax.get_xlabel()
+    'x'
     """
+    _warn_unsupported_kwargs("shadow_scatter", kwargs)
     df = _apply_sentinels(df, missing_values)
     # shadow_col is an alias for hue
     if shadow_col is not None and hue is None:
@@ -1331,9 +1937,38 @@ def vis_miss_fct(
 ) -> Any:
     """Faceted vis_miss split by a categorical column.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data.
+    fct : str
+        Column whose distinct values define the facets.
+    figsize : tuple of float, optional
+        Figure size; a size proportional to the facet count is used if omitted.
+    fontsize : int, default 10
+        Font size for labels and facet titles.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to :func:`vis_miss` for every facet.
+
     Returns
     -------
-    matplotlib.axes.Axes  (last facet axes)
+    matplotlib.axes.Axes
+        The last facet's axes; the others are reachable through
+        ``ax.figure.axes``.  This function has no *ax* keyword.
+
+    Warns
+    -----
+    FutureWarning
+        If :func:`vis_miss` does not support a keyword argument; it is ignored
+        and a future release will raise ``TypeError``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"g": ["a", "b"], "x": [1.0, None]})
+    >>> ax = vis_miss_fct(frame, "g")
     """
     df = _apply_sentinels(df, missing_values)
     groups = df[fct].unique()
@@ -1376,12 +2011,37 @@ def vis_miss_by_group(
 
     Parameters
     ----------
+    df : pandas.DataFrame
+        Input data.
     group_col : str
         Column to group by.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    cmap : str, default "YlOrRd"
+        Matplotlib colormap.
+    fontsize : int, default 11
+        Tick-label font size.
+    annot : bool, default True
+        Whether to annotate cells with their values.
+    fmt : str, default ".0f"
+        Numeric format used for annotations.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Forwarded to :func:`seaborn.heatmap`.
 
     Returns
     -------
     matplotlib.axes.Axes
+        The heatmap axes.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"g": ["a", "b"], "x": [1.0, None]})
+    >>> ax = vis_miss_by_group(frame, "g", fontsize=9)
     """
     df = _apply_sentinels(df, missing_values)
     data_cols = [c for c in df.columns if c != group_col]
@@ -1401,6 +2061,7 @@ def vis_miss_by_group(
     pct.columns = col_labels
     sns.heatmap(pct, ax=ax_, cmap=cmap, annot=annot, fmt=fmt,
                 vmin=0, vmax=100, linewidths=0.3, **kwargs)
+    ax_.tick_params(axis="both", labelsize=fontsize)
     ax_.set_title(f"% missing per column by '{group_col}'")
     return ax_
 
@@ -1714,10 +2375,46 @@ def vis_parallel_coords(
 ) -> Any:
     """Parallel coordinates plot coloured by whether any value is missing.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data; only numeric columns are drawn.
+    color_complete, color_missing : str
+        Line colours for rows without and with a missing value; the legend
+        names them.
+    alpha : float, default 0.3
+        Line opacity.
+    figsize : tuple of float, optional
+        Figure size for a newly-created figure.
+    fontsize : int, default 11
+        Font size for column labels.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on.
+    missing_values : optional
+        Additional sentinel value or values treated as missing.
+    **kwargs : Any
+        Unsupported; this function has no interactive backend.
+
     Returns
     -------
     matplotlib.axes.Axes
+        The axes that were drawn on.
+
+    Warns
+    -----
+    FutureWarning
+        If any keyword argument (including ``interactive``) is given; it is
+        ignored and a future release will raise ``TypeError``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"a": [1.0, None, 3.0], "b": [2.0, 2.5, 1.0]})
+    >>> ax = vis_parallel_coords(frame)
+    >>> ax.get_title()
+    'Parallel coordinates'
     """
+    _warn_unsupported_kwargs("vis_parallel_coords", kwargs)
     df = _apply_sentinels(df, missing_values)
     num_df = df.select_dtypes(include=[np.number])
     if num_df.empty:
@@ -1755,7 +2452,7 @@ def vis_parallel_coords(
     ax_.set_xticks(xs)
     ax_.set_xticklabels(col_labels, fontsize=fontsize)
     ax_.set_yticks([])
-    ax_.set_title("Parallel coordinates (orange = any missing)")
+    ax_.set_title("Parallel coordinates")
     _clean_ax(ax_)
 
     from matplotlib.lines import Line2D
