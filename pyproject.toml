@@ -58,6 +58,7 @@ test = [
     "setuptools>=77.0.0",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pyyaml>=6.0",
     "upsetplot>=0.9.0",
 ]
 quality = [
@@ -116,8 +117,11 @@ select = ["E9", "F", "BLE001"]
 [tool.coverage.run]
 source = ["missingly"]
 omit = ["missingly/templates/*"]
+branch = true
+relative_files = true
 
 [tool.coverage.report]
+fail_under = 90
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
