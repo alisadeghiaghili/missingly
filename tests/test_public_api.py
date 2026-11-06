@@ -15,10 +15,16 @@ import missingly
 
 
 def test_runtime_version_matches_distribution_metadata():
-    """Runtime and build metadata expose one consistent release version."""
+    """Runtime and build metadata expose one consistent release version.
+
+    The expected value is not hard-coded: ``missingly._version`` is the single
+    source of truth, so a version bump must not require editing this test.
+    """
+    import re
     from importlib.metadata import version
 
-    assert missingly.__version__ == version("missingly") == "1.0.0"
+    assert missingly.__version__ == version("missingly")
+    assert re.fullmatch(r"\d+\.\d+\.\d+", missingly.__version__)
 
 
 # ---------------------------------------------------------------------------
