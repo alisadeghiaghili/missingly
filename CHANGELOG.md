@@ -33,6 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Static-plot API hygiene (WP-06): unsupported keyword arguments of the static
+  plot functions, `interactive=True` on functions without a Plotly backend and
+  an unknown `backend` value are no longer swallowed silently; each emits a
+  `FutureWarning` naming the argument (a future release will raise
+  `TypeError`; F-147, F-365, F-303). Styling arguments the Plotly backend
+  cannot honour (`color`, `figsize`, `cmap`, ...) now emit a `UserWarning`
+  (F-303). Interactive calls without Plotly now raise the `ImportError` that
+  names `missingly[interactive]` (F-299). `matrix(color=...)` accepts any
+  Matplotlib colour string (F-301). `fontsize` is honoured by `heatmap`,
+  `miss_cooccurrence`, `vis_miss_by_group` and by `dendrogram` for the
+  `left`/`right` orientations (F-370, F-371). `miss_case` labels its x axis
+  "Row (sorted by # missing)" when sorted and `vis_parallel_coords` no longer
+  hard-codes a colour in its title (F-368, F-382). The module, README and API
+  documentation now state which functions lack `ax`, return a non-`Axes`
+  value, or have a Plotly backend, and that `heatmap` masking is on by
+  default (F-298, F-364).
 - Fixed the ``df.miss`` accessor (WP-07): ``dendrogram()`` and
   ``vis_miss_fct()`` no longer always raise ``TypeError`` (the accessor passed
   ``method='ward'`` into scipy and ``ax`` twice; F-005, F-006, F-047, F-048),

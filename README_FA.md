@@ -134,7 +134,7 @@ mi.upset(df)             # نمودار UpSet از مجموعه‌های گمش�
 
 ```python
 mi.heatmap(df)
-mi.heatmap(df, mask_insignificant=True)
+mi.heatmap(df, mask_insignificant=False)  # مخفی‌سازی سلول‌های غیرمعنادار به‌طور پیش‌فرض روشن است
 ax = mi.miss_cluster(df)
 mi.dendrogram(df)
 ```
@@ -156,6 +156,23 @@ mi.miss_case(df, interactive=True)
 mi.upset(df, interactive=True)
 mi.miss_patterns(df, interactive=True)
 ```
+
+فقط همین نه تابع backend تعاملی Plotly دارند. آرگومان‌های ظاهری که backend
+Plotly نمی‌تواند اعمال کند (مثل `color`، `figsize` یا `cmap`) به‌جای حذف بی‌صدا،
+با هشدار گزارش می‌شوند.
+
+#### مقدار بازگشتی و آرگومان‌های پشتیبانی‌نشده
+
+توابع ایستا همان `matplotlib.axes.Axes` را برمی‌گردانند و `ax=` اختیاری می‌پذیرند.
+استثناها: `mi.upset` یک dict از محورها برمی‌گرداند (و همیشه figure خودش را
+می‌سازد)، `mi.vis_miss_fct` پارامتر `ax` ندارد و محور آخرین facet را برمی‌گرداند،
+و `mi.miss_impute_compare` یک `Figure` برمی‌گرداند (بدون `ax`).
+
+آرگومان‌های کلیدی‌ای که تابع پشتیبانی نمی‌کند (مثلاً غلط املایی یا
+`interactive=True` روی تابعی بدون backend Plotly) هنوز نادیده گرفته می‌شوند، اما
+اکنون یک `FutureWarning` با نام آرگومان می‌دهند: در انتشار آینده `TypeError`
+ایجاد خواهد شد. `mi.upset` همین حالا برای گزینه‌های پشتیبانی‌نشده `TypeError`
+می‌دهد.
 
 ### Imputation (جایگزینی)
 
