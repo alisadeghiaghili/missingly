@@ -5,7 +5,7 @@
 
 Compatibility
 -------------
-Requires Python 3.9+ and pandas 2.0+.
+Requires Python 3.9+ and pandas 2.1+.
 """
 
 from __future__ import annotations
