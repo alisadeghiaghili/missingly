@@ -33,6 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the ``df.miss`` accessor (WP-07): ``dendrogram()`` and
+  ``vis_miss_fct()`` no longer always raise ``TypeError`` (the accessor passed
+  ``method='ward'`` into scipy and ``ax`` twice; F-005, F-006, F-047, F-048),
+  ``vis_impute_dist()`` takes the required ``column`` (F-072) and
+  ``vis_miss_span()`` accepts the default window, ``span_every`` and ``span``
+  (F-209, F-210). Accessor methods now mirror the signature of the function
+  they wrap, so parameters such as ``missing_values`` and the ``mcar_test``
+  tuning arguments (``max_iter``, ``tol``, ``ridge``) are forwarded (F-205);
+  every v1 positional call form (for example ``df.miss.matrix(ax)``) keeps
+  working. ``DataFrame.miss.mar_mnar_test`` now raises for a partly
+  missing target exactly like ``missingness_association_test`` instead of
+  silently dropping rows (F-070, F-206, F-207). ``dendrogram`` gained an
+  honoured ``method`` linkage argument (default ``"average"``, the previous
+  module-function behaviour).
+- Deprecated the accessor arguments that were silently ignored
+  (``vis_miss(show_pct=...)`` for the matplotlib backend and
+  ``miss_cluster(method=...)``): they now emit a ``FutureWarning`` (F-071,
+  F-208). The accessor documentation no longer claims to expose every public
+  function and lists what it omits (F-204). A signature-parity test and a
+  contract test covering every accessor wrapper guard against future drift.
 - R-oracle validators now enforce their own identities. The Little's MCAR validator
   hashes its generator script and compares it with the manifest, and checks the naniar
   version and the R version and platform. The scoped mice comparison rejects an empty

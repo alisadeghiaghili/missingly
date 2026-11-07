@@ -927,15 +927,49 @@ def dendrogram(
     figsize: tuple[float, float] = (10, 4),
     fontsize: int = 12,
     orientation: str = "bottom",
+    method: str = "average",
     ax: Any = None,
     missing_values=None,
     **kwargs: Any,
 ) -> Any:
     """Hierarchical-clustering dendrogram of column nullity correlation.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Data whose columns are clustered by nullity correlation.
+    figsize : tuple of float, default (10, 4)
+        Figure size used when ``ax`` is not given.
+    fontsize : int, default 12
+        Tick label size.
+    orientation : str, default "bottom"
+        Dendrogram orientation passed to :func:`scipy.cluster.hierarchy.dendrogram`.
+    method : str, default "average"
+        Linkage method passed to :func:`scipy.cluster.hierarchy.linkage`
+        (for example ``"average"``, ``"complete"`` or ``"single"``).
+    ax : matplotlib.axes.Axes, optional
+        Axes to draw on.
+    missing_values : list, optional
+        Extra sentinel values to treat as missing.
+    **kwargs
+        Forwarded to :func:`scipy.cluster.hierarchy.dendrogram`.
+
     Returns
     -------
     matplotlib.axes.Axes
+
+    Raises
+    ------
+    ValueError
+        If ``method`` is not a valid linkage method.
+
+    Examples
+    --------
+    >>> import numpy as np, pandas as pd
+    >>> from missingly.visualisation.static import dendrogram
+    >>> frame = pd.DataFrame({"a": [1, np.nan, 3, 4], "b": [np.nan, 2, 3, 4],
+    ...                       "c": [1, 2, np.nan, np.nan]})
+    >>> ax = dendrogram(frame, method="complete")
     """
     from scipy.cluster import hierarchy
     from scipy.spatial.distance import squareform
@@ -960,7 +994,7 @@ def dendrogram(
     dist_values = np.array(dist.values, copy=True)
     np.fill_diagonal(dist_values, 0)
     linkage = hierarchy.linkage(
-        squareform(np.clip(dist_values, 0, None)), method="average"
+        squareform(np.clip(dist_values, 0, None)), method=method
     )
 
     if ax is not None:
