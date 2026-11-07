@@ -16,6 +16,11 @@ from types import ModuleType
 
 import pytest
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 RATCHET_SCRIPT = REPOSITORY_ROOT / "tools" / "ruff_ratchet.py"
 GATE_TARGET = "missingly/a.py"
@@ -254,3 +259,13 @@ def test_committed_baseline_matches_current_tree(
     with pytest.raises(SystemExit) as excinfo:
         runpy.run_path(str(RATCHET_SCRIPT), run_name="__main__")
     assert excinfo.value.code == 0
+
+
+def test_quality_extra_pins_the_ruff_version_the_baseline_was_built_with() -> None:
+    """A floating ruff version can add rules and fail the ratchet spuriously."""
+    root = Path(__file__).resolve().parents[1]
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    quality = pyproject["project"]["optional-dependencies"]["quality"]
+    ruff_specs = [spec for spec in quality if spec.replace(" ", "").startswith("ruff")]
+    assert len(ruff_specs) == 1
+    assert ruff_specs[0].replace(" ", "").startswith("ruff==")
