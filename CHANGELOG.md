@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- HTML report escaping is locked by tests: the Jinja2 environment used by
+  ``create_report`` is asserted to have ``autoescape`` enabled, and column
+  names, row index labels, categorical values and the title containing HTML
+  are checked to appear only escaped (SQ-13). A ``Security notes`` docs page
+  states the escaping, network, random-number and hashing behaviour of the
+  code.
+
 ### Changed
 
 - Removed local working notes from the repository root; project rules now live in

@@ -48,6 +48,7 @@ Contents
 
    api/index
    examples/index
+   security
 
 Indices and tables
 ==================
