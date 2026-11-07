@@ -131,6 +131,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Hardened the release workflow: publishing now depends on a job that runs the
+  test suite, builds the distributions once and fails unless the pushed tag,
+  ``missingly.__version__`` and the built wheel version are identical. PyPI
+  publishing uses trusted publishing from a dedicated job (the only one with
+  ``id-token: write``) in the ``pypi`` environment, the GitHub Release is
+  created in a separate job with only ``contents: write``, the workflow default
+  is ``contents: read`` and every action is pinned to a full commit SHA
+  (WP-01-R, F-050).
 - Renamed the `.gitignore` section for local working files and moved local tool patterns out of `.gitignore` (HYG-04).
 
 - Recorded the authoritative Python 3.12 CI coverage baseline as 89.64%
