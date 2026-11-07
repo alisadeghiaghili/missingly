@@ -64,14 +64,18 @@ def _contract() -> dict[str, object]:
 def test_committed_fixture_bytes_match_contract_digest() -> None:
     """The committed CSV hashes to the digest that the contract records."""
     csv_bytes = (_FIXTURE_DIR / "numeric_fcs.csv").read_bytes()
-    contract = json.loads((_FIXTURE_DIR / "cross_tool_contract.json").read_text(encoding="utf-8"))
+    contract = json.loads(
+        (_FIXTURE_DIR / "cross_tool_contract.json").read_text(encoding="utf-8")
+    )
 
     assert sha256(csv_bytes).hexdigest() == contract["dataset_sha256"]
 
 
 def test_validator_accepts_scoped_pooled_mean_comparison() -> None:
     """The comparison accepts a subject result inside the reviewed bound."""
-    _MODULE.validate_cross_tool_comparison(_reference(), _subject(), _contract(), _DIGEST)
+    _MODULE.validate_cross_tool_comparison(
+        _reference(), _subject(), _contract(), _DIGEST
+    )
 
 
 def test_validator_rejects_subject_metric_outside_bound() -> None:
@@ -80,7 +84,9 @@ def test_validator_rejects_subject_metric_outside_bound() -> None:
     subject["metrics"] = {"pooled_mean_x": 2.3}
 
     with pytest.raises(ValueError, match="exceeds reviewed tolerance"):
-        _MODULE.validate_cross_tool_comparison(_reference(), subject, _contract(), _DIGEST)
+        _MODULE.validate_cross_tool_comparison(
+            _reference(), subject, _contract(), _DIGEST
+        )
 
 
 def test_validator_rejects_empty_tolerance_set() -> None:
@@ -89,7 +95,9 @@ def test_validator_rejects_empty_tolerance_set() -> None:
     contract["tolerances"] = {}
 
     with pytest.raises(ValueError, match="must not be empty"):
-        _MODULE.validate_cross_tool_comparison(_reference(), _subject(), contract, _DIGEST)
+        _MODULE.validate_cross_tool_comparison(
+            _reference(), _subject(), contract, _DIGEST
+        )
 
 
 def test_validator_rejects_subject_dataset_hash_not_matching_the_data() -> None:
@@ -110,13 +118,19 @@ def test_validator_rejects_subject_version_not_running_package(version) -> None:
         subject["subject_tool_version"] = version
 
     with pytest.raises(ValueError, match="version"):
-        _MODULE.validate_cross_tool_comparison(_reference(), subject, _contract(), _DIGEST)
+        _MODULE.validate_cross_tool_comparison(
+            _reference(), subject, _contract(), _DIGEST
+        )
 
 
 def test_main_hashes_the_fixture_csv_it_reads(tmp_path) -> None:
     """A CSV edited after the subject artifact was written is rejected by main."""
-    shutil.copy(_FIXTURE_DIR / "cross_tool_contract.json", tmp_path / "cross_tool_contract.json")
-    contract = json.loads((tmp_path / "cross_tool_contract.json").read_text(encoding="utf-8"))
+    shutil.copy(
+        _FIXTURE_DIR / "cross_tool_contract.json", tmp_path / "cross_tool_contract.json"
+    )
+    contract = json.loads(
+        (tmp_path / "cross_tool_contract.json").read_text(encoding="utf-8")
+    )
     csv_bytes = bytearray((_FIXTURE_DIR / "numeric_fcs.csv").read_bytes())
     csv_bytes[-1] ^= 0x01
     (tmp_path / "numeric_fcs.csv").write_bytes(bytes(csv_bytes))
@@ -124,7 +138,12 @@ def test_main_hashes_the_fixture_csv_it_reads(tmp_path) -> None:
         "seed": contract["seed"],
         "dataset_sha256": contract["dataset_sha256"],
     }
-    reference = {"reference_tool": "R mice", "reference_tool_version": "3.19.0", "metrics": {}, **identity}
+    reference = {
+        "reference_tool": "R mice",
+        "reference_tool_version": "3.19.0",
+        "metrics": {},
+        **identity,
+    }
     subject = {
         "subject_tool": "Missingly",
         "subject_tool_version": missingly.__version__,
@@ -135,7 +154,9 @@ def test_main_hashes_the_fixture_csv_it_reads(tmp_path) -> None:
     subject_path = _write_json(tmp_path / "subject.json", subject)
 
     with pytest.raises(ValueError, match="dataset_sha256"):
-        _MODULE.main(reference_path, subject_path, tmp_path / "cross_tool_contract.json")
+        _MODULE.main(
+            reference_path, subject_path, tmp_path / "cross_tool_contract.json"
+        )
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:

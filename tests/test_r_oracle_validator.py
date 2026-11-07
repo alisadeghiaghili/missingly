@@ -88,7 +88,9 @@ def test_validator_rejects_tampered_generator_script(tmp_path, validator_module)
         validator_module.main(reference_path, manifest_path)
 
 
-def test_validator_rejects_script_hash_recorded_by_a_different_script(tmp_path, validator_module):
+def test_validator_rejects_script_hash_recorded_by_a_different_script(
+    tmp_path, validator_module
+):
     """An artifact whose recorded script hash differs from the committed script fails."""
     reference = _reference(_manifest())
     reference["source_script_sha256"] = "c" * 64
