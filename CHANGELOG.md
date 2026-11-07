@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- R-oracle validators now enforce their own identities. The Little's MCAR validator
+  hashes its generator script and compares it with the manifest, and checks the naniar
+  version and the R version and platform. The scoped mice comparison rejects an empty
+  tolerance set, computes the CSV SHA-256 itself instead of trusting a literal, and
+  requires the Missingly subject version to match the running package. The mice README
+  now states that the scoped Missingly comparison is run (WP-03; F-309, F-310, F-311,
+  F-312).
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
   CI and documentation workflows install, the dynamic version source, the

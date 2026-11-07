@@ -14,6 +14,10 @@ the R/package/platform and SHA-256 identities, then compares it against the
 reviewed numerical oracle. `benchmark_manifest.json` records the reviewed
 identity from the successful run.
 
+The validator hashes `generate_naniar_reference.R` at runtime and compares it with the
+manifest's `reference_script_sha256`. It also checks the recorded naniar version and the
+R version and platform against the manifest. A mismatch on any of these raises.
+
 `airquality.csv` is the public R `datasets::airquality` data set, mirrored by
 [Rdatasets](https://vincentarelbundock.github.io/Rdatasets/). Its SHA-256 is
 `65d2c4afd976c169af9bb0bd97e9e78e1e8a185f1b52e2e3153e30f90c7fb5f8`.
