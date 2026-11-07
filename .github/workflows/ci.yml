@@ -48,8 +48,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[quality]'
 
-      - name: Reject Python syntax and undefined-name defects
-        run: ruff check missingly tests
+      - name: Enforce the ruff lint and format ratchet
+        run: python tools/ruff_ratchet.py
 
       - name: Check the public benchmark contract types
         run: mypy missingly/benchmark.py --follow-imports=skip --ignore-missing-imports

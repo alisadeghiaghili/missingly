@@ -112,7 +112,24 @@ filterwarnings = [
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E9", "F", "BLE001"]
+# Mirrors the rule families SonarQube reports for Python. Existing debt is
+# recorded in tools/ruff_baseline.json and enforced by tools/ruff_ratchet.py.
+select = [
+    "E", "W", "F", "B", "BLE", "S", "N", "C90", "PL", "SIM", "ERA", "UP",
+    "RUF", "NPY", "PD", "PT", "TRY", "RET", "ARG", "ISC", "DTZ", "PGH",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Assertions are the test mechanism; bandit S101 does not apply to pytest.
+# Test fixtures and expected values are literals; PLR2004 does not apply.
+"tests/**" = ["S101", "PLR2004"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-args = 13
+max-positional-args = 13
 
 [tool.coverage.run]
 source = ["missingly"]
