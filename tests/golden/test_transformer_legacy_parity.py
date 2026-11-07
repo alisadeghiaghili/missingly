@@ -112,7 +112,9 @@ def test_complete_input_matches_pre_change_output(strategy: str, frames: tuple) 
 
 
 @pytest.mark.parametrize("strategy", sorted(STRATEGY_PARAMS))
-def test_numeric_only_input_matches_pre_change_output(strategy: str, frames: tuple) -> None:
+def test_numeric_only_input_matches_pre_change_output(
+    strategy: str, frames: tuple
+) -> None:
     train, test = frames
     numeric_train = train[["a", "b", "c"]]
     numeric_test = test[["a", "b", "c"]]
