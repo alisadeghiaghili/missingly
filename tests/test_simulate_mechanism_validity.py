@@ -377,3 +377,44 @@ def test_characterization_mixed_mcar_only_matches_standalone_mcar():
     mixed = simulate_mixed(df, [{"mechanism": "mcar", "frac": 0.2}], random_state=4)
     standalone = simulate_mcar(df, 0.2, random_state=4)
     pd.testing.assert_frame_equal(mixed, standalone)
+
+
+# ---------------------------------------------------------------------------
+# Edge cases and error paths
+# ---------------------------------------------------------------------------
+
+
+def test_mixed_step_on_fully_masked_target_is_a_no_op():
+    df = pd.DataFrame({"a": np.arange(10.0), "b": np.arange(10.0)})
+    spec = [
+        {"mechanism": "mcar", "columns": ["a"], "frac": 0.99},
+        {"mechanism": "mnar", "target_col": "a", "frac": 0.5},
+    ]
+    result = simulate_mixed(df, spec, random_state=0)
+    assert result["a"].isna().all()
+    assert result["b"].notna().all()
+
+
+def test_mixed_mar_step_rejects_invalid_frac():
+    spec = [{**MAR_STEP, "frac": 1.5}]
+    with pytest.raises(ValueError, match="frac"):
+        simulate_mixed(_mixed_frame(), spec, random_state=0)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"target_col": "nope", "predictor_col": "x"}, "target_col"),
+        ({"target_col": "y", "predictor_col": "nope"}, "predictor_col"),
+    ],
+)
+def test_mar_unknown_columns_raise_key_error(kwargs, match):
+    df = pd.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]})
+    with pytest.raises(KeyError, match=match):
+        simulate_mar(df, 0.5, **kwargs)
+
+
+def test_mnar_unknown_column_raises_key_error():
+    df = pd.DataFrame({"x": [1.0, 2.0]})
+    with pytest.raises(KeyError, match="target_col"):
+        simulate_mnar(df, 0.5, target_col="nope")
