@@ -54,9 +54,25 @@ class TestCharacterisation:
             }
         )
         result = impute_hotdeck_random(df, random_state=7)
-        assert result["age"].tolist() == [25.0, 61.0, 35.0, 40.0, 52.0, 52.0, 61.0, 52.0]
+        assert result["age"].tolist() == [
+            25.0,
+            61.0,
+            35.0,
+            40.0,
+            52.0,
+            52.0,
+            61.0,
+            52.0,
+        ]
         assert result["city"].astype(str).tolist() == [
-            "Paris", "Lyon", "Nice", "Paris", "Lyon", "Paris", "Nice", "Nice",
+            "Paris",
+            "Lyon",
+            "Nice",
+            "Paris",
+            "Lyon",
+            "Paris",
+            "Nice",
+            "Nice",
         ]
         assert result["n"].tolist() == [1, 2, 5, 4, 5, 6, 6, 8]
 
@@ -147,7 +163,9 @@ class TestWeightedProbabilities:
         # the documented weight is 1 / (1 + distance), normalised over the pool.
         weights = 1.0 / (1.0 + np.array(self.DONOR_X[:n_donors]))
         probabilities = weights / weights.sum()
-        result = impute_hotdeck_weighted(self._frame(), n_donors=n_donors, random_state=1)
+        result = impute_hotdeck_weighted(
+            self._frame(), n_donors=n_donors, random_state=1
+        )
         counts = _counts(result["v"].iloc[4:], self.LEVELS[:n_donors])
         assert counts.sum() == 4000
         assert _chi_square(counts, probabilities) < CHI2_CRIT_001[n_donors - 1]
@@ -286,9 +304,30 @@ class TestVectorisedDistance:
         assert time.perf_counter() - start < 6.0
 
     def test_warns_when_pair_count_is_large(self, monkeypatch):
-        monkeypatch.setattr(hotdeck, "_PAIR_WARN_THRESHOLD", 20)
+        monkeypatch.setattr(hotdeck, "_PAIR_WARN_THRESHOLD", 10)
         df = pd.DataFrame({"a": [1.0, 2.0, 3.0, np.nan, np.nan, 6.0, 7.0, 8.0]})
         with pytest.warns(UserWarning, match="donor pairs"):
+            impute_hotdeck_weighted(df, random_state=0)
+
+    def test_warns_when_row_count_exceeds_config_threshold(self, monkeypatch):
+        monkeypatch.setattr(hotdeck._config, "large_df_threshold", 3)
+        df = pd.DataFrame({"a": [1.0, 2.0, 3.0, np.nan, 5.0]})
+        with pytest.warns(UserWarning, match="5 rows"):
+            impute_hotdeck_weighted(df, random_state=0)
+
+    def test_constant_matcher_does_not_discriminate(self):
+        df = pd.DataFrame(
+            {
+                "const": [4.0] * 6,
+                "v": [1.0, 2.0, 3.0, np.nan, np.nan, np.nan],
+            }
+        )
+        result = impute_hotdeck_weighted(df, n_donors=3, random_state=0)
+        assert set(result["v"].iloc[3:]).issubset({1.0, 2.0, 3.0})
+
+    def test_all_missing_numeric_matcher_column_raises(self):
+        df = pd.DataFrame({"empty": [np.nan] * 3, "v": [1.0, np.nan, 3.0]})
+        with pytest.raises(ValueError, match="'empty' has no observed values"):
             impute_hotdeck_weighted(df, random_state=0)
 
     def test_no_pair_warning_for_small_problem(self):
@@ -342,7 +381,7 @@ class TestImputationClasses:
     def test_random_by_list_of_columns(self):
         df = pd.DataFrame(
             {
-                "g": ["a", "a", "a", "b", "b", "b"],
+                "g": ["a", "a", "a", "b", "b", "a"],
                 "h": ["x", "x", "y", "x", "x", "y"],
                 "v": [1.0, np.nan, 7.0, 5.0, 6.0, np.nan],
             }

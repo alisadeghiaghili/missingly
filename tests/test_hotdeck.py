@@ -156,9 +156,10 @@ class TestHotdeckWeighted:
         assert isinstance(result["city"].dtype, pd.CategoricalDtype)
 
     def test_n_donors_1_is_deterministic(self, numeric_df):
-        r1 = impute_hotdeck_weighted(numeric_df, n_donors=1, random_state=0)
-        r2 = impute_hotdeck_weighted(numeric_df, n_donors=1, random_state=99)
-        # With n_donors=1 the nearest neighbour is always chosen regardless of seed
+        df = numeric_df.assign(b=[1.0, 1.9, 3.0, 4.2, 5.0])
+        r1 = impute_hotdeck_weighted(df, n_donors=1, random_state=0)
+        r2 = impute_hotdeck_weighted(df, n_donors=1, random_state=99)
+        # With a unique nearest neighbour the same donor is chosen for any seed
         pd.testing.assert_frame_equal(r1, r2)
 
     def test_all_missing_raises(self):

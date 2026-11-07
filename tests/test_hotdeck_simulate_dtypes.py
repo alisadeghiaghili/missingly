@@ -103,9 +103,9 @@ def test_characterization_sequential_hotdeck_float_object_frame():
 def test_characterization_weighted_hotdeck_float_object_frame():
     expected = pd.DataFrame(
         {
-            "x": [1.0, 1.0, 3.0, 4.0, 3.0, 6.0, 7.0, 8.0],
-            "y": [10.0, 20.0, 50.0, 40.0, 50.0, 40.0, 70.0, 80.0],
-            "cat": ["a", "a", "b", "a", "b", "a", "a", "b"],
+            "x": [1.0, 4.0, 3.0, 4.0, 3.0, 6.0, 7.0, 8.0],
+            "y": [10.0, 20.0, 80.0, 40.0, 50.0, 40.0, 70.0, 80.0],
+            "cat": ["a", "a", "b", "a", "b", "a", "b", "b"],
         }
     )
     result = impute_hotdeck_weighted(_hotdeck_frame(), n_donors=2, random_state=0)
