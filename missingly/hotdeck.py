@@ -55,7 +55,11 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-from missingly._validation import validate_dataframe, validate_positive_int
+from missingly._validation import (
+    as_generator,
+    validate_dataframe,
+    validate_positive_int,
+)
 from missingly.config import config as _config
 from missingly.impute import _normalize_missing, _restore_categorical_dtype
 
@@ -328,9 +332,13 @@ def impute_hotdeck_random(
     ----------
     df : pd.DataFrame
         Input DataFrame.
-    random_state : int or None, default None
+    random_state : int, numpy integer, Generator, RandomState or None, default None
         Seed for the random number generator.  Pass an integer for
         reproducible results.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
 
     Returns
     -------
@@ -340,12 +348,19 @@ def impute_hotdeck_random(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
     ValueError
         If any column is entirely missing (no donor available).
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -380,7 +395,7 @@ def impute_hotdeck_random(
     """
     validate_dataframe(df, param="df")
     df = _normalize_missing(df)
-    rng = np.random.default_rng(random_state)
+    rng = as_generator(random_state)
     result = df.copy()
 
     for col in df.columns:
@@ -507,8 +522,12 @@ def impute_hotdeck_weighted(
         Gower distance are identified, then one is sampled with
         inverse-distance weights.  Larger values increase randomness;
         ``n_donors=1`` is deterministic nearest-neighbour hot-deck.
-    random_state : int or None, default None
+    random_state : int, numpy integer, Generator, RandomState or None, default None
         Seed for the random number generator.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
 
     Returns
     -------
@@ -518,12 +537,19 @@ def impute_hotdeck_weighted(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
     TypeError
         If *n_donors* is not a positive integer.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -570,7 +596,7 @@ def impute_hotdeck_weighted(
         )
 
     df = _normalize_missing(df)
-    rng = np.random.default_rng(random_state)
+    rng = as_generator(random_state)
     result = df.copy()
 
     col_is_numeric = _gower_numeric_mask(df)

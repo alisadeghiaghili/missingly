@@ -73,6 +73,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (the bound is ignored; it will become an error).
   - column order of the encoding-based imputers is unchanged (numeric columns
     first); `impute_knn(metric="mixed")` keeps the input order.
+- Unified `random_state` handling for stochastic imputers and argument
+  validation (WP-05, F-033, F-111, F-203, F-231, F-244):
+  - every stochastic function (`impute_hotdeck_random`,
+    `impute_hotdeck_weighted`, `impute_pmm`, `impute_logreg`,
+    `impute_polyreg`, `impute_polr`, `impute_rf`, `impute_gb`, `impute_mice`)
+    accepts `None`, non-negative integers of any size (Python or numpy), a
+    `numpy.random.Generator` and a `numpy.random.RandomState`; integer seeds
+    give the same output as before. Other values raise
+    `missingly.exceptions.InvalidSeedError` before any draw (F-231). It is a
+    `ConfigurationError` and is also a `ValueError` and a `TypeError`, so
+    code that caught those builtins for invalid seeds keeps working. A
+    `impute_polyreg`, `impute_polr`, `impute_rf` and `impute_gb` used to
+    return a silent mean or mode fallback for an invalid seed; they now raise
+    (F-033);
+  - a `bool` seed (`True` / `False`) is deprecated, not rejected: it still
+    gives exactly the output of `1` / `0` as before, and emits a
+    `FutureWarning`. A future release will raise `InvalidSeedError` for it;
+  - `impute_rf` and `impute_gb` no longer turn a `Generator` seed, an integer
+    of 2**32 or more, or a negative seed into mean imputation; these seeds
+    now fit the model, and invalid seeds raise (F-033);
+  - `impute_mice(return_result=True)` accepts numpy integers for
+    `random_state`, `max_iter` and `n_imputations` (F-111);
+  - `validate_positive_int` (counters such as `n_neighbors`, `n_donors`,
+    `n_imputations`, `max_iter`, `n_nearest_donors`) treats a `bool` as
+    `1` / `0`, as before, and emits a `FutureWarning`; `False` is still
+    rejected where zero is not allowed. A future release will reject booleans
+    with `TypeError` (F-203, deprecated rather than rejected, so existing
+    code keeps its output);
+  - `impute_mice(return_result=True, n_imputations=True)` now works; it used
+    to fail with `ValueError` after all chains had run (F-111);
+  - `impute_mice` accepts numpy-integer `bounds` and non-string column labels
+    in `visit_sequence` (F-244).
+  - Not changed here (WP-05b, needs owner approval): chain-seed derivation
+    `random_state + i` (F-246) and the default seed policy (`random_state=0`
+    versus `None`, F-247). Defaults are unchanged.
+  - Not changed here: `simulate_*` and `compare_imputations` still use the
+    previous seed handling (F-231 follow-up, outside this work package).
 - Fixed dtype handling in hot-deck imputation and missingness simulation
   (WP-04, F-012, F-232, F-233, F-358):
   - `impute_hotdeck_weighted` accepts bool and nullable `boolean` columns,

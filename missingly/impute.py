@@ -62,6 +62,7 @@ Functions that are O(n²) or slow on large DataFrames emit a
 from __future__ import annotations
 
 import logging
+import numbers
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -103,6 +104,9 @@ from missingly.exceptions import (
 )
 from missingly.mi_contracts import ImputationPlan, ImputationResult, MIData, MissingnessSchema
 from missingly._validation import (
+    as_base_seed,
+    as_generator,
+    as_sklearn_seed,
     validate_dataframe,
     validate_positive_int,
     validate_strategy,
@@ -761,7 +765,7 @@ def _impute_column_by_column(
     df: pd.DataFrame,
     regressor,
     classifier,
-    random_state: int,
+    random_state: Optional[int],
     strategy_name: str,
     max_iter: int = 1,
     fill_feature_nan: bool = False,
@@ -780,7 +784,7 @@ def _impute_column_by_column(
         Estimator used for numeric columns.
     classifier : sklearn estimator
         Estimator used for categorical columns.
-    random_state : int
+    random_state : int or None
         Random seed (informational; estimators are already initialised).
     strategy_name : str
         Human-readable strategy name used in exception messages.
@@ -965,7 +969,7 @@ def _run_mice_with_history(
         ``{col: [mean_iter1, mean_iter2, ...]}``.  Only columns that had
         missing values are included.
     """
-    rng = np.random.default_rng(seed)
+    rng = as_generator(seed)
     cols = list(df_work.columns)
     # Initialise missing cells with column means (same as sklearn default)
     X = df_work.values.astype(float).copy()
@@ -1170,7 +1174,7 @@ def _mice_impute_array(
     imputer = IterativeImputer(
         estimator=base_estimator,
         max_iter=max_iter,
-        random_state=seed,
+        random_state=as_sklearn_seed(seed),
         imputation_order="roman",
         sample_posterior=use_posterior,
     )
@@ -1521,6 +1525,42 @@ def impute_knn(
     return restore_dtypes(decoded, normalized)
 
 
+def _is_real_number(value: Any) -> bool:
+    """Return True for real numbers that are not booleans (numpy or Python)."""
+    return isinstance(value, numbers.Real) and not isinstance(value, (bool, np.bool_))
+
+
+def _validate_visit_sequence(
+    visit_sequence: Any,
+    columns: pd.Index,
+    missing_targets: List,
+) -> None:
+    """Check that *visit_sequence* lists every missing target exactly once.
+
+    Column labels may be any hashable value present in *columns*.
+    """
+    if not isinstance(visit_sequence, list):
+        raise TypeError("visit_sequence must be a list of column names")
+    known = set(columns)
+    unknown = [column for column in visit_sequence if column not in known]
+    if unknown:
+        raise ValueError(f"visit_sequence contains unknown columns: {unknown}")
+    if len(visit_sequence) != len(set(visit_sequence)) or set(visit_sequence) != set(missing_targets):
+        raise ValueError("visit_sequence must contain every missing target exactly once")
+
+
+def _validate_bounds_intervals(bounds: Dict[Any, Any]) -> None:
+    """Check that every bounds entry is a finite ``(lower, upper)`` pair of real numbers."""
+    for interval in bounds.values():
+        if not isinstance(interval, tuple) or len(interval) != 2:
+            raise TypeError("each bounds interval must be a (lower, upper) tuple")
+        lower, upper = interval
+        if not all(_is_real_number(value) and np.isfinite(value) for value in interval):
+            raise ValueError("bounds must contain finite numeric limits")
+        if lower > upper:
+            raise ValueError("bounds lower limit must not exceed upper limit")
+
+
 def impute_mice(
     df: pd.DataFrame,
     max_iter: int = 10,
@@ -1551,8 +1591,14 @@ def impute_mice(
         Input DataFrame with missing values.
     max_iter : int, default 10
         Maximum number of MICE imputation iterations per chain.
-    random_state : int, default 0
-        Base random seed.
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
+        Base random seed. Chain *i* uses ``base + i``; ``base`` is the integer
+        seed itself, or one integer drawn from a Generator, RandomState or
+        ``None``.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     estimator : sklearn estimator or None, default None
         Regression estimator used per column.  Defaults to
         ``BayesianRidge()`` with posterior sampling enabled.
@@ -1589,7 +1635,7 @@ def impute_mice(
         and categorical targets that were ordinal-encoded before that
         estimator. Categorical target handling is not a validated
         multinomial or ordinal FCS kernel in either case.
-    visit_sequence : list of str, optional
+    visit_sequence : list of column labels, optional
         Exact ordered set of columns with original missing values to update in
         every FCS sweep. ``None`` uses the legacy left-to-right order.
     predictor_matrix : pandas.DataFrame, optional
@@ -1603,7 +1649,7 @@ def impute_mice(
         cells is rejected. With
         ``return_result=True``, retained cells are recorded as structural
         missingness rather than treated as incomplete chain output.
-    bounds : dict of str to tuple of float, optional
+    bounds : dict of column label to tuple of real number, optional
         Inclusive numeric bounds per target column. Bounds are applied only to
         newly imputed values and must use finite ascending limits.
 
@@ -1615,6 +1661,8 @@ def impute_mice(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
@@ -1627,6 +1675,11 @@ def impute_mice(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Notes
     -----
@@ -1668,6 +1721,10 @@ def impute_mice(
     validate_dataframe(df, param="df")
     validate_positive_int(n_imputations, param="n_imputations")
     validate_positive_int(max_iter, param="max_iter")
+    n_imputations = int(n_imputations)
+    max_iter = int(max_iter)
+    base_seed = as_base_seed(random_state)
+    chain_seeds = tuple(base_seed + index for index in range(n_imputations))
     if return_history and return_result:
         raise ValueError("return_result cannot be combined with return_history")
 
@@ -1691,15 +1748,7 @@ def impute_mice(
     retained_missing_mask = original_missing_mask & ~imputation_mask
     missing_targets = [column for column in df_norm.columns if imputation_mask[column].any()]
     if visit_sequence is not None:
-        if not isinstance(visit_sequence, list) or not all(
-            isinstance(column, str) for column in visit_sequence
-        ):
-            raise TypeError("visit_sequence must be a list of column names")
-        unknown = sorted(set(visit_sequence) - set(df_norm.columns))
-        if unknown:
-            raise ValueError(f"visit_sequence contains unknown columns: {unknown}")
-        if len(visit_sequence) != len(set(visit_sequence)) or set(visit_sequence) != set(missing_targets):
-            raise ValueError("visit_sequence must contain every missing target exactly once")
+        _validate_visit_sequence(visit_sequence, df_norm.columns, missing_targets)
     if predictor_matrix is not None:
         if not isinstance(predictor_matrix, pd.DataFrame):
             raise TypeError("predictor_matrix must be a pandas DataFrame")
@@ -1719,14 +1768,7 @@ def impute_mice(
         if unknown_bounds:
             raise ValueError(f"bounds contains unknown columns: {unknown_bounds}")
         bounds = _drop_boolean_bounds(df_norm, bounds)
-        for column, interval in bounds.items():
-            if not isinstance(interval, tuple) or len(interval) != 2:
-                raise TypeError("each bounds interval must be a (lower, upper) tuple")
-            lower, upper = interval
-            if not all(isinstance(value, (int, float)) and np.isfinite(value) for value in interval):
-                raise ValueError("bounds must contain finite numeric limits")
-            if lower > upper:
-                raise ValueError("bounds lower limit must not exceed upper limit")
+        _validate_bounds_intervals(bounds)
 
     normalized = normalize_frame(
         df_norm, "mice", targets=missing_targets, deprecated=_LEGACY_ENCODED
@@ -1782,7 +1824,7 @@ def impute_mice(
         return result
 
     if return_result:
-        results = [_single_chain(random_state + index) for index in range(n_imputations)]
+        results = [_single_chain(seed) for seed in chain_seeds]
         frames, histories = zip(*results)
         methods, conditional_contract, limitation = _mice_conditional_model_contract(
             df_norm,
@@ -1803,7 +1845,7 @@ def impute_mice(
             methods=methods,
             n_imputations=n_imputations,
             max_iter=max_iter,
-            seed_sequence=tuple(random_state + index for index in range(n_imputations)),
+            seed_sequence=chain_seeds,
             provenance=provenance,
         )
         data = MIData(df.copy(deep=True), schema, plan, tuple(frames))
@@ -1831,9 +1873,9 @@ def impute_mice(
         )
 
     if n_imputations == 1:
-        return _single_chain(random_state)
+        return _single_chain(base_seed)
 
-    results = [_single_chain(random_state + i) for i in range(n_imputations)]
+    results = [_single_chain(seed) for seed in chain_seeds]
     if return_history:
         dfs, histories = zip(*results)
         return list(dfs), list(histories)
@@ -1865,8 +1907,12 @@ def impute_pmm(
         Input DataFrame with missing values.
     max_iter : int, default 10
         Maximum number of MICE iterations per chain.
-    random_state : int, default 0
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
         Random seed for reproducibility.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     n_nearest_donors : int, default 5
         Number of nearest observed values to consider as donors for each
         missing value. Larger values increase randomness.
@@ -1878,12 +1924,19 @@ def impute_pmm(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
     InsufficientDataError
         If a column requiring imputation has no observed donor values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -1911,6 +1964,7 @@ def impute_pmm(
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
     validate_positive_int(n_nearest_donors, param="n_nearest_donors")
+    rng = as_generator(random_state)
 
     _warn_if_large(df, "impute_pmm")
     df_norm = _normalize_missing(df)
@@ -1921,7 +1975,6 @@ def impute_pmm(
     if not num_cols:
         return impute_mode(df)
 
-    rng = np.random.default_rng(random_state)
     # Numeric columns (including nullable ones) are modelled as float64 / NaN.
     work = pd.DataFrame(
         {col: to_float_array(df_norm[col]) for col in num_cols}, index=df_norm.index
@@ -2099,8 +2152,12 @@ def impute_logreg(
         Input DataFrame with missing values.
     max_iter : int, default 10
         Maximum number of MICE iterations.
-    random_state : int, default 0
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
         Random seed for reproducibility.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a binary conditional model cannot fit or predict. If ``False``,
@@ -2115,6 +2172,8 @@ def impute_logreg(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
@@ -2126,6 +2185,11 @@ def impute_logreg(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2150,12 +2214,13 @@ def impute_logreg(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    sklearn_seed = as_sklearn_seed(random_state)
+    rng = as_generator(random_state)
 
     effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_logreg")
     df_norm = _normalize_missing(df)
 
-    rng = np.random.default_rng(random_state)
     result = df_norm.copy()
 
     binary_cols = [
@@ -2186,7 +2251,7 @@ def impute_logreg(
 
             y_obs = result.loc[observed_mask, col].values
 
-            model = LogisticRegression(random_state=random_state, max_iter=1000)
+            model = LogisticRegression(random_state=sklearn_seed, max_iter=1000)
             try:
                 model.fit(X_obs_clean, y_obs)
                 y_pred_proba = model.predict_proba(X_miss_clean)[:, 1]
@@ -2232,8 +2297,12 @@ def impute_polyreg(
         Input DataFrame with missing values.
     max_iter : int, default 10
         Maximum number of MICE iterations.
-    random_state : int, default 0
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
         Random seed for reproducibility.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a multinomial conditional model cannot fit or predict. If
@@ -2249,6 +2318,8 @@ def impute_polyreg(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
@@ -2260,6 +2331,11 @@ def impute_polyreg(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2283,6 +2359,7 @@ def impute_polyreg(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    sklearn_seed = as_sklearn_seed(random_state)
 
     effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_polyreg")
@@ -2321,7 +2398,7 @@ def impute_polyreg(
 
             y_obs = result.loc[observed_mask, col].values
 
-            model = LogisticRegression(random_state=random_state, max_iter=1000)
+            model = LogisticRegression(random_state=sklearn_seed, max_iter=1000)
             try:
                 model.fit(X_obs_clean, y_obs)
                 y_pred = model.predict(X_miss_clean)
@@ -2364,8 +2441,12 @@ def impute_polr(
         Input DataFrame with missing values.
     max_iter : int, default 10
         Maximum number of MICE iterations.
-    random_state : int, default 0
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
         Random seed for reproducibility.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when an ordinal or multinomial conditional model cannot fit or
@@ -2381,6 +2462,8 @@ def impute_polr(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
@@ -2392,6 +2475,11 @@ def impute_polr(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2423,6 +2511,7 @@ def impute_polr(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    sklearn_seed = as_sklearn_seed(random_state)
 
     effective_strict = _resolve_strict_mode(strict_mode)
     _warn_if_large(df, "impute_polr")
@@ -2515,7 +2604,7 @@ def impute_polr(
                     )
 
             if not imputed_ok:
-                model = LogisticRegression(random_state=random_state, max_iter=1000)
+                model = LogisticRegression(random_state=sklearn_seed, max_iter=1000)
                 try:
                     model.fit(X_obs_clean, y_obs)
                     y_pred = model.predict(X_miss_clean)
@@ -2554,8 +2643,12 @@ def impute_rf(
         Input DataFrame.
     max_iter : int, default 1
         Number of imputation passes over all columns.
-    random_state : int, default 0
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
         Random seed passed to the Random Forest estimators.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2573,6 +2666,8 @@ def impute_rf(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
@@ -2586,6 +2681,11 @@ def impute_rf(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Notes
     -----
@@ -2612,15 +2712,16 @@ def impute_rf(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    sklearn_seed = as_sklearn_seed(random_state)
     _warn_if_large(df, "impute_rf")
     df = _normalize_missing(df)
-    regressor = RandomForestRegressor(random_state=random_state, **rf_kwargs)
-    classifier = RandomForestClassifier(random_state=random_state, **rf_kwargs)
+    regressor = RandomForestRegressor(random_state=sklearn_seed, **rf_kwargs)
+    classifier = RandomForestClassifier(random_state=sklearn_seed, **rf_kwargs)
     return _impute_column_by_column(
         df,
         regressor=regressor,
         classifier=classifier,
-        random_state=random_state,
+        random_state=sklearn_seed,
         strategy_name="rf",
         max_iter=max_iter,
         fill_feature_nan=False,
@@ -2643,8 +2744,12 @@ def impute_gb(
         Input DataFrame.
     max_iter : int, default 1
         Number of imputation passes over all columns.
-    random_state : int, default 0
+    random_state : int, numpy integer, Generator, RandomState or None, default 0
         Random seed passed to the Gradient Boosting estimators.
+        Accepts ``None``, a non-negative integer of any size (Python or numpy),
+        a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2662,6 +2767,8 @@ def impute_gb(
 
     Raises
     ------
+    InvalidSeedError
+        If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
@@ -2675,6 +2782,11 @@ def impute_gb(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Notes
     -----
@@ -2701,15 +2813,16 @@ def impute_gb(
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
+    sklearn_seed = as_sklearn_seed(random_state)
     _warn_if_large(df, "impute_gb")
     df = _normalize_missing(df)
-    regressor = GradientBoostingRegressor(random_state=random_state, **gb_kwargs)
-    classifier = GradientBoostingClassifier(random_state=random_state, **gb_kwargs)
+    regressor = GradientBoostingRegressor(random_state=sklearn_seed, **gb_kwargs)
+    classifier = GradientBoostingClassifier(random_state=sklearn_seed, **gb_kwargs)
     return _impute_column_by_column(
         df,
         regressor=regressor,
         classifier=classifier,
-        random_state=random_state,
+        random_state=sklearn_seed,
         strategy_name="gb",
         max_iter=max_iter,
         fill_feature_nan=True,
