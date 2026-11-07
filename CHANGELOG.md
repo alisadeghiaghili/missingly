@@ -53,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   F-208). The accessor documentation no longer claims to expose every public
   function and lists what it omits (F-204). A signature-parity test and a
   contract test covering every accessor wrapper guard against future drift.
+- R-oracle validators now enforce their own identities. The Little's MCAR validator
+  hashes its generator script and compares it with the manifest, and checks the naniar
+  version and the R version and platform. The scoped mice comparison rejects an empty
+  tolerance set, computes the CSV SHA-256 itself instead of trusting a literal, and
+  requires the Missingly subject version to match the running package. The mice README
+  now states that the scoped Missingly comparison is run (WP-03; F-309, F-310, F-311,
+  F-312).
 - Importing missingly no longer switches the global matplotlib backend to Agg (WP-06, F-035).
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
@@ -151,6 +158,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Hardened the release workflow: publishing now depends on a job that runs the
+  test suite, builds the distributions once and fails unless the pushed tag,
+  ``missingly.__version__`` and the built wheel version are identical. PyPI
+  publishing uses trusted publishing from a dedicated job (the only one with
+  ``id-token: write``) in the ``pypi`` environment, the GitHub Release is
+  created in a separate job with only ``contents: write``, the workflow default
+  is ``contents: read`` and every action is pinned to a full commit SHA
+  (WP-01-R, F-050).
 - Renamed the `.gitignore` section for local working files and moved local tool patterns out of `.gitignore` (HYG-04).
 
 - Recorded the authoritative Python 3.12 CI coverage baseline as 89.64%
