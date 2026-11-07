@@ -33,6 +33,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added one internal dtype normalisation layer (`missingly._dtypes`) and routed
+  the imputers in `missingly.impute` through it (WP-04). Nullable `Int64` /
+  `Float64`, `float32`, `int64`, `bool`, `boolean`, `string`, `category`,
+  datetime (naive and time-zone aware), timedelta and mixed-type `object`
+  columns no longer crash the imputers or silently change dtype (F-014,
+  F-018, F-020, F-023, F-027, F-051, F-055, F-058, F-091, F-093, F-098, F-100,
+  F-105, F-107, F-234, F-235, F-252, F-343):
+  - nullable numeric columns are modelled as `float64` instead of crashing
+    `impute_rf`, `impute_gb`, `impute_mice` (`return_history`, `where`,
+    `bounds`, `visit_sequence`, `predictor_matrix`) and `impute_pmm`, and are
+    restored to their original dtype; integer imputations from KNN, MICE, RF,
+    GB and PMM are rounded to the nearest integer, so `Int64` stays `Int64`;
+  - `impute_mean`, `impute_median` and `FittedImputer` rewrite only incomplete
+    columns, treat `bool` / `boolean` / datetime / timedelta / `string` columns
+    as non-numeric (mode fill) and keep a nullable integer dtype when the fill
+    value is integral (otherwise `Float64`); `float32` stays `float32`;
+  - `impute_mice(..., return_result=True)` accepts `int64`, `float32`, `Int64`
+    and interleaved string columns because the completed frames now keep the
+    original column order and dtypes;
+  - the logistic imputers (`impute_logreg`, `impute_polyreg`, `impute_polr`)
+    encode nullable numeric predictors by value instead of lexical rank and
+    cast predicted labels to the column dtype;
+  - an all-missing column raises `InsufficientDataError` in `impute_mean`,
+    `impute_median` and `impute_knn` (both metrics), matching `impute_mode`
+    and `impute_mice`; `impute_knn(metric="mixed")` uses the donor mode for
+    boolean columns and rounds integer columns;
+  - model-based imputers (`impute_knn`, `impute_mice`, `impute_rf`,
+    `impute_gb`, `impute_polyreg`, `impute_polr`, `impute_logreg`) no longer
+    treat complete datetime, timedelta or mixed-type `object` columns as
+    numbers or ordinal categories: they pass through unchanged and are not
+    predictors. Incomplete ones that the previous release imputed without
+    error (datetime in KNN, MICE, RF, GB and the logistic imputers;
+    timedelta and mixed-type object in `impute_knn(metric="mixed")` and the
+    logistic imputers) now emit a `FutureWarning` and keep working; every
+    other incomplete case raises the new
+    `missingly.exceptions.UnsupportedDtypeError`;
+  - `impute_mice(bounds=...)` on a boolean column emits a `FutureWarning`
+    (the bound is ignored; it will become an error).
+  - column order of the encoding-based imputers is unchanged (numeric columns
+    first); `impute_knn(metric="mixed")` keeps the input order.
 - Static-plot figure lifetime and degenerate inputs (WP-06): a static plot
   that creates its own figure now closes it when it raises afterwards, for
   example after a misspelled column name (F-375). A call given `ax` never

@@ -13,6 +13,7 @@ Hierarchy
     ├── InsufficientDataError    # too few observed values to impute
     ├── InvalidStrategyError     # unknown or mis-configured strategy name
     ├── MissingColumnError       # requested column not found in DataFrame
+    ├── UnsupportedDtypeError    # column dtype cannot be imputed by the strategy
     └── ConfigurationError       # invalid config value or combination
 
 Examples
@@ -155,6 +156,46 @@ class MissingColumnError(MissinglyError):
         super().__init__(
             f"Column(s) not found in DataFrame: {columns}. "
             f"Available columns: {available}"
+        )
+
+
+class UnsupportedDtypeError(MissinglyError):
+    """Raised when a column's dtype cannot be imputed by the chosen strategy.
+
+    The model-based imputers (KNN, MICE, random forest, gradient boosting)
+    do not model datetime, timedelta or mixed-type object columns.  Such a
+    column is passed through unchanged when it is complete, and this error
+    is raised when it contains missing values, instead of inventing
+    imputation semantics for it.
+
+    Parameters
+    ----------
+    column : str
+        Name of the offending column.
+    dtype : Any
+        The column's dtype.
+    strategy : str
+        Imputation strategy that was active.
+    reason : str
+        Short explanation of why the dtype is not supported.
+
+    Examples
+    --------
+    >>> err = UnsupportedDtypeError(
+    ...     column="visit", dtype="datetime64[ns]", strategy="knn", reason="datetime columns are not modelled"
+    ... )
+    >>> str(err)
+    "Column 'visit' has dtype datetime64[ns] that strategy 'knn' cannot impute: datetime columns are not modelled."
+    """
+
+    def __init__(self, column: str, dtype: Any, strategy: str, reason: str) -> None:
+        self.column = column
+        self.dtype = dtype
+        self.strategy = strategy
+        self.reason = reason
+        super().__init__(
+            f"Column {column!r} has dtype {dtype} that strategy {strategy!r} "
+            f"cannot impute: {reason}."
         )
 
 

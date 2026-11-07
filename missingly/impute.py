@@ -26,6 +26,21 @@ Key design decisions
   accept NaN in feature matrices.  Any remaining NaN in the feature
   side is filled with column means computed from the training rows.
 
+Dtype handling
+--------------
+Every imputer routes its input through one internal normalisation layer
+(:mod:`missingly._dtypes`).  Numeric columns, including nullable ``Int64`` /
+``Float64`` and ``float32``, are modelled as ``float64`` and restored to their
+original dtype (integer columns are rounded to the nearest integer by the
+model-based imputers; mean and median keep a nullable integer dtype only when
+the fill value is integral).  Columns without missing values are returned
+unchanged.  Boolean and categorical columns keep their dtype.  Datetime,
+timedelta and mixed-type ``object`` columns are mode-filled by
+``impute_mean`` / ``impute_median`` / ``impute_mode`` / ``impute_pmm`` and
+:class:`FittedImputer`, and raise
+:class:`~missingly.exceptions.UnsupportedDtypeError` in the model-based
+imputers when they contain missing values (complete ones pass through).
+
 Error handling
 --------------
 All public functions validate their inputs eagerly and raise specific
@@ -48,7 +63,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -66,6 +81,20 @@ from sklearn.linear_model import BayesianRidge, LogisticRegression
 from sklearn.preprocessing import OrdinalEncoder
 from sklearn.exceptions import NotFittedError
 
+from missingly._dtypes import (
+    ColumnKind,
+    classify_column,
+    classify_frame,
+    column_mode,
+    ensure_supported,
+    fill_missing,
+    fill_with_statistic,
+    is_numeric_kind,
+    normalize_frame,
+    restore_dtypes,
+    restore_numeric,
+    to_float_array,
+)
 from missingly.exceptions import (
     ConfigurationError,
     ImputationError,
@@ -89,6 +118,9 @@ _SUPPORTED_STRATEGIES = frozenset({
 _SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
 # Strategies whose fit-state is a per-column scalar — the only ones FittedImputer supports.
 _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
+# Opaque dtypes the previous release imputed without error; they now only warn.
+_LEGACY_ENCODED = frozenset({ColumnKind.DATETIME})
+_LEGACY_CONDITIONAL = frozenset({ColumnKind.DATETIME, ColumnKind.TIMEDELTA, ColumnKind.MIXED})
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +207,167 @@ def _normalize_missing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _require_observed(df: pd.DataFrame, columns: Optional[List] = None) -> None:
+    """Raise when a column that must be imputed has no observed value at all.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Frame to inspect (missing values already normalised).
+    columns : list, optional
+        Columns to check; defaults to every column.
+
+    Raises
+    ------
+    InsufficientDataError
+        For the first checked column whose cells are all missing.
+
+    Examples
+    --------
+    >>> _require_observed(pd.DataFrame({"a": [1.0, np.nan]}))
+    >>> _require_observed(pd.DataFrame({"a": [np.nan]}))
+    Traceback (most recent call last):
+        ...
+    missingly.exceptions.InsufficientDataError: Column 'a' has 0 observed value(s), but at least 1 is required.
+    """
+    for column in df.columns if columns is None else columns:
+        if df[column].isna().all():
+            raise InsufficientDataError(column=column, n_observed=0, n_required=1)
+
+
+def _impute_central(
+    df: pd.DataFrame,
+    strategy: str,
+    numeric_only: bool,
+) -> pd.DataFrame:
+    """Shared implementation of :func:`impute_mean` and :func:`impute_median`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Validated input frame.
+    strategy : {"mean", "median"}
+        Statistic used for numeric columns.
+    numeric_only : bool
+        Leave non-numeric columns untouched when ``True``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Imputed copy.  Only columns with missing values are rewritten, so
+        complete columns keep their exact dtype and values.
+
+    Raises
+    ------
+    InsufficientDataError
+        If an incomplete column to be imputed has no observed value.
+
+    Examples
+    --------
+    >>> _impute_central(pd.DataFrame({"a": [1.0, np.nan, 3.0]}), "mean", False)["a"].tolist()
+    [1.0, 2.0, 3.0]
+    """
+    df = _normalize_missing(df)
+    kinds = classify_frame(df)
+    incomplete = [column for column in df.columns if df[column].isna().any()]
+    numeric = [column for column in incomplete if is_numeric_kind(kinds[column])]
+    others = [] if numeric_only else [c for c in incomplete if c not in numeric]
+    _require_observed(df, numeric + others)
+
+    result = df.copy()
+    for column, filled in _central_fill_numeric(df, kinds, numeric, strategy).items():
+        result[column] = filled
+    for column in others:
+        result[column] = fill_missing(df[column], column_mode(df[column], kinds[column]))
+    return result
+
+
+def _central_fill_numeric(
+    df: pd.DataFrame,
+    kinds: Dict,
+    columns: List,
+    strategy: str,
+) -> Dict:
+    """Fill numeric columns with their mean or median, restoring each dtype.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Frame holding the incomplete numeric *columns*.
+    kinds : dict
+        Column kinds from :func:`classify_frame`.
+    columns : list
+        Incomplete numeric columns, each with at least one observed value.
+    strategy : {"mean", "median"}
+        Statistic passed to :class:`~sklearn.impute.SimpleImputer`.
+
+    Returns
+    -------
+    dict
+        Column label to filled :class:`pandas.Series` (empty when *columns* is
+        empty).
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"a": [1.0, np.nan, 3.0]})
+    >>> _central_fill_numeric(frame, classify_frame(frame), ["a"], "mean")["a"].tolist()
+    [1.0, 2.0, 3.0]
+    """
+    if not columns:
+        return {}
+    # Column-major layout keeps the per-column summation order (and hence the
+    # last bit of every mean) identical to a frame-based fit.
+    matrix = np.asfortranarray(
+        np.column_stack([to_float_array(df[column]) for column in columns])
+    )
+    filled = SimpleImputer(strategy=strategy).fit_transform(matrix)
+    return {
+        column: restore_numeric(
+            df[column],
+            pd.Series(filled[:, position], index=df.index),
+            kinds[column],
+            round_integers=False,
+        )
+        for position, column in enumerate(columns)
+    }
+
+
+def _assign_labels(
+    result: pd.DataFrame,
+    mask: pd.Series,
+    col: str,
+    labels: np.ndarray,
+) -> None:
+    """Write predicted class labels into the masked cells of one column.
+
+    Extension dtypes (``boolean``, ``Int64``, ``string``, ``category``) reject
+    raw NumPy labels such as ``0.0`` / ``1.0``; the labels are therefore cast
+    to the column dtype first.
+
+    Parameters
+    ----------
+    result : pd.DataFrame
+        Frame updated in place.
+    mask : pd.Series
+        Boolean mask of the cells to fill.
+    col : str
+        Column to write.
+    labels : np.ndarray
+        One label per ``True`` entry of *mask*.
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"flag": pd.array([True, None], dtype="boolean")})
+    >>> _assign_labels(frame, frame["flag"].isna(), "flag", np.array([0.0]))
+    >>> frame["flag"].tolist()
+    [True, False]
+    """
+    dtype = result[col].dtype
+    if isinstance(dtype, pd.api.extensions.ExtensionDtype):
+        labels = pd.Series(labels).astype(dtype).array
+    result.loc[mask, col] = labels
+
+
 def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
     """Replace NaN entries in a 2-D array with column means.
 
@@ -202,11 +395,41 @@ def _fill_nan_with_col_means(X: np.ndarray) -> np.ndarray:
     return X
 
 
+def _missing_to_nan(column: np.ndarray) -> np.ndarray:
+    """Replace every missing scalar (``None``, ``pd.NA``, ``NaT``) in an object column by ``nan``.
+
+    Parameters
+    ----------
+    column : np.ndarray
+        One feature column; non-object arrays are returned unchanged.
+
+    Returns
+    -------
+    np.ndarray
+        Column in which ``float(value)`` is defined for every missing cell.
+
+    Examples
+    --------
+    >>> _missing_to_nan(np.array([1, pd.NA], dtype=object)).tolist()
+    [1, nan]
+    """
+    if column.dtype != object:
+        return column
+    missing = pd.isna(column)
+    if not missing.any():
+        return column
+    cleaned = column.copy()
+    cleaned[missing] = np.nan
+    return cleaned
+
+
 def _encode_features(X: np.ndarray) -> np.ndarray:
     """Encode a 2-D object/mixed array to float, replacing non-numeric with ordinal codes.
 
     Each column is processed independently:
-    * Numeric-castable columns are kept as-is after float conversion.
+    * Numeric-castable columns are kept as-is after float conversion; missing
+      scalars such as ``pd.NA`` in nullable numeric columns count as missing,
+      not as a reason to label-encode the column.
     * String/object columns are label-encoded to integer codes (0-based),
       with NaN preserved as ``np.nan``.
 
@@ -224,7 +447,7 @@ def _encode_features(X: np.ndarray) -> np.ndarray:
     n_samples, n_features = X.shape
     X_out = np.empty((n_samples, n_features), dtype=np.float64)
     for j in range(n_features):
-        col = X[:, j]
+        col = _missing_to_nan(X[:, j])
         try:
             X_out[:, j] = col.astype(np.float64)
         except (ValueError, TypeError):
@@ -549,7 +772,10 @@ def _impute_column_by_column(
     Parameters
     ----------
     df : pd.DataFrame
-        Input DataFrame (already normalised, no Python None).
+        Input DataFrame (Python ``None`` already normalised to ``NaN``).
+        Numeric columns are modelled as ``float64`` and restored to their
+        original dtype afterwards; datetime, timedelta and mixed-type object
+        columns are passed through (see :mod:`missingly._dtypes`).
     regressor : sklearn estimator
         Estimator used for numeric columns.
     classifier : sklearn estimator
@@ -578,10 +804,14 @@ def _impute_column_by_column(
     ------
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type object column has missing
+        values.
     """
     effective_strict = _resolve_strict_mode(strict_mode)
 
-    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
+    normalized = normalize_frame(df, strategy_name, deprecated=_LEGACY_ENCODED)
+    df_work, cat_cols, _, encoder, cat_dtypes = _split_encode(normalized.frame)
     all_cols = list(df_work.columns)
     df_result = df_work.copy()
 
@@ -644,7 +874,8 @@ def _impute_column_by_column(
 
             df_result.loc[missing_mask, col] = preds
 
-    return _decode(df_result, cat_cols, encoder, cat_dtypes)
+    decoded = _decode(df_result, cat_cols, encoder, cat_dtypes)
+    return restore_dtypes(decoded, normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -795,6 +1026,157 @@ def _run_mice_with_history(
 # ---------------------------------------------------------------------------
 
 
+def _drop_boolean_bounds(
+    df: pd.DataFrame,
+    bounds: Dict[str, Tuple[float, float]],
+) -> Dict[str, Tuple[float, float]]:
+    """Validate the columns named in ``bounds`` and drop boolean ones with a warning.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Frame the bounds refer to.
+    bounds : dict
+        Column to ``(lower, upper)`` interval.
+
+    Returns
+    -------
+    dict
+        *bounds* without boolean columns.
+
+    Raises
+    ------
+    ValueError
+        If a bounded column is neither numeric nor boolean.
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"x": [1.0], "f": [True]})
+    >>> import warnings
+    >>> with warnings.catch_warnings():
+    ...     warnings.simplefilter("ignore")
+    ...     _drop_boolean_bounds(frame, {"x": (0.0, 2.0), "f": (0.0, 1.0)})
+    {'x': (0.0, 2.0)}
+    """
+    kept = {}
+    for column, interval in bounds.items():
+        kind = classify_column(df[column])
+        if kind is ColumnKind.BOOLEAN:
+            warnings.warn(
+                f"impute_mice: bounds for boolean column {column!r} are ignored and will "
+                "raise ValueError in a future release; bounds only apply to numeric columns.",
+                FutureWarning,
+                stacklevel=3,
+            )
+        elif not is_numeric_kind(kind):
+            raise ValueError(f"bounds column {column!r} must be numeric")
+        else:
+            kept[column] = interval
+    return kept
+
+
+def _fill_categorical_gaps(
+    result: pd.DataFrame,
+    cat_cols: List,
+    reference: pd.DataFrame,
+) -> pd.DataFrame:
+    """Fill categorical cells that decoding left missing with the observed mode.
+
+    Parameters
+    ----------
+    result : pd.DataFrame
+        Decoded imputation result; modified in place and returned.
+    cat_cols : list
+        Categorical column labels.
+    reference : pd.DataFrame
+        Frame whose observed values define each column's mode.
+
+    Returns
+    -------
+    pd.DataFrame
+        *result* with every gap in ``cat_cols`` filled where *reference* has
+        at least one observed value.
+
+    Examples
+    --------
+    >>> decoded = pd.DataFrame({"g": ["a", np.nan]})
+    >>> _fill_categorical_gaps(decoded, ["g"], pd.DataFrame({"g": ["b", "b"]}))["g"].tolist()
+    ['a', 'b']
+    """
+    for col in cat_cols:
+        observed = reference[col].dropna()
+        if result[col].isna().any() and len(observed) > 0:
+            result[col] = fill_missing(result[col], column_mode(observed))
+    return result
+
+
+def _mice_impute_array(
+    df_work: pd.DataFrame,
+    missing_mask_df: pd.DataFrame,
+    estimator,
+    max_iter: int,
+    seed: int,
+    manual_loop: bool,
+    visit_sequence: Optional[List[str]],
+    predictor_matrix: Optional[pd.DataFrame],
+    bounds: Optional[Dict[str, Tuple[float, float]]],
+) -> Tuple[np.ndarray, Dict[str, List[float]]]:
+    """Run one MICE chain on the encoded, all-float working frame.
+
+    Parameters
+    ----------
+    df_work : pd.DataFrame
+        Numeric working frame produced by :func:`_split_encode`.
+    missing_mask_df : pd.DataFrame
+        Cells eligible for imputation, aligned to ``df_work``.
+    estimator : sklearn estimator or None
+        Caller-supplied regressor, or ``None`` for posterior-sampling
+        ``BayesianRidge``.
+    max_iter : int
+        Number of sweeps.
+    seed : int
+        Chain seed.
+    manual_loop : bool
+        Use :func:`_run_mice_with_history` (history and execution controls)
+        instead of sklearn's ``IterativeImputer``.
+    visit_sequence, predictor_matrix, bounds
+        Execution controls forwarded to the manual loop.
+
+    Returns
+    -------
+    imputed_array : np.ndarray
+        Completed values, same shape as ``df_work``.
+    history : dict
+        Per-iteration imputed means; empty on the sklearn path.
+    """
+    if estimator is None:
+        base_estimator = BayesianRidge()
+        use_posterior = True
+    else:
+        base_estimator = estimator
+        use_posterior = False
+    if manual_loop:
+        return _run_mice_with_history(
+            df_work=df_work,
+            missing_mask_df=missing_mask_df,
+            base_estimator=base_estimator,
+            max_iter=max_iter,
+            seed=seed,
+            use_sample_posterior=use_posterior,
+            visit_sequence=visit_sequence,
+            predictor_matrix=predictor_matrix,
+            bounds=bounds,
+        )
+    imputer = IterativeImputer(
+        estimator=base_estimator,
+        max_iter=max_iter,
+        random_state=seed,
+        imputation_order="roman",
+        sample_posterior=use_posterior,
+    )
+    return imputer.fit_transform(df_work), {}
+
+
 def _mice_conditional_model_contract(
     df: pd.DataFrame,
     estimator: object,
@@ -909,6 +1291,20 @@ def impute_mean(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    InsufficientDataError
+        If a column that would be imputed has no observed value.
+
+    Notes
+    -----
+    **Dtype handling.** Numeric columns (``int*``, ``float*``, nullable
+    ``Int*`` / ``Float*``) receive the mean; every other column
+    (``bool``, ``boolean``, ``category``, ``string``, ``object``, datetime,
+    timedelta) receives its most frequent value, so these dtypes never cause an
+    error.  Only columns with missing values are rewritten; complete columns
+    keep their exact dtype and values.  The mean is not rounded: a nullable
+    integer column keeps its dtype when every fill value is integral and
+    becomes ``Float64`` otherwise.  A ``float32`` column stays ``float32``.
+
     Examples
     --------
     >>> import pandas as pd, numpy as np
@@ -920,23 +1316,7 @@ def impute_mean(
     2  3.0
     """
     validate_dataframe(df, param="df")
-    df = _normalize_missing(df)
-    num_cols = df.select_dtypes(include=[np.number]).columns
-    cat_cols = df.select_dtypes(exclude=[np.number]).columns
-
-    result = df.copy()
-    if len(num_cols):
-        imputer = SimpleImputer(strategy="mean")
-        result[num_cols] = imputer.fit_transform(df[num_cols])
-
-    if not numeric_only and len(cat_cols):
-        mode_imputer = SimpleImputer(strategy="most_frequent")
-        imputed = mode_imputer.fit_transform(df[cat_cols])
-        for i, col in enumerate(cat_cols):
-            filled = pd.Series(imputed[:, i], index=df.index)
-            result[col] = _restore_categorical_dtype(filled, df[col].dtype)
-
-    return result
+    return _impute_central(df, "mean", numeric_only)
 
 
 def impute_median(
@@ -963,6 +1343,19 @@ def impute_median(
         If *df* is not a :class:`pandas.DataFrame`.
     ValueError
         If *df* is empty.
+    InsufficientDataError
+        If a column that would be imputed has no observed value.
+
+    Notes
+    -----
+    **Dtype handling.** Numeric columns (``int*``, ``float*``, nullable
+    ``Int*`` / ``Float*``) receive the median; every other column
+    (``bool``, ``boolean``, ``category``, ``string``, ``object``, datetime,
+    timedelta) receives its most frequent value, so these dtypes never cause an
+    error.  Only columns with missing values are rewritten; complete columns
+    keep their exact dtype and values.  The median is not rounded: a nullable
+    integer column keeps its dtype when every fill value is integral and
+    becomes ``Float64`` otherwise.  A ``float32`` column stays ``float32``.
 
     Examples
     --------
@@ -975,23 +1368,7 @@ def impute_median(
     2  3.0
     """
     validate_dataframe(df, param="df")
-    df = _normalize_missing(df)
-    num_cols = df.select_dtypes(include=[np.number]).columns
-    cat_cols = df.select_dtypes(exclude=[np.number]).columns
-
-    result = df.copy()
-    if len(num_cols):
-        imputer = SimpleImputer(strategy="median")
-        result[num_cols] = imputer.fit_transform(df[num_cols])
-
-    if not numeric_only and len(cat_cols):
-        mode_imputer = SimpleImputer(strategy="most_frequent")
-        imputed = mode_imputer.fit_transform(df[cat_cols])
-        for i, col in enumerate(cat_cols):
-            filled = pd.Series(imputed[:, i], index=df.index)
-            result[col] = _restore_categorical_dtype(filled, df[col].dtype)
-
-    return result
+    return _impute_central(df, "median", numeric_only)
 
 
 def impute_mode(
@@ -1018,6 +1395,14 @@ def impute_mode(
     InsufficientDataError
         If a column requiring imputation has no observed values.
 
+    Notes
+    -----
+    **Dtype handling.** Every dtype is supported, including datetime (naive
+    or time-zone aware), timedelta, ``boolean``, ``string``, ``category`` and
+    mixed-type ``object`` columns; the column dtype is preserved.  Ties are
+    broken by the smallest value, or by first occurrence for mixed-type
+    ``object`` columns, which cannot be sorted.
+
     Examples
     --------
     >>> import pandas as pd, numpy as np
@@ -1032,10 +1417,9 @@ def impute_mode(
         missing_mask = result[col].isna()
         if not missing_mask.any():
             continue
-        observed = result.loc[~missing_mask, col]
-        if observed.empty:
+        if missing_mask.all():
             raise InsufficientDataError(column=col, n_observed=0, n_required=1)
-        result.loc[missing_mask, col] = observed.mode().iloc[0]
+        result[col] = fill_missing(result[col], column_mode(result[col]))
     return result
 
 
@@ -1078,6 +1462,26 @@ def impute_knn(
         If *metric* is not one of the supported values.
     TypeError
         If *n_neighbors* is not a positive integer.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
+    InsufficientDataError
+        If a column has no observed value.
+
+    Notes
+    -----
+    **Dtype handling.** Numeric columns, including nullable ``Int64`` /
+    ``Float64`` and ``float32``, are modelled as ``float64`` and written back
+    in their original dtype; imputed cells of an integer column are rounded
+    to the nearest integer (ties to even).  Columns without missing values are
+    returned exactly as given.  ``bool``, ``boolean``, ``category``,
+    ``string`` and ``object`` columns are imputed as categories and keep their
+    dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
+    ``object`` columns are not modelled: a complete one is returned unchanged
+    (after the modelled columns) and is not used as a predictor, an incomplete
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     Examples
     --------
@@ -1102,14 +1506,19 @@ def impute_knn(
     if metric == "mixed":
         return _impute_knn_gower(df, n_neighbors=n_neighbors)
 
-    _warn_if_knn_heavy_categorical(df, n_neighbors)
-    df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df)
+    normalized = normalize_frame(df, "knn", deprecated=_LEGACY_ENCODED)
+    _require_observed(normalized.frame)
+    if normalized.frame.shape[1] == 0:
+        return df.copy()
+    _warn_if_knn_heavy_categorical(normalized.frame, n_neighbors)
+    df_work, cat_cols, _, encoder, cat_dtypes = _split_encode(normalized.frame)
     imputer = KNNImputer(n_neighbors=n_neighbors)
     imputed_array = imputer.fit_transform(df_work)
     df_imputed = pd.DataFrame(
         imputed_array, index=df.index, columns=df_work.columns
     )
-    return _decode(df_imputed, cat_cols, encoder, cat_dtypes)
+    decoded = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
+    return restore_dtypes(decoded, normalized)
 
 
 def impute_mice(
@@ -1215,6 +1624,28 @@ def impute_mice(
     InsufficientDataError
         If an enabled target column has no observed values from which an
         imputation model can learn.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
+
+    Notes
+    -----
+    **Dtype handling.** Numeric columns, including nullable ``Int64`` /
+    ``Float64`` and ``float32``, are modelled as ``float64`` and written back
+    in their original dtype; imputed cells of an integer column are rounded
+    to the nearest integer (ties to even).  Columns without missing values are
+    returned exactly as given.  ``bool``, ``boolean``, ``category``,
+    ``string`` and ``object`` columns are imputed as categories and keep their
+    dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
+    ``object`` columns are not modelled: a complete one is returned unchanged
+    (after the modelled columns) and is not used as a predictor, an incomplete
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
+
+    ``bounds`` may only name numeric (integer or float) columns; boolean
+    columns are rejected.  With ``return_result=True`` the completed frames
+    follow the original column order and dtypes exactly.
 
     Examples
     --------
@@ -1287,9 +1718,8 @@ def impute_mice(
         unknown_bounds = sorted(set(bounds) - set(df_norm.columns))
         if unknown_bounds:
             raise ValueError(f"bounds contains unknown columns: {unknown_bounds}")
+        bounds = _drop_boolean_bounds(df_norm, bounds)
         for column, interval in bounds.items():
-            if not pd.api.types.is_numeric_dtype(df_norm[column]):
-                raise ValueError(f"bounds column {column!r} must be numeric")
             if not isinstance(interval, tuple) or len(interval) != 2:
                 raise TypeError("each bounds interval must be a (lower, upper) tuple")
             lower, upper = interval
@@ -1298,6 +1728,9 @@ def impute_mice(
             if lower > upper:
                 raise ValueError("bounds lower limit must not exceed upper limit")
 
+    normalized = normalize_frame(
+        df_norm, "mice", targets=missing_targets, deprecated=_LEGACY_ENCODED
+    )
     for column in missing_targets:
         n_observed = int((~original_missing_mask[column]).sum())
         if n_observed == 0:
@@ -1310,69 +1743,42 @@ def impute_mice(
     def _single_chain(
         seed: int,
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, List[float]]]]:
-        df_work, cat_cols, num_cols, encoder, cat_dtypes = _split_encode(df_norm)
+        df_work, cat_cols, _, encoder, cat_dtypes = _split_encode(normalized.frame)
         capture_history = return_history or return_result
-
-        if return_history or return_result or visit_sequence is not None or predictor_matrix is not None or where is not None or bounds is not None:
-            # Use our manual per-iteration loop so we can capture history.
-            missing_mask_df = imputation_mask.loc[:, df_work.columns]
-            if estimator is None:
-                base_est = BayesianRidge()
-                use_posterior = True
-            else:
-                base_est = estimator
-                use_posterior = False
-
-            imputed_array, history = _run_mice_with_history(
-                df_work=df_work,
-                missing_mask_df=missing_mask_df,
-                base_estimator=base_est,
-                max_iter=max_iter,
-                seed=seed,
-                use_sample_posterior=use_posterior,
-                visit_sequence=visit_sequence,
-                predictor_matrix=predictor_matrix,
-                bounds=bounds,
+        # The manual loop records history and honours the execution controls;
+        # a frame without modelled columns has nothing for sklearn to fit.
+        manual_loop = (
+            capture_history
+            or df_work.shape[1] == 0
+            or any(
+                option is not None
+                for option in (visit_sequence, predictor_matrix, where, bounds)
             )
-            df_imputed = pd.DataFrame(
-                imputed_array, index=df_norm.index, columns=df_work.columns
-            )
-            result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
-            for col in cat_cols:
-                if result[col].isna().any():
-                    observed = df_norm[col].dropna()
-                    if len(observed) > 0:
-                        result[col] = result[col].fillna(observed.mode().iloc[0])
-            result = result.mask(retained_missing_mask.loc[:, result.columns])
-            if capture_history:
-                return result, history
-            return result
-
-        # Fast path: delegate to sklearn's IterativeImputer (no history).
-        if estimator is None:
-            est = BayesianRidge()
-            use_sample_posterior = True
-        else:
-            est = estimator
-            use_sample_posterior = False
-        imputer = IterativeImputer(
-            estimator=est,
-            max_iter=max_iter,
-            random_state=seed,
-            imputation_order="roman",
-            sample_posterior=use_sample_posterior,
         )
-        imputed_array = imputer.fit_transform(df_work)
+        imputed_array, history = _mice_impute_array(
+            df_work,
+            imputation_mask.loc[:, df_work.columns],
+            estimator,
+            max_iter,
+            seed,
+            manual_loop,
+            visit_sequence,
+            predictor_matrix,
+            bounds,
+        )
         df_imputed = pd.DataFrame(
             imputed_array, index=df_norm.index, columns=df_work.columns
         )
-        result = _decode(df_imputed, cat_cols, encoder, cat_dtypes)
-        for col in cat_cols:
-            if result[col].isna().any():
-                observed = df_norm[col].dropna()
-                if len(observed) > 0:
-                    fallback = observed.mode().iloc[0]
-                    result[col] = result[col].fillna(fallback)
+        decoded = _fill_categorical_gaps(
+            _decode(df_imputed, cat_cols, encoder, cat_dtypes), cat_cols, df_norm
+        )
+        result = restore_dtypes(decoded, normalized)
+        if return_result:
+            result = result.loc[:, list(df_norm.columns)]
+        if retained_missing_mask.any(axis=None):
+            result = result.mask(retained_missing_mask.loc[:, result.columns])
+        if capture_history:
+            return result, history
         return result
 
     if return_result:
@@ -1494,6 +1900,13 @@ def impute_pmm(
     regression coefficients, while incomplete-row means use a draw from the
     BayesianRidge coefficient posterior.  Use a validated multiple-imputation
     workflow and sensitivity analysis for publication-critical inference.
+
+    **Dtype handling.** Numeric columns, including nullable ``Int64`` /
+    ``Float64`` and ``float32``, are modelled as ``float64``; donor values are
+    observed values, so the original dtype is restored exactly.  Every
+    non-numeric column (``bool``, ``boolean``, ``category``, ``string``,
+    ``object``, datetime, timedelta) is filled with its most frequent value
+    and keeps its dtype.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -1501,79 +1914,171 @@ def impute_pmm(
 
     _warn_if_large(df, "impute_pmm")
     df_norm = _normalize_missing(df)
+    _require_observed(df_norm, [c for c in df_norm.columns if df_norm[c].isna().any()])
 
-    for col in df_norm.columns:
-        missing_mask = df_norm[col].isna()
-        if missing_mask.any():
-            n_observed = int((~missing_mask).sum())
-            if n_observed == 0:
-                raise InsufficientDataError(
-                    column=col,
-                    n_observed=0,
-                    n_required=1,
-                )
-
-    num_cols = df_norm.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df_norm.select_dtypes(exclude=[np.number]).columns.tolist()
-
+    kinds = classify_frame(df_norm)
+    num_cols = [col for col in df_norm.columns if is_numeric_kind(kinds[col])]
     if not num_cols:
         return impute_mode(df)
 
     rng = np.random.default_rng(random_state)
-    result = df_norm.copy()
+    # Numeric columns (including nullable ones) are modelled as float64 / NaN.
+    work = pd.DataFrame(
+        {col: to_float_array(df_norm[col]) for col in num_cols}, index=df_norm.index
+    )
     missing_masks = {col: df_norm[col].isna() for col in num_cols}
 
     for _ in range(max_iter):
-        for col in num_cols:
-            missing_mask = missing_masks[col]
-            if not missing_mask.any():
-                continue
+        _pmm_sweep(work, num_cols, missing_masks, rng, n_nearest_donors)
+    return _pmm_finalize(df_norm, work, kinds)
 
-            feature_cols = [c for c in num_cols if c != col]
-            if not feature_cols:
-                observed_values = result.loc[~missing_mask, col].to_numpy()
-                imputed_values = rng.choice(
-                    observed_values,
-                    size=int(missing_mask.sum()),
-                    replace=True,
-                )
-                result.loc[missing_mask, col] = imputed_values
-                continue
 
-            observed_mask = ~missing_mask
-            X_obs = result.loc[observed_mask, feature_cols].values.astype(np.float64)
-            y_obs = result.loc[observed_mask, col].values.astype(np.float64)
-            X_miss = result.loc[missing_mask, feature_cols].values.astype(np.float64)
+def _pmm_sweep(
+    work: pd.DataFrame,
+    num_cols: List[str],
+    missing_masks: Dict[str, pd.Series],
+    rng: np.random.Generator,
+    n_nearest_donors: int,
+) -> None:
+    """Update every incomplete numeric column once, in place.
 
-            X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs, X_miss)
+    Parameters
+    ----------
+    work : pd.DataFrame
+        ``float64`` working frame of the numeric columns.
+    num_cols : list of str
+        Numeric columns, in update order.
+    missing_masks : dict of str to pd.Series
+        Originally missing cells per numeric column.
+    rng : np.random.Generator
+        Random source.
+    n_nearest_donors : int
+        Size of the donor pool per missing cell.
 
-            model = BayesianRidge()
-            model.fit(X_obs_clean, y_obs)
-            donor_scores = model.predict(X_obs_clean)
-            coefficient_draw = rng.multivariate_normal(model.coef_, model.sigma_)
-            recipient_scores = X_miss_clean @ coefficient_draw + model.intercept_
+    Examples
+    --------
+    >>> work = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [2.0, 4.0, 6.0, 8.0]})
+    >>> masks = {"a": pd.Series([False, True, False, False]), "b": pd.Series([False] * 4)}
+    >>> _pmm_sweep(work, ["a", "b"], masks, np.random.default_rng(0), 2)
+    >>> bool(work["a"].isna().any())
+    False
+    """
+    for col in num_cols:
+        if missing_masks[col].any():
+            _pmm_impute_column(work, col, missing_masks[col], num_cols, rng, n_nearest_donors)
 
-            # Type-1 PMM: match a posterior-drawn recipient score to a donor
-            # score from the fitted model, then copy the donor's observed y.
-            distances = np.abs(
-                donor_scores[np.newaxis, :] - recipient_scores[:, np.newaxis]
-            )
-            k = min(n_nearest_donors, len(y_obs))
-            donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
-            rand_col = rng.integers(0, k, size=len(recipient_scores))
-            chosen_idx = donor_idx[np.arange(len(recipient_scores)), rand_col]
-            imputed_vals = y_obs[chosen_idx]
 
-            miss_indices = missing_mask[missing_mask].index
-            result.loc[miss_indices, col] = imputed_vals
+def _pmm_finalize(
+    df_norm: pd.DataFrame,
+    work: pd.DataFrame,
+    kinds: Dict,
+) -> pd.DataFrame:
+    """Write the PMM result back into the original dtypes.
 
-    for col in cat_cols:
-        if result[col].isna().any():
-            observed = result[col].dropna()
-            if len(observed) > 0:
-                result[col] = result[col].fillna(observed.mode().iloc[0])
+    Parameters
+    ----------
+    df_norm : pd.DataFrame
+        Input frame (missing values normalised).
+    work : pd.DataFrame
+        Completed ``float64`` numeric columns.
+    kinds : dict
+        Column kinds from :func:`classify_frame`.
 
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df_norm* whose incomplete numeric columns come from *work*
+        (original dtype restored) and whose other incomplete columns are
+        filled with their most frequent value.
+
+    Examples
+    --------
+    >>> source = pd.DataFrame({"a": [1.0, np.nan], "g": ["x", None]})
+    >>> done = pd.DataFrame({"a": [1.0, 1.0]})
+    >>> _pmm_finalize(source, done, classify_frame(source)).values.tolist()
+    [[1.0, 'x'], [1.0, 'x']]
+    """
+    result = df_norm.copy()
+    for col in df_norm.columns:
+        if not df_norm[col].isna().any():
+            continue
+        if col in work.columns:
+            result[col] = restore_numeric(df_norm[col], work[col], kinds[col])
+        else:
+            result[col] = fill_missing(df_norm[col], column_mode(df_norm[col], kinds[col]))
     return result
+
+
+def _pmm_impute_column(
+    work: pd.DataFrame,
+    col: str,
+    missing_mask: pd.Series,
+    num_cols: List[str],
+    rng: np.random.Generator,
+    n_nearest_donors: int,
+) -> None:
+    """Run one predictive-mean-matching update of a numeric column, in place.
+
+    Parameters
+    ----------
+    work : pd.DataFrame
+        ``float64`` working frame of the numeric columns; ``work[col]`` is
+        updated in place at the originally missing positions.
+    col : str
+        Target column.
+    missing_mask : pd.Series
+        Boolean mask of the originally missing cells of ``col``.
+    num_cols : list of str
+        All numeric columns; every one except *col* is a predictor.
+    rng : np.random.Generator
+        Random source for the coefficient draw and the donor choice.
+    n_nearest_donors : int
+        Size of the donor pool per missing cell.
+
+    Examples
+    --------
+    >>> work = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0, 5.0], "b": [2.0, 4.0, 6.0, 8.0, 10.0]})
+    >>> mask = pd.Series([False, False, True, False, False])
+    >>> _pmm_impute_column(work, "a", mask, ["a", "b"], np.random.default_rng(0), 2)
+    >>> bool(work["a"].isna().any())
+    False
+    """
+    feature_cols = [c for c in num_cols if c != col]
+    if not feature_cols:
+        observed_values = work.loc[~missing_mask, col].to_numpy()
+        work.loc[missing_mask, col] = rng.choice(
+            observed_values,
+            size=int(missing_mask.sum()),
+            replace=True,
+        )
+        return
+
+    observed_mask = ~missing_mask
+    X_obs = work.loc[observed_mask, feature_cols].to_numpy()
+    y_obs = work.loc[observed_mask, col].to_numpy()
+    X_miss = work.loc[missing_mask, feature_cols].to_numpy()
+
+    X_obs_clean, X_miss_clean = _fill_feature_matrix(X_obs, X_miss)
+
+    model = BayesianRidge()
+    model.fit(X_obs_clean, y_obs)
+    donor_scores = model.predict(X_obs_clean)
+    coefficient_draw = rng.multivariate_normal(model.coef_, model.sigma_)
+    recipient_scores = X_miss_clean @ coefficient_draw + model.intercept_
+
+    # Type-1 PMM: match a posterior-drawn recipient score to a donor
+    # score from the fitted model, then copy the donor's observed y.
+    distances = np.abs(
+        donor_scores[np.newaxis, :] - recipient_scores[:, np.newaxis]
+    )
+    k = min(n_nearest_donors, len(y_obs))
+    donor_idx = np.argpartition(distances, k - 1, axis=1)[:, :k]
+    rand_col = rng.integers(0, k, size=len(recipient_scores))
+    chosen_idx = donor_idx[np.arange(len(recipient_scores)), rand_col]
+    imputed_vals = y_obs[chosen_idx]
+
+    miss_indices = missing_mask[missing_mask].index
+    work.loc[miss_indices, col] = imputed_vals
 
 
 def impute_logreg(
@@ -1618,6 +2123,9 @@ def impute_logreg(
         If the conditional estimator fails and ``strict_mode=True``.
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
 
     Examples
     --------
@@ -1632,6 +2140,13 @@ def impute_logreg(
     This method is best suited for binary variables (0/1 or two-level
     categorical). For categorical variables with more than 2 levels,
     use ``impute_polyreg`` instead.
+
+    **Dtype handling.** Only columns that are imputed as categories are
+    targets.  A datetime, timedelta or mixed-type ``object`` target with
+    missing values raises :class:`~missingly.exceptions.UnsupportedDtypeError`;
+    predicted labels are cast to the column dtype (``boolean``, ``Int64``,
+    ``string``, ``category``).  Nullable numeric predictors are encoded by
+    value, not by rank.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -1647,6 +2162,9 @@ def impute_logreg(
         col for col in df_norm.columns
         if len(df_norm[col].dropna().unique()) == 2
     ]
+    ensure_supported(
+        df_norm, "logreg", binary_cols, deprecated=_LEGACY_CONDITIONAL, deprecated_tz=False
+    )
     missing_masks = {col: df_norm[col].isna() for col in binary_cols}
 
     for _ in range(max_iter):
@@ -1677,7 +2195,7 @@ def impute_logreg(
                     model.classes_[1],
                     model.classes_[0],
                 )
-                result.loc[missing_mask, col] = imputed
+                _assign_labels(result, missing_mask, col, imputed)
             except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
                 if effective_strict:
                     raise ImputationError(
@@ -1739,6 +2257,9 @@ def impute_polyreg(
         If the conditional estimator fails and ``strict_mode=True``.
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
 
     Examples
     --------
@@ -1752,6 +2273,13 @@ def impute_polyreg(
     -----
     Best suited for nominal categorical variables with 3+ levels.
     For binary variables use ``impute_logreg``.
+
+    **Dtype handling.** Only columns that are imputed as categories are
+    targets.  A datetime, timedelta or mixed-type ``object`` target with
+    missing values raises :class:`~missingly.exceptions.UnsupportedDtypeError`;
+    predicted labels are cast to the column dtype (``boolean``, ``Int64``,
+    ``string``, ``category``).  Nullable numeric predictors are encoded by
+    value, not by rank.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -1769,6 +2297,9 @@ def impute_polyreg(
             and not pd.api.types.is_numeric_dtype(df_norm[col])
         )
     ]
+    ensure_supported(
+        df_norm, "polyreg", cat_cols, deprecated=_LEGACY_CONDITIONAL, deprecated_tz=False
+    )
     missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
     for _ in range(max_iter):
@@ -1794,7 +2325,7 @@ def impute_polyreg(
             try:
                 model.fit(X_obs_clean, y_obs)
                 y_pred = model.predict(X_miss_clean)
-                result.loc[missing_mask, col] = y_pred
+                _assign_labels(result, missing_mask, col, y_pred)
             except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
                 if effective_strict:
                     raise ImputationError(
@@ -1858,6 +2389,9 @@ def impute_polr(
         If a conditional estimator fails and ``strict_mode=True``.
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
 
     Examples
     --------
@@ -1879,6 +2413,13 @@ def impute_polr(
     uses its observed mode directly without importing a model backend.
     That valid baseline is retained when ``strict_mode=True`` because no
     conditional estimator has failed.
+
+    **Dtype handling.** Only columns that are imputed as categories are
+    targets.  A datetime, timedelta or mixed-type ``object`` target with
+    missing values raises :class:`~missingly.exceptions.UnsupportedDtypeError`;
+    predicted labels are cast to the column dtype (``boolean``, ``Int64``,
+    ``string``, ``category``).  Nullable numeric predictors are encoded by
+    value, not by rank.
     """
     validate_dataframe(df, param="df")
     validate_positive_int(max_iter, param="max_iter")
@@ -1896,6 +2437,9 @@ def impute_polr(
             and not pd.api.types.is_numeric_dtype(df_norm[col])
         )
     ]
+    ensure_supported(
+        df_norm, "polr", cat_cols, deprecated=_LEGACY_CONDITIONAL, deprecated_tz=False
+    )
     missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
     requires_ordered_model = any(
@@ -1942,9 +2486,10 @@ def impute_polr(
             imputed_ok = False
             if _HAS_STATSMODELS:
                 try:
-                    category_to_code = {category: index for index, category in enumerate(categories)}
+                    # Matching by value (not by hash) also covers datetime64 / Timestamp
+                    # labels, whose NumPy and pandas scalars do not hash alike.
                     y_obs_codes: NDArray[np.int64] = np.asarray(
-                        [category_to_code[value] for value in y_obs], dtype=np.int64
+                        pd.Categorical(y_obs, categories=categories).codes, dtype=np.int64
                     )
                     ord_model = _OrderedModel(y_obs_codes, X_obs_clean, distr="logit")
                     fit_result = ord_model.fit(method="bfgs", disp=False)
@@ -1954,7 +2499,7 @@ def impute_polr(
                     proba = np.asarray(proba)
                     best_idx = np.argmax(proba, axis=1)
                     y_pred = np.array(categories)[best_idx]
-                    result.loc[missing_mask, col] = y_pred
+                    _assign_labels(result, missing_mask, col, y_pred)
                     imputed_ok = True
                 except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
                     if effective_strict:
@@ -1974,7 +2519,7 @@ def impute_polr(
                 try:
                     model.fit(X_obs_clean, y_obs)
                     y_pred = model.predict(X_miss_clean)
-                    result.loc[missing_mask, col] = y_pred
+                    _assign_labels(result, missing_mask, col, y_pred)
                 except (ValueError, np.linalg.LinAlgError, NotFittedError) as exc:
                     if effective_strict:
                         raise ImputationError(
@@ -2038,6 +2583,24 @@ def impute_rf(
         If a column has no observed values.
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
+
+    Notes
+    -----
+    **Dtype handling.** Numeric columns, including nullable ``Int64`` /
+    ``Float64`` and ``float32``, are modelled as ``float64`` and written back
+    in their original dtype; imputed cells of an integer column are rounded
+    to the nearest integer (ties to even).  Columns without missing values are
+    returned exactly as given.  ``bool``, ``boolean``, ``category``,
+    ``string`` and ``object`` columns are imputed as categories and keep their
+    dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
+    ``object`` columns are not modelled: a complete one is returned unchanged
+    (after the modelled columns) and is not used as a predictor, an incomplete
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     Examples
     --------
@@ -2109,6 +2672,24 @@ def impute_gb(
         If a column has no observed values.
     ConfigurationError
         If ``strict_mode`` or the selected package default is not a boolean.
+    UnsupportedDtypeError
+        If a datetime, timedelta or mixed-type ``object`` column has missing
+        values.
+
+    Notes
+    -----
+    **Dtype handling.** Numeric columns, including nullable ``Int64`` /
+    ``Float64`` and ``float32``, are modelled as ``float64`` and written back
+    in their original dtype; imputed cells of an integer column are rounded
+    to the nearest integer (ties to even).  Columns without missing values are
+    returned exactly as given.  ``bool``, ``boolean``, ``category``,
+    ``string`` and ``object`` columns are imputed as categories and keep their
+    dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
+    ``object`` columns are not modelled: a complete one is returned unchanged
+    (after the modelled columns) and is not used as a predictor, an incomplete
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     Examples
     --------
@@ -2160,31 +2741,109 @@ def _impute_knn_gower(
     """
     from missingly._distance import gower_distance
 
-    result = df.copy()
-    dist_matrix = gower_distance(df)
+    normalized = normalize_frame(df, "knn", deprecated=_LEGACY_CONDITIONAL)
+    frame = normalized.frame
+    _require_observed(frame)
+    if frame.shape[1] == 0:
+        return df.copy()
+    categorical = [c for c in frame.columns if not is_numeric_kind(normalized.kinds[c])]
+    dist_matrix = gower_distance(frame, cat_cols=categorical)
 
-    for col in df.columns:
-        missing_mask = df[col].isna()
-        if not missing_mask.any():
-            continue
-        missing_idx = np.where(missing_mask)[0]
-        observed_idx = np.where(~missing_mask)[0]
-        for i in missing_idx:
-            row_dists = dist_matrix[i, observed_idx]
-            k = min(n_neighbors, len(observed_idx))
-            nn_idx = observed_idx[np.argsort(row_dists)[:k]]
-            donors = df.iloc[nn_idx][col]
-            if pd.api.types.is_numeric_dtype(df[col]):
-                result.iloc[i, result.columns.get_loc(col)] = donors.mean()
-            else:
-                result.iloc[i, result.columns.get_loc(col)] = donors.mode().iloc[0]
+    result = frame.copy()
+    for col in frame.columns:
+        if frame[col].isna().any():
+            result[col] = _gower_fill_column(
+                frame[col], dist_matrix, n_neighbors, normalized.kinds[col]
+            )
+    return restore_dtypes(result, normalized, input_order=True)
 
-    return result
+
+def _gower_fill_column(
+    series: pd.Series,
+    dist_matrix: np.ndarray,
+    n_neighbors: int,
+    kind: ColumnKind,
+) -> pd.Series:
+    """Fill one incomplete column from its Gower-nearest observed donors.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Modelled column (``float64`` for numeric kinds, original dtype
+        otherwise) with at least one observed and one missing cell.
+    dist_matrix : np.ndarray
+        Pairwise Gower distances between all rows.
+    n_neighbors : int
+        Number of donors per missing cell.
+    kind : ColumnKind
+        Kind of the column.  Numeric columns receive the donor mean; boolean
+        and categorical columns the donor mode.
+
+    Returns
+    -------
+    pd.Series
+        Filled column with the same dtype as *series*.
+
+    Examples
+    --------
+    >>> column = pd.Series([1.0, np.nan, 3.0])
+    >>> distances = np.array([[0, 1, 2], [1, 0, 1], [2, 1, 0]], dtype=float)
+    >>> _gower_fill_column(column, distances, 2, ColumnKind.FLOAT).tolist()
+    [1.0, 2.0, 3.0]
+    """
+    missing = series.isna().to_numpy()
+    missing_idx = np.flatnonzero(missing)
+    observed_idx = np.flatnonzero(~missing)
+    k = min(n_neighbors, len(observed_idx))
+    numeric = is_numeric_kind(kind)
+    fills = []
+    for i in missing_idx:
+        nn_idx = observed_idx[np.argsort(dist_matrix[i, observed_idx])[:k]]
+        donors = series.iloc[nn_idx]
+        fills.append(donors.mean() if numeric else column_mode(donors, kind))
+    filled = series.copy()
+    filled.iloc[missing_idx] = fills
+    return filled
 
 
 # ---------------------------------------------------------------------------
 # FittedImputer — fit on train, transform on test (simple strategies only)
 # ---------------------------------------------------------------------------
+
+def _learn_fill_value(strategy: str, observed: pd.Series) -> Tuple[Any, bool]:
+    """Learn the scalar fill value of one training column.
+
+    Parameters
+    ----------
+    strategy : {"mean", "median", "mode"}
+        Fill strategy of the imputer.
+    observed : pd.Series
+        Non-missing training values of the column (never empty).
+
+    Returns
+    -------
+    value : object
+        The mean or median (a ``float``) for numeric columns under
+        ``"mean"`` / ``"median"``, otherwise the mode.
+    is_statistic : bool
+        ``True`` when *value* is a real-valued statistic rather than an
+        observed value.  Boolean, datetime, timedelta, categorical and string
+        columns always use their mode, exactly as :func:`impute_mean` does.
+
+    Examples
+    --------
+    >>> _learn_fill_value("mean", pd.Series([1, 2], dtype="Int64"))
+    (1.5, True)
+    >>> _learn_fill_value("mean", pd.Series([True, True, False]))
+    (np.True_, False)
+    """
+    kind = classify_column(observed)
+    if strategy != "mode" and is_numeric_kind(kind):
+        values = to_float_array(observed)
+        statistic = np.nanmedian(values) if strategy == "median" else np.nanmean(values)
+        return float(statistic), True
+    return column_mode(observed, kind), False
+
 
 class FittedImputer:
     """Lightweight fit/transform imputer for simple strategies.
@@ -2211,6 +2870,16 @@ class FittedImputer:
     ------
     InvalidStrategyError
         If *strategy* is not one of ``{"mean", "median", "mode"}``.
+
+    Notes
+    -----
+    **Dtype handling.** The fill rule matches :func:`impute_mean` /
+    :func:`impute_median`: numeric columns (including nullable ``Int64`` /
+    ``Float64`` and ``float32``) use the learned mean or median, every other
+    column (``bool``, ``boolean``, ``category``, ``string``, ``object``,
+    datetime, timedelta) uses its learned mode.  A nullable integer column
+    keeps its dtype when the fill is integral and becomes ``Float64``
+    otherwise; complete columns are never rewritten.
 
     Examples
     --------
@@ -2357,30 +3026,14 @@ class FittedImputer:
         for col in df.columns:
             if not result[col].isna().any():
                 continue
-            if col not in self._fit_df.columns:
-                continue
-
-            train_col = self._fit_df[col].dropna()
-            if len(train_col) == 0:
-                continue
-
-            if self.strategy == "mode":
-                mode_vals = train_col.mode()
-                if len(mode_vals) == 0:
-                    continue
-                fill_val = mode_vals.iloc[0]
-            elif pd.api.types.is_numeric_dtype(train_col):
-                if self.strategy == "median":
-                    fill_val = float(np.nanmedian(train_col.values))
-                else:  # mean
-                    fill_val = float(np.nanmean(train_col.values))
-            else:
-                mode_vals = train_col.mode()
-                if len(mode_vals) == 0:
-                    continue
-                fill_val = mode_vals.iloc[0]
-
-            result[col] = result[col].fillna(fill_val)
+            fill_value, is_statistic = _learn_fill_value(
+                self.strategy, self._fit_df[col].dropna()
+            )
+            result[col] = (
+                fill_with_statistic(result[col], fill_value)
+                if is_statistic
+                else fill_missing(result[col], fill_value)
+            )
 
         return result
 
