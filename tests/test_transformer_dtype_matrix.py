@@ -137,7 +137,9 @@ class TestMatrix:
         if outcome == "error":
             return
         assert_contract(result, frame, strategy, dtype)
-        separate = make_imputer(strategy).fit(frame).transform(frame)
+        separate = run_with_outcome(
+            outcome, lambda: make_imputer(strategy).fit(frame).transform(frame)
+        )
         pd.testing.assert_frame_equal(result, separate)
 
 
