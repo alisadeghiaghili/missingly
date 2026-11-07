@@ -19,6 +19,13 @@ Design decisions
   production deployment).
 * Categorical columns are handled consistently with the rest of
   missingly: ordinal-encoded for KNN/MICE, classifier-based for RF/GB.
+* Column dtypes are classified once at ``fit`` time by the shared layer in
+  :mod:`missingly._dtypes`, the same one the functions in
+  :mod:`missingly.impute` use: numeric columns (NumPy or nullable) are
+  modelled as ``float64`` and restored to their dtype after ``transform``;
+  boolean and categorical columns are imputed as categories; datetime,
+  timedelta and mixed-type ``object`` columns are never modelled by the
+  model-based strategies (see the *Notes* of :class:`MissinglyImputer`).
 * ``fit_transform`` is inherited from ``TransformerMixin`` and calls
   ``fit`` then ``transform``, so it is equivalent to calling both
   separately.
@@ -59,7 +66,7 @@ MissinglyImputer()
 from __future__ import annotations
 
 import warnings
-from typing import Dict, List, Optional
+from typing import Any, Dict, Hashable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -75,7 +82,21 @@ from sklearn.ensemble import (
 )
 from sklearn.preprocessing import OrdinalEncoder
 
+from ._dtypes import (
+    _OPAQUE_REASONS,
+    ColumnKind,
+    classify_column,
+    classify_frame,
+    column_mode,
+    fill_with_statistic,
+    is_numeric_kind,
+    resolve_opaque_targets,
+    restore_numeric,
+    to_float_array,
+)
+from .exceptions import InsufficientDataError, UnsupportedDtypeError
 from .impute import (
+    _LEGACY_ENCODED,
     _fill_nan_with_col_means,
     _restore_categorical_dtype,
 )
@@ -87,6 +108,18 @@ _VALID_STRATEGIES = frozenset(
         "logreg", "polyreg", "polr",
         "hotdeck",
     }
+)
+# Strategies that fill every column with one learned value (a statistic or a mode).
+_SIMPLE_STRATEGIES = frozenset({"mean", "median", "mode"})
+# Strategies that fit a model on the encoded frame: opaque (datetime, timedelta,
+# mixed-type object) columns cannot be modelled there.
+_MODEL_STRATEGIES = frozenset({"knn", "mice", "rf", "gb"})
+# Strategies whose imputed integer cells are rounded to the nearest integer; the
+# others (mean, median, mode, hot-deck) fill with a statistic or an observed
+# value and never round.
+_ROUNDING_STRATEGIES = frozenset({"knn", "mice", "pmm", "rf", "gb"})
+_NOT_FITTED_REASON = (
+    "the column had no missing value at fit time, so no model was trained for it"
 )
 
 
@@ -155,6 +188,39 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
     ``MissinglyImputer`` accepts pandas DataFrames only. Array and sparse
     containers are rejected so column names, dtypes, and train/transform schema
     checks remain explicit. DataFrame column labels must be unique.
+
+    **Dtype handling.** The kind of every column is decided once, at ``fit``
+    time, by the dtype layer shared with :mod:`missingly.impute`:
+
+    * *Numeric* (``int*``, ``uint*``, ``Int*``, ``UInt*``, ``float*``,
+      ``Float*``): modelled as ``float64`` with ``NaN`` for missing, so
+      ``pd.NA`` never reaches NumPy or scikit-learn.  Columns without missing
+      values are returned exactly as given (an ``int64`` ID column stays
+      ``int64``).  Imputed cells are cast back to the column dtype.
+    * *Integer targets* of ``"knn"``, ``"mice"``, ``"pmm"``, ``"rf"`` and
+      ``"gb"`` are rounded to the nearest integer (ties to even) and clipped to
+      the dtype range, so ``Int64`` stays ``Int64``.  ``"mean"`` and
+      ``"median"`` never round: a nullable integer column keeps its dtype when
+      the fill value is integral and is returned as ``Float64`` otherwise.
+      ``"mode"`` and ``"hotdeck"`` copy observed values, so the dtype is kept.
+    * *Boolean and categorical* (``bool``, ``boolean``, ``category``,
+      ``string``, ``object``): imputed as categories and returned in their own
+      dtype (a ``boolean`` target stays ``boolean``).
+    * *Opaque* (datetime with or without a time zone, timedelta, ``object``
+      columns mixing value types): ``"mean"``, ``"median"``, ``"mode"``,
+      ``"pmm"`` and ``"hotdeck"`` fill them with observed values.  The
+      model-based strategies (``"knn"``, ``"mice"``, ``"rf"``, ``"gb"``) pass a
+      complete opaque column through unchanged and do not use it as a
+      predictor; an incomplete one raises
+      :class:`~missingly.exceptions.UnsupportedDtypeError`, except an
+      incomplete datetime column, which is still imputed as a nominal category
+      but emits a ``FutureWarning`` because it will raise in a future release.
+      Missing cells that appear at ``transform`` time in an opaque column that
+      was complete at ``fit`` time raise
+      :class:`~missingly.exceptions.UnsupportedDtypeError` as well.
+    * ``"mean"``, ``"median"`` and ``"mode"`` raise
+      :class:`~missingly.exceptions.InsufficientDataError` for a column with no
+      observed value.
 
     Examples
     --------
@@ -282,6 +348,92 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
         return result
 
+    @staticmethod
+    def _label_frame(df: pd.DataFrame) -> pd.DataFrame:
+        """Return categorical columns as ``object`` with ``NaN`` for missing cells.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Columns of any non-numeric kind (``bool``, ``boolean``, ``string``,
+            ``category``, ``object``, datetime).
+
+        Returns
+        -------
+        pd.DataFrame
+            ``object`` copy in which ``pd.NA`` and ``NaT`` are ``numpy.nan``, the
+            representation scikit-learn's ordinal encoder understands.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame({"flag": pd.array([True, None], dtype="boolean")})
+        >>> MissinglyImputer._label_frame(frame)["flag"].tolist()
+        [True, nan]
+        """
+        columns = {}
+        for column in df.columns:
+            values = df[column].astype(object).to_numpy(copy=True)
+            values[df[column].isna().to_numpy()] = np.nan
+            columns[column] = values
+        return pd.DataFrame(columns, index=df.index, columns=df.columns, dtype=object)
+
+    @staticmethod
+    def _fill_label(series: pd.Series, value: object, dtype: object) -> pd.Series:
+        """Fill the missing cells of a categorical column with one label.
+
+        Parameters
+        ----------
+        series : pd.Series
+            Column to fill; not modified.
+        value : object
+            Label learned at fit time (a mode).
+        dtype : dtype
+            Fit-time dtype to restore.
+
+        Returns
+        -------
+        pd.Series
+            Filled column in ``dtype``.
+
+        Examples
+        --------
+        >>> filled = MissinglyImputer._fill_label(
+        ...     pd.Series(["a", None]), "a", pd.StringDtype()
+        ... )
+        >>> filled.tolist(), str(filled.dtype)
+        (['a', 'a'], 'string')
+        """
+        filled = series.astype(object)
+        filled.loc[series.isna()] = value
+        return _restore_categorical_dtype(filled, dtype)
+
+    def _modelled_frame(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Return the columns an imputer models, numeric ones as ``float64``.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Frame with the fitted schema.
+
+        Returns
+        -------
+        pd.DataFrame
+            Fit-time ``model_cols_`` of ``X``; numeric columns (NumPy or nullable)
+            are ``float64`` with ``NaN`` for missing, every other column keeps its
+            dtype.  Opaque pass-through columns are left out.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame({"n": pd.array([1, None], dtype="Int64")})
+        >>> imputer = MissinglyImputer().fit(frame)
+        >>> str(imputer._modelled_frame(frame)["n"].dtype)
+        'float64'
+        """
+        modelled = X[self.model_cols_].copy()
+        for column in self.numeric_cols_:
+            modelled[column] = to_float_array(X[column])
+        return modelled
+
     def _coerce_transform_categoricals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Represent fitted categorical columns as objects before encoding.
 
@@ -327,9 +479,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         """
         df_work = df.copy()
         if self.cat_cols_ and self.encoder_ is not None:
-            categorical = df_work[self.cat_cols_].astype(object)
-            categorical = categorical.where(categorical.notna(), other=np.nan)
-            df_work[self.cat_cols_] = self.encoder_.transform(categorical)
+            df_work[self.cat_cols_] = self.encoder_.transform(
+                self._label_frame(df_work[self.cat_cols_])
+            )
         return df_work.astype(float)
 
     def _restore_observed_unknown_categories(
@@ -392,6 +544,63 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             result[col] = _restore_categorical_dtype(result[col], self.cat_dtypes_[col])
         return result
 
+    def _learn_schema(self, X: pd.DataFrame) -> None:
+        """Record the kind of every column and split modelled from opaque ones.
+
+        Model-based strategies (``knn``, ``mice``, ``rf``, ``gb``) cannot model
+        datetime, timedelta or mixed-type ``object`` columns: complete ones are
+        passed through and are not predictors, incomplete ones raise
+        :class:`~missingly.exceptions.UnsupportedDtypeError`, except incomplete
+        datetime columns, which the previous release imputed as nominal
+        categories and which now only warn.  Mode-based strategies (``mean``,
+        ``median``, ``mode``, ``pmm``, ``hotdeck``) fill every non-numeric kind
+        with observed values, so nothing is set aside for them.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Normalised training frame.
+
+        Raises
+        ------
+        UnsupportedDtypeError
+            For an incomplete opaque column the strategy cannot model.
+
+        Warns
+        -----
+        FutureWarning
+            For an incomplete datetime column of a model-based strategy.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame({"n": [1.0, None], "t": pd.to_timedelta([1, 2], unit="D")})
+        >>> imputer = MissinglyImputer(strategy="knn")
+        >>> imputer._learn_schema(frame)
+        >>> imputer.passthrough_cols_, imputer.model_cols_
+        (('t',), ['n'])
+        """
+        kinds = classify_frame(X)
+        opaque: List[Hashable] = []
+        if self.strategy in _MODEL_STRATEGIES:
+            kinds, legacy = resolve_opaque_targets(
+                X, self.strategy, kinds=kinds, deprecated=_LEGACY_ENCODED
+            )
+            opaque = [
+                column
+                for column, kind in kinds.items()
+                if kind in _OPAQUE_REASONS and column not in legacy
+            ]
+        self.column_kinds_: Dict[Hashable, ColumnKind] = kinds
+        self.passthrough_cols_: Tuple[Hashable, ...] = tuple(opaque)
+        self.model_cols_: List[str] = [c for c in X.columns if c not in opaque]
+        self.numeric_cols_: List[str] = [
+            c for c in self.model_cols_ if is_numeric_kind(kinds[c])
+        ]
+        self.cat_cols_: List[str] = [
+            c for c in self.model_cols_ if c not in self.numeric_cols_
+        ]
+        self.cat_dtypes_: Dict[str, object] = {c: X[c].dtype for c in self.cat_cols_}
+
     # ------------------------------------------------------------------
     # fit
     # ------------------------------------------------------------------
@@ -453,6 +662,19 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             If ``X`` is not a pandas DataFrame.
         ValueError
             If ``X`` has duplicate column labels.
+        InsufficientDataError
+            For ``"mean"``, ``"median"`` and ``"mode"``: a column has no
+            observed value.
+        UnsupportedDtypeError
+            For the model-based strategies: an incomplete timedelta,
+            mixed-type ``object`` or other opaque column.
+
+        Warns
+        -----
+        FutureWarning
+            For the model-based strategies: an incomplete datetime column,
+            which is imputed as a nominal category for now and will raise
+            :class:`~missingly.exceptions.UnsupportedDtypeError` later.
 
         Examples
         --------
@@ -469,11 +691,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         X = self._normalize(X)
 
         self.feature_names_in_: List[str] = X.columns.tolist()
-        self.numeric_cols_: List[str] = X.select_dtypes(include=[np.number]).columns.tolist()
-        self.cat_cols_: List[str] = X.select_dtypes(exclude=[np.number]).columns.tolist()
-        self.cat_dtypes_: Dict[str, object] = {c: X[c].dtype for c in self.cat_cols_}
+        self._learn_schema(X)
         self.imputer_ = None
-        self.cat_imputer_ = None
+        self.fill_values_: Dict[str, Any] = {}
         self.encoder_: Optional[OrdinalEncoder] = None
         self.rf_reg_models_: Dict[
             str, RandomForestRegressor | GradientBoostingRegressor
@@ -486,15 +706,28 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self._train_df_: Optional[pd.DataFrame] = None
         self._tree_feature_fill_values_: Optional[np.ndarray] = None
 
+        self._fit_strategy(self._modelled_frame(X))
+
+        self._is_fitted = True
+        return self
+
+    def _fit_strategy(self, X: pd.DataFrame) -> None:
+        """Dispatch to the fit routine of the configured strategy.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Modelled training frame (numeric columns ``float64``).
+
+        Raises
+        ------
+        NotImplementedError
+            For strategies and variants without an inductive implementation.
+        """
         strategy = self.strategy
 
-        if strategy == "mean":
-            self._fit_simple(X, num_strategy="mean")
-        elif strategy == "median":
-            self._fit_simple(X, num_strategy="median")
-        elif strategy == "mode":
-            self.imputer_ = SimpleImputer(strategy="most_frequent")
-            self.imputer_.fit(X)
+        if strategy in _SIMPLE_STRATEGIES:
+            self._fit_simple(X, num_strategy=None if strategy == "mode" else strategy)
         elif strategy == "knn":
             if self.metric == "mixed":
                 raise NotImplementedError(
@@ -507,7 +740,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy == "mice":
             self._fit_mice(X)
         elif strategy == "pmm":
-            self._fit_pmm(X)
+            self._train_df_ = X.copy()
         elif strategy in ("rf", "gb"):
             self._fit_tree(X)
         elif strategy in ("logreg", "polyreg", "polr"):
@@ -525,77 +758,78 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
                 )
             self._train_df_ = X.copy()
 
-        self._is_fitted = True
-        return self
+    def _fit_encoder(self, X: pd.DataFrame) -> None:
+        """Fit the ordinal encoder of the categorical columns, if there are any."""
+        if not self.cat_cols_:
+            return
+        self.encoder_ = OrdinalEncoder(
+            handle_unknown="use_encoded_value",
+            unknown_value=np.nan,
+            encoded_missing_value=np.nan,
+        )
+        self.encoder_.fit(self._label_frame(X[self.cat_cols_]))
 
-    def _fit_simple(self, X: pd.DataFrame, num_strategy: str) -> None:
-        """Fit mean/median numeric imputer and mode categorical imputer."""
-        if self.numeric_cols_:
-            self.imputer_ = SimpleImputer(strategy=num_strategy)
-            self.imputer_.fit(X[self.numeric_cols_])
-        if self.cat_cols_:
-            cat_imputer = SimpleImputer(strategy="most_frequent")
-            cat_imputer.fit(X[self.cat_cols_])
-            self.cat_imputer_ = cat_imputer
+    def _fit_simple(self, X: pd.DataFrame, num_strategy: Optional[str]) -> None:
+        """Learn one fill value per column for mean, median and mode.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Modelled training frame.
+        num_strategy : {"mean", "median"} or None
+            Statistic for numeric columns; ``None`` fills every column with its
+            most frequent value.  Non-numeric columns always use the mode.
+
+        Raises
+        ------
+        InsufficientDataError
+            If a column has no observed value.
+        """
+        for column in X.columns:
+            if X[column].isna().all():
+                raise InsufficientDataError(
+                    column=str(column), n_observed=0, n_required=1
+                )
+        statistic_cols = self.numeric_cols_ if num_strategy else []
+        if statistic_cols:
+            imputer = SimpleImputer(strategy=num_strategy)
+            imputer.fit(X[statistic_cols])
+            self.imputer_ = imputer
+            self.fill_values_.update(zip(statistic_cols, imputer.statistics_))
+        for column in X.columns:
+            if column not in self.fill_values_:
+                self.fill_values_[column] = column_mode(
+                    X[column], self.column_kinds_[column]
+                )
 
     def _fit_knn(self, X: pd.DataFrame) -> None:
         """Fit KNN imputer — euclidean or mixed metric."""
         if self.metric == "mixed":
             self._knn_train_df_ = X.copy()
             return
-        if self.cat_cols_:
-            self.encoder_ = OrdinalEncoder(
-                handle_unknown="use_encoded_value",
-                unknown_value=np.nan,
-                encoded_missing_value=np.nan,
-            )
-            self.encoder_.fit(X[self.cat_cols_])
+        self._fit_encoder(X)
         X_enc = self._encode_cats(X)
-        self.imputer_ = KNNImputer(n_neighbors=self.n_neighbors)
-        self.imputer_.fit(X_enc)
+        imputer = KNNImputer(n_neighbors=self.n_neighbors)
+        imputer.fit(X_enc)
+        self.imputer_ = imputer
 
     def _fit_mice(self, X: pd.DataFrame) -> None:
         """Fit ordinal encoder + IterativeImputer."""
-        if self.cat_cols_:
-            self.encoder_ = OrdinalEncoder(
-                handle_unknown="use_encoded_value",
-                unknown_value=np.nan,
-                encoded_missing_value=np.nan,
-            )
-            self.encoder_.fit(X[self.cat_cols_])
+        self._fit_encoder(X)
         X_enc = self._encode_cats(X)
-        self.imputer_ = IterativeImputer(
+        imputer = IterativeImputer(
             estimator=BayesianRidge(),
             max_iter=self.max_iter,
             random_state=self.random_state,
             imputation_order="roman",
         )
-        self.imputer_.fit(X_enc)
-
-    def _fit_pmm(self, X: pd.DataFrame) -> None:
-        """Fit PMM — store training data for donor matching."""
-        self._train_df_ = X.copy()
-        if self.cat_cols_:
-            self.encoder_ = OrdinalEncoder(
-                handle_unknown="use_encoded_value",
-                unknown_value=np.nan,
-                encoded_missing_value=np.nan,
-            )
-            self.encoder_.fit(X[self.cat_cols_])
+        imputer.fit(X_enc)
+        self.imputer_ = imputer
 
     def _fit_tree(self, X: pd.DataFrame) -> None:
         """Fit per-column regressor/classifier for rf and gb strategies."""
-        est_kwargs = self.estimator_kwargs or {}
-        is_rf = self.strategy == "rf"
         cat_set = set(self.cat_cols_)
-
-        if self.cat_cols_:
-            self.encoder_ = OrdinalEncoder(
-                handle_unknown="use_encoded_value",
-                unknown_value=np.nan,
-                encoded_missing_value=np.nan,
-            )
-            self.encoder_.fit(X[self.cat_cols_])
+        self._fit_encoder(X)
 
         X_enc = self._encode_cats(X).values
         fill_values = np.nanmean(X_enc, axis=0)
@@ -605,43 +839,59 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         col_index = {col: i for i, col in enumerate(X.columns)}
 
         for col in X.columns:
-            missing_mask = X[col].isnull()
-            train_mask = ~missing_mask
+            train_mask = X[col].notna()
             if train_mask.sum() < 2:
                 continue
 
             feature_idx = [col_index[c] for c in X.columns if c != col]
             X_train = X_enc[np.ix_(np.where(train_mask)[0], feature_idx)]
 
-            if not is_rf:
+            if self.strategy == "gb":
                 X_train = _fill_nan_with_col_means(X_train)
 
             if col in cat_set:
-                enc_y = OrdinalEncoder(
-                    handle_unknown="use_encoded_value",
-                    unknown_value=-1,
-                    encoded_missing_value=-1,
-                )
-                y_train_enc = enc_y.fit_transform(
-                    X.loc[train_mask, col].values.reshape(-1, 1)
-                ).ravel().astype(int)
-                clf = (
-                    RandomForestClassifier(random_state=self.random_state, **est_kwargs)
-                    if is_rf
-                    else GradientBoostingClassifier(random_state=self.random_state, **est_kwargs)
-                )
-                clf.fit(X_train, y_train_enc)
-                self.rf_clf_models_[col] = clf
-                self.cat_label_encoders_[col] = enc_y
+                self._fit_tree_classifier(col, X_train, X.loc[train_mask, col])
             else:
-                y_train = X.loc[train_mask, col].values
-                reg = (
-                    RandomForestRegressor(random_state=self.random_state, **est_kwargs)
-                    if is_rf
-                    else GradientBoostingRegressor(random_state=self.random_state, **est_kwargs)
-                )
-                reg.fit(X_train, y_train)
-                self.rf_reg_models_[col] = reg
+                self._fit_tree_regressor(col, X_train, X.loc[train_mask, col])
+
+    def _fit_tree_classifier(
+        self, col: str, X_train: np.ndarray, labels: pd.Series
+    ) -> None:
+        """Fit the classifier of one categorical column (labels are observed)."""
+        est_kwargs = self.estimator_kwargs or {}
+        enc_y = OrdinalEncoder(
+            handle_unknown="use_encoded_value",
+            unknown_value=-1,
+            encoded_missing_value=-1,
+        )
+        y_train_enc = (
+            enc_y.fit_transform(labels.to_numpy(dtype=object).reshape(-1, 1))
+            .ravel()
+            .astype(int)
+        )
+        clf = (
+            RandomForestClassifier(random_state=self.random_state, **est_kwargs)
+            if self.strategy == "rf"
+            else GradientBoostingClassifier(
+                random_state=self.random_state, **est_kwargs
+            )
+        )
+        clf.fit(X_train, y_train_enc)
+        self.rf_clf_models_[col] = clf
+        self.cat_label_encoders_[col] = enc_y
+
+    def _fit_tree_regressor(
+        self, col: str, X_train: np.ndarray, target: pd.Series
+    ) -> None:
+        """Fit the regressor of one numeric column (target is ``float64``)."""
+        est_kwargs = self.estimator_kwargs or {}
+        reg = (
+            RandomForestRegressor(random_state=self.random_state, **est_kwargs)
+            if self.strategy == "rf"
+            else GradientBoostingRegressor(random_state=self.random_state, **est_kwargs)
+        )
+        reg.fit(X_train, target.to_numpy())
+        self.rf_reg_models_[col] = reg
 
     # ------------------------------------------------------------------
     # transform
@@ -692,6 +942,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             If ``X`` is not a pandas DataFrame.
         ValueError
             If ``X`` has duplicate labels or does not match the fitted schema.
+        UnsupportedDtypeError
+            If a datetime, timedelta or mixed-type ``object`` column that was
+            complete at ``fit`` time has missing values and the strategy is
+            model-based (``"knn"``, ``"mice"``, ``"rf"``, ``"gb"``).
 
         Examples
         --------
@@ -725,37 +979,93 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             )
 
         X = X.loc[:, self.feature_names_in_]
-        X = self._normalize(X)
-        X = self._coerce_transform_categoricals(X)
+        X = self._coerce_numeric(self._normalize(X))
+        self._require_servable(X)
+        modelled = self._coerce_transform_categoricals(self._modelled_frame(X))
+        return self._restore_schema(X, self._transform_modelled(modelled))
+
+    def _coerce_numeric(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Give fit-time numeric columns a numeric dtype at transform time.
+
+        A serving batch in which a numeric column is entirely missing arrives as
+        an ``object`` column of ``None``; it becomes ``float64`` here.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Normalised transform input in fit-time column order.
+
+        Returns
+        -------
+        pd.DataFrame
+            Copy of ``X`` in which every fit-time numeric column is numeric.
+
+        Examples
+        --------
+        >>> imputer = MissinglyImputer().fit(pd.DataFrame({"n": [1.0, None]}))
+        >>> str(imputer._coerce_numeric(pd.DataFrame({"n": [None]}))["n"].dtype)
+        'float64'
+        """
         result = X.copy()
-        strategy = self.strategy
+        for column in self.numeric_cols_:
+            if not pd.api.types.is_numeric_dtype(result[column]):
+                result[column] = pd.to_numeric(result[column])
+        return result
 
-        if strategy in ("mean", "median"):
-            if self.numeric_cols_ and self.imputer_ is not None:
-                result[self.numeric_cols_] = self.imputer_.transform(
-                    X[self.numeric_cols_]
+    def _require_servable(self, X: pd.DataFrame) -> None:
+        """Reject missing cells in a column the fitted models set aside.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Normalised transform input in fit-time column order.
+
+        Raises
+        ------
+        UnsupportedDtypeError
+            If a datetime, timedelta or mixed-type ``object`` column that was
+            complete at fit time has missing values now: no model exists for it.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame({"n": [1.0, 2.0], "t": pd.to_timedelta([1, 2], unit="D")})
+        >>> imputer = MissinglyImputer(strategy="knn").fit(frame)
+        >>> gap = frame.assign(t=pd.to_timedelta([1, None], unit="D"))
+        >>> try:
+        ...     imputer.transform(gap)
+        ... except UnsupportedDtypeError as error:
+        ...     print(error.column)
+        t
+        """
+        for column in self.passthrough_cols_:
+            if X[column].isna().any():
+                raise UnsupportedDtypeError(
+                    column=str(column),
+                    dtype=X[column].dtype,
+                    strategy=self.strategy,
+                    reason=_NOT_FITTED_REASON,
                 )
-            if self.cat_cols_ and self.cat_imputer_ is not None:
-                imputed = self.cat_imputer_.transform(X[self.cat_cols_])
-                for i, col in enumerate(self.cat_cols_):
-                    filled = pd.Series(imputed[:, i], index=X.index)
-                    result[col] = _restore_categorical_dtype(filled, self.cat_dtypes_[col])
 
-        elif strategy == "mode":
-            imputer = self._require_fitted_imputer()
-            arr = imputer.transform(X)
-            result = pd.DataFrame(arr, index=X.index, columns=X.columns)
-            for col in X.columns:
-                result[col] = _restore_categorical_dtype(result[col], X[col].dtype)
+    def _transform_modelled(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Impute the modelled columns with the fitted strategy.
 
-        elif strategy == "knn":
-            X_enc = self._encode_cats(X)
-            arr = self._require_fitted_imputer().transform(X_enc)
-            df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
-            result = self._decode_cats(df_enc)
-            result = self._restore_observed_unknown_categories(result, X)
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Modelled transform input (numeric columns ``float64``).
 
-        elif strategy == "mice":
+        Returns
+        -------
+        pd.DataFrame
+            Imputed modelled columns; numeric ones are still ``float64``.
+        """
+        strategy = self.strategy
+        result = X.copy()
+
+        if strategy in _SIMPLE_STRATEGIES:
+            result = self._transform_simple(X)
+
+        elif strategy in ("knn", "mice"):
             X_enc = self._encode_cats(X)
             arr = self._require_fitted_imputer().transform(X_enc)
             df_enc = pd.DataFrame(arr, index=X.index, columns=X_enc.columns)
@@ -771,6 +1081,80 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         elif strategy == "hotdeck":
             result = self._transform_hotdeck(X)
 
+        return result[self.model_cols_]
+
+    def _transform_simple(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Fill mean, median and mode with the values learned at fit time."""
+        result = X.copy()
+        numeric = set(self.numeric_cols_)
+        for column in X.columns:
+            if not X[column].isna().any():
+                continue
+            value = self.fill_values_[column]
+            if column in numeric:
+                result[column] = fill_with_statistic(X[column], float(value))
+            else:
+                # mode keeps the dtype of the serving column (v1 behaviour), mean
+                # and median restore the fit-time dtype.
+                dtype = (
+                    X[column].dtype
+                    if self.strategy == "mode"
+                    else self.cat_dtypes_[column]
+                )
+                result[column] = self._fill_label(X[column], value, dtype)
+        return result
+
+    def _restore_schema(
+        self, original: pd.DataFrame, imputed: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Return the imputed frame in the dtypes of the input.
+
+        Complete numeric and boolean columns are copied from the input, so
+        their dtype and values are exactly preserved; imputed numeric cells are
+        cast back to the column dtype (rounded to the nearest integer only for
+        strategies that predict values); pass-through columns are re-attached.
+
+        Parameters
+        ----------
+        original : pd.DataFrame
+            Normalised transform input in fit-time column order.
+        imputed : pd.DataFrame
+            Result of :meth:`_transform_modelled`.
+
+        Returns
+        -------
+        pd.DataFrame
+            Frame with the fit-time column order and the input dtypes.
+
+        Examples
+        --------
+        >>> frame = pd.DataFrame({"n": pd.array([1, None, 3], dtype="Int64")})
+        >>> str(MissinglyImputer(strategy="knn", n_neighbors=1).fit_transform(frame)["n"].dtype)
+        'Int64'
+        """
+        result = imputed.copy()
+        for column in self.passthrough_cols_:
+            result[column] = original[column].array
+        round_integers = self.strategy in _ROUNDING_STRATEGIES
+        for column in self.numeric_cols_:
+            source = original[column]
+            if source.isna().any():
+                source = restore_numeric(
+                    source,
+                    imputed[column],
+                    classify_column(source),
+                    round_integers=round_integers,
+                )
+            result[column] = source.array
+        for column in self.cat_cols_:
+            if self.column_kinds_[column] is not ColumnKind.BOOLEAN:
+                continue
+            if original[column].isna().any():
+                result[column] = _restore_categorical_dtype(
+                    result[column], self.cat_dtypes_[column]
+                )
+            else:
+                result[column] = original[column].array
         return result[self.feature_names_in_]
 
     def _transform_hotdeck(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -934,10 +1318,10 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             result.loc[miss_indices, col] = imputed_vals
 
         for col in cat_cols:
-            if result[col].isna().any():
-                observed = train_df[col].dropna()
-                if len(observed) > 0:
-                    result[col] = result[col].fillna(observed.mode().iloc[0])
+            gaps = result[col].isna()
+            observed = train_df[col].dropna()
+            if gaps.any() and len(observed) > 0:
+                result.loc[gaps, col] = column_mode(observed, self.column_kinds_[col])
 
         return result
 
