@@ -337,7 +337,7 @@ def impute_hotdeck_random(
         reproducible results.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
 
     Returns
     -------
@@ -347,7 +347,7 @@ def impute_hotdeck_random(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -520,7 +520,7 @@ def impute_hotdeck_weighted(
         Seed for the random number generator.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
 
     Returns
     -------
@@ -530,7 +530,7 @@ def impute_hotdeck_weighted(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.

@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from missingly.exceptions import (
-    ConfigurationError,
+    InvalidSeedError,
     InvalidStrategyError,
     MissingColumnError,
 )
@@ -289,7 +289,7 @@ def as_generator(random_state: Any) -> np.random.Generator:
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If *random_state* is a negative integer, a float, a boolean, a string
         or any other unsupported type.
 
@@ -302,7 +302,7 @@ def as_generator(random_state: Any) -> np.random.Generator:
     >>> as_generator(-1)
     Traceback (most recent call last):
         ...
-    missingly.exceptions.ConfigurationError: Invalid configuration for `random_state` (got -1): must be None, a non-negative integer, a numpy Generator or a numpy RandomState
+    missingly.exceptions.InvalidSeedError: Invalid configuration for `random_state` (got -1): must be None, a non-negative integer, a numpy Generator or a numpy RandomState
     """
     if isinstance(random_state, np.random.Generator):
         return random_state
@@ -313,7 +313,7 @@ def as_generator(random_state: Any) -> np.random.Generator:
         return np.random.default_rng(int(seed))
     if is_integer_seed(random_state) and random_state >= 0:
         return np.random.default_rng(int(random_state))
-    raise ConfigurationError(
+    raise InvalidSeedError(
         param="random_state", got=random_state, reason=f"must be {_SEED_CONTRACT}"
     )
 
@@ -340,7 +340,7 @@ def as_sklearn_seed(random_state: Any) -> Optional[int]:
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If *random_state* is invalid.
 
     Examples
@@ -375,7 +375,7 @@ def as_base_seed(random_state: Any) -> int:
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If *random_state* is invalid.
 
     Examples

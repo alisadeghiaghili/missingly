@@ -1597,7 +1597,7 @@ def impute_mice(
         ``None``.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     estimator : sklearn estimator or None, default None
         Regression estimator used per column.  Defaults to
         ``BayesianRidge()`` with posterior sampling enabled.
@@ -1660,7 +1660,7 @@ def impute_mice(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -1905,7 +1905,7 @@ def impute_pmm(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     n_nearest_donors : int, default 5
         Number of nearest observed values to consider as donors for each
         missing value. Larger values increase randomness.
@@ -1917,7 +1917,7 @@ def impute_pmm(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -2144,7 +2144,7 @@ def impute_logreg(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a binary conditional model cannot fit or predict. If ``False``,
@@ -2159,7 +2159,7 @@ def impute_logreg(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -2283,7 +2283,7 @@ def impute_polyreg(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a multinomial conditional model cannot fit or predict. If
@@ -2299,7 +2299,7 @@ def impute_polyreg(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -2421,7 +2421,7 @@ def impute_polr(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when an ordinal or multinomial conditional model cannot fit or
@@ -2437,7 +2437,7 @@ def impute_polr(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -2617,7 +2617,7 @@ def impute_rf(
         Random seed passed to the Random Forest estimators.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2635,7 +2635,7 @@ def impute_rf(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
@@ -2712,7 +2712,7 @@ def impute_gb(
         Random seed passed to the Gradient Boosting estimators.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.ConfigurationError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2730,7 +2730,7 @@ def impute_gb(
 
     Raises
     ------
-    ConfigurationError
+    InvalidSeedError
         If ``random_state`` is not an accepted seed type.
     TypeError
         If *df* is not a :class:`pandas.DataFrame`.
