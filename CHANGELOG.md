@@ -49,6 +49,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (the bound is ignored; it will become an error).
   - column order of the encoding-based imputers is unchanged (numeric columns
     first); `impute_knn(metric="mixed")` keeps the input order.
+- Unified `random_state` handling for stochastic imputers and argument
+  validation (WP-05, F-033, F-111, F-203, F-231, F-244):
+  - every stochastic function (`impute_hotdeck_random`,
+    `impute_hotdeck_weighted`, `impute_pmm`, `impute_logreg`,
+    `impute_polyreg`, `impute_polr`, `impute_rf`, `impute_gb`, `impute_mice`)
+    accepts `None`, non-negative integers of any size (Python or numpy), a
+    `numpy.random.Generator` and a `numpy.random.RandomState`; integer seeds
+    give the same output as before. Other values raise
+    `ConfigurationError` before any draw (F-231);
+  - `impute_rf` and `impute_gb` no longer turn a `Generator` seed, an integer
+    of 2**32 or more, or a negative seed into mean imputation; these seeds
+    now fit the model, and invalid seeds raise (F-033);
+  - `impute_mice(return_result=True)` accepts numpy integers for
+    `random_state`, `max_iter` and `n_imputations` (F-111);
+  - `validate_positive_int` rejects `True` and `False` (F-203);
+  - `impute_mice` accepts numpy-integer `bounds` and non-string column labels
+    in `visit_sequence` (F-244).
+  - Not changed here (WP-05b, needs owner approval): chain-seed derivation
+    `random_state + i` (F-246) and the default seed policy (`random_state=0`
+    versus `None`, F-247). Defaults are unchanged.
+  - Not changed here: `simulate_*` and `compare_imputations` still use the
+    previous seed handling (F-231 follow-up, outside this work package).
 - Fixed dtype handling in hot-deck imputation and missingness simulation
   (WP-04, F-012, F-232, F-233, F-358):
   - `impute_hotdeck_weighted` accepts bool and nullable `boolean` columns,

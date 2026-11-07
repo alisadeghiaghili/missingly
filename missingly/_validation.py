@@ -32,9 +32,13 @@ import numpy as np
 import pandas as pd
 
 from missingly.exceptions import (
+    ConfigurationError,
     InvalidStrategyError,
     MissingColumnError,
 )
+
+#: Exclusive upper bound of the seed range accepted by scikit-learn estimators.
+SKLEARN_SEED_LIMIT = 2**32
 
 
 def validate_dataframe(
@@ -206,7 +210,7 @@ def validate_positive_int(
     Raises
     ------
     TypeError
-        If *value* is not an integer.
+        If *value* is not an integer, or is a boolean.
     ValueError
         If *value* does not satisfy the positivity constraint.
 
@@ -219,7 +223,7 @@ def validate_positive_int(
         ...
     ValueError: `max_iter` must be a positive integer (> 0); got 0.
     """
-    if not isinstance(value, (int, np.integer)):
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
         raise TypeError(
             f"`{param}` must be an integer; got {type(value).__name__}."
         )
@@ -230,3 +234,156 @@ def validate_positive_int(
         raise ValueError(
             f"`{param}` must be a {qualifier} integer ({comparator}); got {value}."
         )
+
+
+_SEED_CONTRACT = (
+    "None, a non-negative integer, a numpy Generator or a numpy RandomState"
+)
+
+
+def is_integer_seed(value: Any) -> bool:
+    """Return True when *value* is an integer seed (booleans excluded).
+
+    Parameters
+    ----------
+    value : Any
+        Candidate seed.
+
+    Returns
+    -------
+    bool
+        True for Python and numpy integers of any sign and size, except
+        ``bool`` and ``numpy.bool_``.
+
+    Examples
+    --------
+    >>> from missingly._validation import is_integer_seed
+    >>> is_integer_seed(np.int64(3)), is_integer_seed(True)
+    (True, False)
+    """
+    return isinstance(value, (int, np.integer)) and not isinstance(value, bool)
+
+
+def as_generator(random_state: Any) -> np.random.Generator:
+    """Return a :class:`numpy.random.Generator` for a ``random_state`` value.
+
+    This is the single seed-normalisation rule for the package's stochastic
+    functions.  The mapping is:
+
+    * ``None`` -> a fresh generator seeded from OS entropy.
+    * non-negative integer (any size, Python or numpy) -> ``default_rng(seed)``.
+    * :class:`numpy.random.Generator` -> returned unchanged, so the caller's
+      stream advances as usual.
+    * :class:`numpy.random.RandomState` -> a generator seeded by one draw from
+      the RandomState, so the same RandomState state gives the same stream.
+
+    Parameters
+    ----------
+    random_state : Any
+        Seed in one of the accepted forms above.
+
+    Returns
+    -------
+    numpy.random.Generator
+        Generator to draw from.
+
+    Raises
+    ------
+    ConfigurationError
+        If *random_state* is a negative integer, a float, a boolean, a string
+        or any other unsupported type.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from missingly._validation import as_generator
+    >>> bool(as_generator(7).integers(10) == np.random.default_rng(7).integers(10))
+    True
+    >>> as_generator(-1)
+    Traceback (most recent call last):
+        ...
+    missingly.exceptions.ConfigurationError: Invalid configuration for `random_state` (got -1): must be None, a non-negative integer, a numpy Generator or a numpy RandomState
+    """
+    if isinstance(random_state, np.random.Generator):
+        return random_state
+    if random_state is None:
+        return np.random.default_rng()
+    if isinstance(random_state, np.random.RandomState):
+        seed = random_state.randint(0, SKLEARN_SEED_LIMIT, dtype=np.int64)
+        return np.random.default_rng(int(seed))
+    if is_integer_seed(random_state) and random_state >= 0:
+        return np.random.default_rng(int(random_state))
+    raise ConfigurationError(
+        param="random_state", got=random_state, reason=f"must be {_SEED_CONTRACT}"
+    )
+
+
+def as_sklearn_seed(random_state: Any) -> Optional[int]:
+    """Return the integer seed a scikit-learn estimator accepts.
+
+    scikit-learn only accepts ``None``, a :class:`numpy.random.RandomState`
+    or an integer in ``[0, 2**32)``.  Integers in that range are returned
+    unchanged, so existing outputs do not move.  Larger integers, generators
+    and random states are reduced to one integer drawn through
+    :func:`as_generator`, which is deterministic for a given seed.
+
+    Parameters
+    ----------
+    random_state : Any
+        Seed in any form accepted by :func:`as_generator`, or ``None``.
+
+    Returns
+    -------
+    int or None
+        ``None`` for ``None`` (scikit-learn then uses its global state), otherwise
+        an integer in ``[0, 2**32)``.
+
+    Raises
+    ------
+    ConfigurationError
+        If *random_state* is invalid.
+
+    Examples
+    --------
+    >>> from missingly._validation import as_sklearn_seed
+    >>> as_sklearn_seed(7), as_sklearn_seed(None)
+    (7, None)
+    """
+    if random_state is None:
+        return None
+    if is_integer_seed(random_state) and 0 <= random_state < SKLEARN_SEED_LIMIT:
+        return int(random_state)
+    return int(as_generator(random_state).integers(SKLEARN_SEED_LIMIT))
+
+
+def as_base_seed(random_state: Any) -> int:
+    """Return the integer base seed from which per-chain seeds are counted.
+
+    An integer seed is returned unchanged.  Every other accepted form is
+    reduced to one integer through :func:`as_generator`, so the result is always
+    a Python ``int`` that can be offset by a chain index.
+
+    Parameters
+    ----------
+    random_state : Any
+        Seed in any form accepted by :func:`as_generator`.
+
+    Returns
+    -------
+    int
+        Non-negative base seed.
+
+    Raises
+    ------
+    ConfigurationError
+        If *random_state* is invalid.
+
+    Examples
+    --------
+    >>> from missingly._validation import as_base_seed
+    >>> as_base_seed(np.int64(5))
+    5
+    """
+    if is_integer_seed(random_state) and random_state >= 0:
+        return int(random_state)
+    return int(as_generator(random_state).integers(SKLEARN_SEED_LIMIT))
