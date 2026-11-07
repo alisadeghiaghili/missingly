@@ -72,7 +72,9 @@ def _tz_complete_frame() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Characterization: float64 + object frames, fixed seed. Must not change.
+# Characterization: float64 + object frames, fixed seed. MCAR, hot-deck and
+# dtypes must not change; the MAR / MNAR masks were re-pinned when the two
+# mechanisms were calibrated to the requested frac (WP-19).
 # ---------------------------------------------------------------------------
 
 
@@ -162,7 +164,7 @@ def test_characterization_simulate_mar_float_object_frame():
                 6.0,
                 7.5,
                 np.nan,
-                np.nan,
+                10.5,
                 np.nan,
                 13.5,
                 15.0,
@@ -189,7 +191,7 @@ def test_characterization_simulate_mnar_float_object_frame():
                 6.0,
                 7.5,
                 np.nan,
-                np.nan,
+                10.5,
                 np.nan,
                 13.5,
                 15.0,
@@ -216,7 +218,7 @@ def test_characterization_simulate_mixed_float_object_frame():
                 np.nan,
                 np.nan,
                 10.0,
-                np.nan,
+                11.0,
                 np.nan,
             ],
             "y": [np.nan, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0, 13.5, np.nan, 16.5],

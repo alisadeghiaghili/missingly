@@ -42,6 +42,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `simulate_mar` / `simulate_mnar` now satisfy their definitions (WP-19; F-038,
+  F-121, F-122, F-183). `frac` is the achieved overall proportion (previously
+  about 1.25x for MAR and 1.125x for MNAR, and less than `frac` above 0.5): the
+  two-group probabilities are rescaled so their mean equals `frac`, exactly even
+  when probabilities are capped at 1. The default median split is now by rank
+  with tied values shared fractionally, so binary and discrete drivers no
+  longer degenerate to MCAR (a driver with more than half of its values at the
+  maximum used to give every row the same probability). `simulate_mar` raises
+  `ValueError` when `predictor_col` equals `target_col`; an explicit
+  `threshold` that leaves every row on one side now emits a `UserWarning`.
+  `simulate_mixed` protects MAR drivers: an MCAR step without `columns` skips
+  them, and any step that would blank a MAR step's `predictor_col` raises
+  `ValueError`. MAR and MNAR masks for a fixed seed change (they violated the
+  requested mechanism or rate); `simulate_mcar` masks are unchanged. The four
+  duplicated blocks in `simulate.py` share one helper.
 - Added one internal dtype normalisation layer (`missingly._dtypes`) and routed
   the imputers in `missingly.impute` through it (WP-04). Nullable `Int64` /
   `Float64`, `float32`, `int64`, `bool`, `boolean`, `string`, `category`,

@@ -267,8 +267,8 @@ def test_mnar_raises_invalid_tail(numeric_df):
 
 def test_mixed_returns_dataframe(numeric_df):
     spec = [
-        {'mechanism': 'MCAR', 'columns': ['c'], 'frac': 0.10},
-        {'mechanism': 'MAR',  'target_col': 'a', 'predictor_col': 'b',
+        {'mechanism': 'MCAR', 'columns': ['b'], 'frac': 0.10},
+        {'mechanism': 'MAR',  'target_col': 'a', 'predictor_col': 'c',
          'frac': 0.10},
         {'mechanism': 'MNAR', 'target_col': 'b', 'frac': 0.10},
     ]
@@ -278,15 +278,15 @@ def test_mixed_returns_dataframe(numeric_df):
 
 def test_mixed_all_target_cols_have_missing(numeric_df):
     spec = [
-        {'mechanism': 'MCAR', 'columns': ['c'], 'frac': 0.15},
-        {'mechanism': 'MAR',  'target_col': 'a', 'predictor_col': 'b',
+        {'mechanism': 'MCAR', 'columns': ['b'], 'frac': 0.15},
+        {'mechanism': 'MAR',  'target_col': 'a', 'predictor_col': 'c',
          'frac': 0.15},
         {'mechanism': 'MNAR', 'target_col': 'b', 'frac': 0.15},
     ]
     result = simulate_mixed(numeric_df, spec, random_state=0)
     assert result['a'].isnull().sum() > 0
     assert result['b'].isnull().sum() > 0
-    assert result['c'].isnull().sum() > 0
+    assert result['c'].isnull().sum() == 0
 
 
 def test_mixed_does_not_mutate(numeric_df):
