@@ -18,6 +18,7 @@ from missingly.exceptions import ConfigurationError
 from missingly.hotdeck import impute_hotdeck_random, impute_hotdeck_weighted
 from missingly.impute import (
     impute_gb,
+    impute_knn,
     impute_logreg,
     impute_mean,
     impute_mice,
@@ -35,7 +36,7 @@ DETERMINISTIC_SEED_FACTORIES = {
     "Generator": lambda: np.random.default_rng(1),
     "RandomState": lambda: np.random.RandomState(1),
 }
-INVALID_SEEDS = [-1, 1.5, True, "a"]
+INVALID_SEEDS = [-1, 1.5, "a"]
 
 #: Columns each single-target imputer is responsible for; the others are left as they are.
 TARGET_COLUMNS = {
@@ -68,6 +69,11 @@ def _seeded_frame() -> pd.DataFrame:
     for column in ("x", "y", "b", "c"):
         frame.loc[rng.choice(n_rows, size=5, replace=False), column] = np.nan
     return frame
+
+
+def _frames(result):
+    """Return the DataFrames inside a single result or a list of results."""
+    return result if isinstance(result, list) else [result]
 
 
 def _assert_filled(name, frame, df):
@@ -216,14 +222,36 @@ def test_generator_seed_does_not_fall_back_to_mode_imputation():
     assert not (imputed.to_numpy() == mode_filled.to_numpy()).all()
 
 
-def test_validate_positive_int_rejects_booleans():
-    """F-203: booleans are not counts, even though bool subclasses int."""
-    with pytest.raises(TypeError, match="n_neighbors"):
+def test_validate_positive_int_bool_warns_and_keeps_numeric_behaviour():
+    """F-203, deprecated: a bool count warns and is then checked as its integer value."""
+    with pytest.warns(FutureWarning, match="n_neighbors"):
         validate_positive_int(True, param="n_neighbors")
-    with pytest.raises(TypeError, match="n_donors"):
+    with pytest.warns(FutureWarning, match="n_donors"):
         validate_positive_int(False, param="n_donors", allow_zero=True)
-    with pytest.raises(TypeError, match="n_imputations"):
-        impute_mice(_seeded_frame(), n_imputations=True)
+    with (
+        pytest.warns(FutureWarning, match="n_imputations"),
+        pytest.raises(ValueError, match="got False"),
+    ):
+        validate_positive_int(False, param="n_imputations")
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda df, v: impute_knn(df, n_neighbors=v),
+        lambda df, v: impute_hotdeck_weighted(df, n_donors=v, random_state=1),
+        lambda df, v: impute_mice(df, n_imputations=v, max_iter=2),
+    ],
+    ids=["knn", "hotdeck_weighted", "mice_n_imputations"],
+)
+def test_bool_counter_warns_and_matches_its_integer_output(call):
+    """A bool counter gives exactly the output of the integer it stands for, with a warning."""
+    df = _seeded_frame()
+    with pytest.warns(FutureWarning, match="bool"):
+        result = call(df, True)
+    expected = call(df, 1)
+    for left, right in zip(_frames(result), _frames(expected)):
+        pd.testing.assert_frame_equal(left, right)
 
 
 def test_validate_positive_int_accepts_numpy_integers():
@@ -356,11 +384,18 @@ def test_invalid_seed_keeps_legacy_builtin_exception_types(bad_seed, name, built
         assert isinstance(info.value, builtin)
 
 
-@pytest.mark.parametrize("name", sorted(LEGACY_CALLS))
-def test_bool_seed_raises_type_error(name):
-    """``True`` used to act as seed 1; it is now rejected with a TypeError."""
-    with pytest.raises(TypeError):
-        LEGACY_CALLS[name](_seeded_frame(), True)
+@pytest.mark.parametrize("name", sorted(STOCHASTIC_CALLS))
+@pytest.mark.parametrize(
+    ("flag", "as_int"), [(True, 1), (False, 0)], ids=["True", "False"]
+)
+def test_bool_seed_warns_and_behaves_as_its_integer(name, flag, as_int):
+    """A bool seed is deprecated: it warns and gives exactly the output of 1 or 0."""
+    df = _seeded_frame()
+    with pytest.warns(FutureWarning, match="random_state"):
+        result = STOCHASTIC_CALLS[name](df, flag)
+    expected = STOCHASTIC_CALLS[name](df, as_int)
+    for left, right in zip(_frames(result), _frames(expected)):
+        pd.testing.assert_frame_equal(left, right)
 
 
 def test_invalid_seed_error_is_configuration_error_and_both_builtins():
