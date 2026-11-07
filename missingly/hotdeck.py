@@ -147,6 +147,168 @@ def _gower_distances_to_donors(
     )
 
 
+def _gower_numeric_mask(df: pd.DataFrame) -> np.ndarray:
+    """Return which columns Gower treats as real-valued.
+
+    Bool and nullable ``boolean`` columns are numeric for pandas but cannot be
+    subtracted or ranged, so they are compared as categories instead.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Frame whose columns are classified.
+
+    Returns
+    -------
+    np.ndarray of bool, shape (n_columns,)
+        True for numeric columns that are not boolean.
+    """
+    return np.array(
+        [
+            pd.api.types.is_numeric_dtype(df[col])
+            and not pd.api.types.is_bool_dtype(df[col])
+            for col in df.columns
+        ],
+        dtype=bool,
+    )
+
+
+def _gower_column_ranges(
+    df: pd.DataFrame,
+    col_is_numeric: np.ndarray,
+) -> np.ndarray:
+    """Return the observed range (max - min) of every numeric column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input frame.
+    col_is_numeric : np.ndarray of bool
+        Output of :func:`_gower_numeric_mask`.
+
+    Returns
+    -------
+    np.ndarray of float, shape (n_columns,)
+        Range per numeric column; 0.0 for other columns and for numeric
+        columns without an observed value.
+    """
+    col_ranges = np.zeros(len(df.columns), dtype=np.float64)
+    for j, col in enumerate(df.columns):
+        if col_is_numeric[j]:
+            lo, hi = df[col].min(), df[col].max()
+            col_ranges[j] = float(hi - lo) if pd.notna(lo) and pd.notna(hi) else 0.0
+    return col_ranges
+
+
+def _gower_matrix(
+    df: pd.DataFrame,
+    col_is_numeric: np.ndarray,
+) -> np.ndarray:
+    """Return the object matrix used for Gower matching.
+
+    Numeric columns hold their values as floats (``pd.NA`` for missing), all
+    other columns keep their original values for equality matching.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input frame.
+    col_is_numeric : np.ndarray of bool
+        Output of :func:`_gower_numeric_mask`.
+
+    Returns
+    -------
+    np.ndarray of object, shape (n_rows, n_columns)
+        Matching matrix; each row is one record.
+    """
+    matrix = df.to_numpy(dtype=object).copy()
+    for j, col in enumerate(df.columns):
+        if col_is_numeric[j]:
+            matrix[:, j] = pd.to_numeric(df[col], errors="coerce")
+    return matrix
+
+
+def _pick_inverse_distance_donor(
+    dists: np.ndarray,
+    n_donors: int,
+    rng: np.random.Generator,
+) -> int:
+    """Sample one of the *n_donors* nearest donors with inverse-distance weights.
+
+    Parameters
+    ----------
+    dists : np.ndarray of float
+        Gower distance from the recipient to every candidate donor.
+    n_donors : int
+        Size of the candidate pool.
+    rng : np.random.Generator
+        Random number generator used for the draw.
+
+    Returns
+    -------
+    int
+        Position in *dists* of the sampled donor.
+    """
+    k = min(n_donors, len(dists))
+    if k < len(dists):
+        top_k_idx = np.argpartition(dists, k - 1)[:k]
+    else:
+        top_k_idx = np.arange(len(dists))
+    top_k_dists = dists[top_k_idx]
+    # Inverse-distance weights; ties / zero distances fall back to uniform.
+    inv = 1.0 / (top_k_dists + 1e-10)
+    weights = inv / inv.sum()
+    return int(top_k_idx[rng.choice(len(top_k_idx), p=weights)])
+
+
+def _weighted_donor_rows(
+    matrix: np.ndarray,
+    target_idx: int,
+    missing_rows: np.ndarray,
+    donor_rows: np.ndarray,
+    col_is_numeric: np.ndarray,
+    col_ranges: np.ndarray,
+    n_donors: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Pick one donor row for every missing row of one target column.
+
+    Parameters
+    ----------
+    matrix : np.ndarray of object
+        Matching matrix from :func:`_gower_matrix`.
+    target_idx : int
+        Position of the column being imputed; excluded from the matching.
+    missing_rows : np.ndarray of int
+        Rows whose value in the target column is missing.
+    donor_rows : np.ndarray of int
+        Rows whose value in the target column is observed.
+    col_is_numeric : np.ndarray of bool
+        Output of :func:`_gower_numeric_mask`.
+    col_ranges : np.ndarray of float
+        Output of :func:`_gower_column_ranges`.
+    n_donors : int
+        Candidate pool size.
+    rng : np.random.Generator
+        Random number generator.
+
+    Returns
+    -------
+    np.ndarray of int
+        Donor row (position in the frame) for each missing row, in order.
+    """
+    feat_idx = [j for j in range(matrix.shape[1]) if j != target_idx]
+    donors = matrix[np.ix_(donor_rows, feat_idx)].astype(object)
+    feat_is_num = col_is_numeric[feat_idx]
+    feat_ranges = col_ranges[feat_idx]
+    chosen = np.empty(len(missing_rows), dtype=np.intp)
+    for i, miss_row in enumerate(missing_rows):
+        row_feat = matrix[miss_row, feat_idx].copy()
+        dists = _gower_distances_to_donors(row_feat, donors, feat_is_num, feat_ranges)
+        chosen[i] = donor_rows[_pick_inverse_distance_donor(dists, n_donors, rng)]
+    return chosen
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -194,7 +356,7 @@ def impute_hotdeck_random(
     0  25.0
     1  35.0
     2  35.0
-    3  25.0
+    3  35.0
 
     Notes
     -----
@@ -204,6 +366,10 @@ def impute_hotdeck_random(
     in expectation, but variance may be underestimated for small donor
     pools.  For variance-correct inference, use multiple imputation
     (``impute_mice`` with ``n_imputations > 1``) instead.
+
+    Donors are copied as observed values, so every column keeps its dtype:
+    bool, nullable ``boolean``, ``Int64`` and time-zone aware datetimes are
+    returned unchanged in type.
 
     References
     ----------
@@ -226,8 +392,8 @@ def impute_hotdeck_random(
             raise ValueError(
                 f"Column {col!r} has no observed values; cannot hot-deck impute."
             )
-        donors = rng.choice(observed.values, size=missing_mask.sum(), replace=True)
-        result.loc[missing_mask, col] = donors
+        picks = rng.choice(len(observed), size=missing_mask.sum(), replace=True)
+        result.loc[missing_mask, col] = observed.iloc[picks].to_numpy()
         result[col] = _restore_categorical_dtype(result[col], df[col].dtype)
 
     return result
@@ -369,8 +535,8 @@ def impute_hotdeck_weighted(
     >>> impute_hotdeck_weighted(df, n_donors=2, random_state=0)
         age   income
     0  25.0  30000.0
-    1  25.0  45000.0
-    2  35.0  30000.0
+    1  40.0  45000.0
+    2  35.0  60000.0
     3  40.0  60000.0
 
     Notes
@@ -378,7 +544,10 @@ def impute_hotdeck_weighted(
     This method is the closest Python equivalent to R's ``VIM::hotdeck()``
     and SAS ``PROC SURVEYIMPUTE METHOD=FRAC``.  Gower distance handles
     mixed numeric and categorical columns natively without ordinal
-    encoding.  For large DataFrames (> ``config.large_df_threshold`` rows)
+    encoding.  bool and nullable ``boolean`` columns are matched as
+    categories.  Donor values are copied exactly, so ``Int64`` integers
+    keep full precision and every column keeps its dtype.
+    For large DataFrames (> ``config.large_df_threshold`` rows)
     a ``UserWarning`` is emitted because complexity is
     O(n_missing × n_donors) per column.
 
@@ -404,27 +573,11 @@ def impute_hotdeck_weighted(
     rng = np.random.default_rng(random_state)
     result = df.copy()
 
-    cols = df.columns.tolist()
-    col_is_numeric = np.array(
-        [pd.api.types.is_numeric_dtype(df[c]) for c in cols], dtype=bool
-    )
+    col_is_numeric = _gower_numeric_mask(df)
+    col_ranges = _gower_column_ranges(df, col_is_numeric)
+    matrix = _gower_matrix(df, col_is_numeric)
 
-    # Pre-compute per-column ranges for Gower normalisation
-    col_ranges = np.zeros(len(cols), dtype=np.float64)
-    for j, col in enumerate(cols):
-        if col_is_numeric[j]:
-            lo, hi = df[col].min(), df[col].max()
-            col_ranges[j] = float(hi - lo) if pd.notna(lo) and pd.notna(hi) else 0.0
-
-    # Encode categoricals as object arrays for Gower (string comparison).
-    # .copy() ensures the array is always writable regardless of whether
-    # pandas returns a view or a read-only block-backed array.
-    X = df[cols].to_numpy(dtype=object).copy()
-    for j, col in enumerate(cols):
-        if col_is_numeric[j]:
-            X[:, j] = pd.to_numeric(df[col], errors="coerce")
-
-    for col_idx, col in enumerate(cols):
+    for col_idx, col in enumerate(df.columns):
         missing_rows = np.where(df[col].isna())[0]
         if len(missing_rows) == 0:
             continue
@@ -435,32 +588,18 @@ def impute_hotdeck_weighted(
                 f"Column {col!r} has no observed values; cannot hot-deck impute."
             )
 
-        # Feature columns = all columns except the target
-        feat_idx = [j for j in range(len(cols)) if j != col_idx]
-        X_donors = X[np.ix_(donor_rows, feat_idx)].astype(object)
-        feat_is_num = col_is_numeric[feat_idx]
-        feat_ranges = col_ranges[feat_idx]
-
-        orig_dtype = df[col].dtype
-        imputed_vals = []
-
-        for miss_row in missing_rows:
-            row_feat = X[miss_row, feat_idx].copy()
-            dists = _gower_distances_to_donors(
-                row_feat, X_donors, feat_is_num, feat_ranges
-            )
-
-            k = min(n_donors, len(donor_rows))
-            top_k_idx = np.argpartition(dists, k - 1)[:k] if k < len(dists) else np.arange(len(dists))
-            top_k_dists = dists[top_k_idx]
-
-            # Inverse-distance weights; ties / zero distances → uniform
-            inv = 1.0 / (top_k_dists + 1e-10)
-            weights = inv / inv.sum()
-            chosen = rng.choice(top_k_idx, p=weights)
-            imputed_vals.append(df.iloc[donor_rows[chosen]][col])
-
-        result.iloc[missing_rows, df.columns.get_loc(col)] = imputed_vals
-        result[col] = _restore_categorical_dtype(result[col], orig_dtype)
+        chosen = _weighted_donor_rows(
+            matrix,
+            col_idx,
+            missing_rows,
+            donor_rows,
+            col_is_numeric,
+            col_ranges,
+            n_donors,
+            rng,
+        )
+        # Copy the donors' own values so the column keeps its dtype exactly.
+        result.iloc[missing_rows, col_idx] = df[col].iloc[chosen].to_numpy()
+        result[col] = _restore_categorical_dtype(result[col], df[col].dtype)
 
     return result
