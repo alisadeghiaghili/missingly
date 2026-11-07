@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Removed local working notes from the repository root; project rules now live in
+  CONVENTIONS.md and CONTRIBUTING.md; documentation states the enforced coverage
+  gate from pyproject.toml instead of a pinned measured figure (HYG-01, HYG-02,
+  F-326, F-197).
+- Reworded historical notes in the changelog, conventions and test docstrings so
+  they describe project facts neutrally; no entries were removed (HYG-03).
+- Raised the dependency floors to what the code uses: ``pandas>=2.1.0``
+  (``DataFrame.map``) and ``scikit-learn>=1.4.0`` (random-forest imputation
+  with missing feature values; ``OrdinalEncoder(encoded_missing_value=...)``
+  alone needs 1.1). ``requirements.txt`` now mirrors the ``pyproject.toml``
+  floors exactly and no longer carries a stray extras hint, and the module
+  notes in ``compare.py``, ``performance.py`` and ``stats_extra.py`` state the
+  pandas 2.1 minimum (WP-01; F-154, F-195, F-196, F-314, F-330, F-384).
+- CI quality gates: the R-oracle workflow also runs when ``missingly/**``
+  changes (pull requests and pushes to ``main``); the coverage threshold is
+  now a single ``fail_under = 90`` in ``pyproject.toml`` with branch coverage
+  enabled, replacing the 80% gate in ``ci.yml``; fixture CSVs are no longer
+  git-ignored by a blanket ``*.csv`` rule; ``actionlint`` lints the workflows
+  in the quality job; and third-party actions in ``ci.yml``, ``r-oracle.yml``
+  and ``docs-pages.yml`` are pinned to commit SHAs (WP-02; F-062, F-319,
+  F-320).
+
 ### Fixed
 
 - Added one internal dtype normalisation layer (`missingly._dtypes`) and routed
@@ -62,6 +86,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     return bool columns they mask as nullable `boolean` instead of failing
     or emitting a pandas FutureWarning (F-358). int64 columns still become
     float64 when masked, as before.
+- Static-plot figure lifetime and degenerate inputs (WP-06): a static plot
+  that creates its own figure now closes it when it raises afterwards, for
+  example after a misspelled column name (F-375). A call given `ax` never
+  creates a figure (F-366). A frame with no rows or no columns makes
+  `matrix` and `miss_cooccurrence` (no columns) and the column-based plots
+  raise a clear `ValueError` instead of a `TypeError`, `KeyError` or
+  matplotlib error (F-367, F-302). Other degenerate frames (no rows, no
+  missing values, all values missing) are drawn as an annotated empty state
+  without runtime warnings, and `miss_row_profile` no longer shows a
+  completeness axis beyond 100% (F-302, F-374). `vis_miss_cumsum_var` and
+  `vis_miss_cumsum_case` no longer divide by zero when nothing is missing
+  (F-380).
+- Static-plot API hygiene (WP-06): unsupported keyword arguments of the static
+  plot functions, `interactive=True` on functions without a Plotly backend and
+  an unknown `backend` value are no longer swallowed silently; each emits a
+  `FutureWarning` naming the argument (a future release will raise
+  `TypeError`; F-147, F-365, F-303). Styling arguments the Plotly backend
+  cannot honour (`color`, `figsize`, `cmap`, ...) now emit a `UserWarning`
+  (F-303). Interactive calls without Plotly now raise the `ImportError` that
+  names `missingly[interactive]` (F-299). `matrix(color=...)` accepts any
+  Matplotlib colour string (F-301). `fontsize` is honoured by `heatmap`,
+  `miss_cooccurrence`, `vis_miss_by_group` and by `dendrogram` for the
+  `left`/`right` orientations (F-370, F-371). `miss_case` labels its x axis
+  "Row (sorted by # missing)" when sorted and `vis_parallel_coords` no longer
+  hard-codes a colour in its title (F-368, F-382). The module, README and API
+  documentation now state which functions lack `ax`, return a non-`Axes`
+  value, or have a Plotly backend, and that `heatmap` masking is on by
+  default (F-298, F-364).
+- Fixed the ``df.miss`` accessor (WP-07): ``dendrogram()`` and
+  ``vis_miss_fct()`` no longer always raise ``TypeError`` (the accessor passed
+  ``method='ward'`` into scipy and ``ax`` twice; F-005, F-006, F-047, F-048),
+  ``vis_impute_dist()`` takes the required ``column`` (F-072) and
+  ``vis_miss_span()`` accepts the default window, ``span_every`` and ``span``
+  (F-209, F-210). Accessor methods now mirror the signature of the function
+  they wrap, so parameters such as ``missing_values`` and the ``mcar_test``
+  tuning arguments (``max_iter``, ``tol``, ``ridge``) are forwarded (F-205);
+  every v1 positional call form (for example ``df.miss.matrix(ax)``) keeps
+  working. ``DataFrame.miss.mar_mnar_test`` now raises for a partly
+  missing target exactly like ``missingness_association_test`` instead of
+  silently dropping rows (F-070, F-206, F-207). ``dendrogram`` gained an
+  honoured ``method`` linkage argument (default ``"average"``, the previous
+  module-function behaviour).
+- Deprecated the accessor arguments that were silently ignored
+  (``vis_miss(show_pct=...)`` for the matplotlib backend and
+  ``miss_cluster(method=...)``): they now emit a ``FutureWarning`` (F-071,
+  F-208). The accessor documentation no longer claims to expose every public
+  function and lists what it omits (F-204). A signature-parity test and a
+  contract test covering every accessor wrapper guard against future drift.
+- R-oracle validators now enforce their own identities. The Little's MCAR validator
+  hashes its generator script and compares it with the manifest, and checks the naniar
+  version and the R version and platform. The scoped mice comparison rejects an empty
+  tolerance set, computes the CSV SHA-256 itself instead of trusting a literal, and
+  requires the Missingly subject version to match the running package. The mice README
+  now states that the scoped Missingly comparison is run (WP-03; F-309, F-310, F-311,
+  F-312).
+- Importing missingly no longer switches the global matplotlib backend to Agg (WP-06, F-035).
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
   CI and documentation workflows install, the dynamic version source, the
@@ -95,7 +175,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made predictor-free ``impute_polr`` calls use their safe observed modal
   baseline without importing ``statsmodels``. This valid no-estimator path is
   unchanged by ``strict_mode=True``.
-- Reconciled the AI co-pilot context, README examples, legacy requirements,
+- Reconciled the contributor guidance, README examples, legacy requirements,
   and repository line-ending policy with the supported public API. In
   particular, the documented Python floor is 3.9, time-series examples use
   the actual summary schema, and mixed-metric KNN is no longer presented as
@@ -126,6 +206,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inputs; duplicate labels and non-finite numeric outcomes now fail early, and
   recoverable logistic fit failures emit a feature-named warning. This remains
   an exploratory observed-data association screen and does not identify MAR/MNAR.
+- ``XeroGraph_LICENSE`` (the Apache-2.0 text for the adapted XeroGraph code)
+  is now listed in ``license-files`` and ships in the wheel and the sdist next
+  to ``LICENSE`` and ``NOTICE``. The sdist no longer contains a partial
+  ``tests/`` tree that could not run without ``conftest.py`` and the test
+  fixtures (``MANIFEST.in`` prunes it); run the tests from a git checkout. A
+  packaging contract test builds both artefacts and checks their contents;
+  the ``test`` extra therefore installs ``build`` and ``setuptools>=77.0.0``
+  (WP-01; F-153, F-383).
 
 ### Added
 - Promoted the Little's MCAR R oracle to schema v2 with reviewed R/package,
@@ -150,6 +238,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   screen with named results.
 
 ### Changed
+
+- Hardened the release workflow: publishing now depends on a job that runs the
+  test suite, builds the distributions once and fails unless the pushed tag,
+  ``missingly.__version__`` and the built wheel version are identical. PyPI
+  publishing uses trusted publishing from a dedicated job (the only one with
+  ``id-token: write``) in the ``pypi`` environment, the GitHub Release is
+  created in a separate job with only ``contents: write``, the workflow default
+  is ``contents: read`` and every action is pinned to a full commit SHA
+  (WP-01-R, F-050).
+- Renamed the `.gitignore` section for local working files and moved local tool patterns out of `.gitignore` (HYG-04).
 
 - Recorded the authoritative Python 3.12 CI coverage baseline as 89.64%
   (3589/4004) and its `coverage-py312` artifact, without changing the

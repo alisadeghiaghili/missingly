@@ -118,6 +118,25 @@ mi.matrix(df, interactive=True)
 mi.bar(df, interactive=True)
 ```
 
+Nur neun Funktionen haben ein Plotly-Backend: die vier oben sowie
+`miss_var_pct`, `miss_cooccurrence`, `miss_case`, `upset` und `miss_patterns`. Gestaltungsargumente,
+die das Plotly-Backend nicht umsetzt (etwa `color`, `figsize` oder `cmap`),
+werden mit einer Warnung gemeldet statt still verworfen.
+
+#### Rückgabewerte und nicht unterstützte Schlüsselwörter
+
+Statische Funktionen geben die `matplotlib.axes.Axes` zurück, auf die sie
+zeichnen, und akzeptieren optional `ax=`. Ausnahmen: `mi.upset` gibt ein Dict
+von Achsen zurück (und erzeugt immer eine eigene Figure), `mi.vis_miss_fct` hat
+kein `ax` und gibt die Achse der letzten Facette zurück, `mi.miss_impute_compare`
+gibt eine `Figure` zurück (kein `ax`).
+
+Schlüsselwortargumente, die eine Funktion nicht unterstützt (ein Tippfehler oder
+`interactive=True` bei einer Funktion ohne Plotly-Backend), werden weiterhin
+ignoriert, lösen aber nun eine `FutureWarning` mit dem Argumentnamen aus: Ein
+künftiges Release wird `TypeError` auslösen. `mi.upset` löst bei nicht
+unterstützten Optionen bereits `TypeError` aus.
+
 ### Imputation
 
 ```python
