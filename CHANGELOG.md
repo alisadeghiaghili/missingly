@@ -57,7 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     accepts `None`, non-negative integers of any size (Python or numpy), a
     `numpy.random.Generator` and a `numpy.random.RandomState`; integer seeds
     give the same output as before. Other values raise
-    `ConfigurationError` before any draw (F-231);
+    `missingly.exceptions.InvalidSeedError` before any draw (F-231). It is a
+    `ConfigurationError` and is also a `ValueError` and a `TypeError`, so
+    code that caught those builtins for invalid seeds keeps working. A
+    `bool` seed such as `True` used to act as seed 1; it is now rejected
+    with `TypeError`. `impute_polyreg`, `impute_polr`, `impute_rf` and
+    `impute_gb` used to return a silent fallback for an invalid seed; they
+    now raise;
   - `impute_rf` and `impute_gb` no longer turn a `Generator` seed, an integer
     of 2**32 or more, or a negative seed into mean imputation; these seeds
     now fit the model, and invalid seeds raise (F-033);
