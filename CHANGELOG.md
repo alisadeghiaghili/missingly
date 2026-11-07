@@ -49,6 +49,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (the bound is ignored; it will become an error).
   - column order of the encoding-based imputers is unchanged (numeric columns
     first); `impute_knn(metric="mixed")` keeps the input order.
+- Fixed dtype handling in hot-deck imputation and missingness simulation
+  (WP-04, F-012, F-232, F-233, F-358):
+  - `impute_hotdeck_weighted` accepts bool and nullable `boolean` columns,
+    matching them as categories instead of crashing (F-012);
+  - `impute_hotdeck_weighted` copies donor values exactly, so `Int64`
+    integers beyond 2**53 keep their precision (F-233);
+  - `impute_hotdeck_random` copies donor values without the naive
+    NumPy round trip, so tz-aware datetime columns keep their time zone and
+    no longer emit a pandas FutureWarning or fail (F-232);
+  - `simulate_mcar`, `simulate_mar`, `simulate_mnar` and `simulate_mixed`
+    return bool columns they mask as nullable `boolean` instead of failing
+    or emitting a pandas FutureWarning (F-358). int64 columns still become
+    float64 when masked, as before.
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
   CI and documentation workflows install, the dynamic version source, the
