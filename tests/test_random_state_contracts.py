@@ -37,6 +37,13 @@ DETERMINISTIC_SEED_FACTORIES = {
 }
 INVALID_SEEDS = [-1, 1.5, True, "a"]
 
+#: Columns each single-target imputer is responsible for; the others are left as they are.
+TARGET_COLUMNS = {
+    "impute_logreg": ["b"],
+    "impute_polyreg": ["c"],
+    "impute_polr": ["c"],
+}
+
 
 def _seeded_frame() -> pd.DataFrame:
     """Return a small mixed-type frame with missing cells in every modelled column."""
@@ -45,13 +52,17 @@ def _seeded_frame() -> pd.DataFrame:
     x = rng.normal(size=n_rows)
     y = 2.0 * x + rng.normal(scale=0.1, size=n_rows)
     binary = np.where(x > 0, "yes", "no").astype(object)
-    ordinal = np.select([x < -0.5, x < 0.5], ["low", "mid"], default="high").astype(object)
+    ordinal = np.select([x < -0.5, x < 0.5], ["low", "mid"], default="high").astype(
+        object
+    )
     frame = pd.DataFrame(
         {
             "x": x,
             "y": y,
             "b": binary,
-            "c": pd.Categorical(ordinal, categories=["low", "mid", "high"]).astype(object),
+            "c": pd.Categorical(ordinal, categories=["low", "mid", "high"]).astype(
+                object
+            ),
         }
     )
     for column in ("x", "y", "b", "c"):
@@ -59,12 +70,25 @@ def _seeded_frame() -> pd.DataFrame:
     return frame
 
 
+def _assert_filled(name, frame, df):
+    """Assert that every cell the function is responsible for has been imputed."""
+    columns = TARGET_COLUMNS.get(name, list(df.columns))
+    assert frame.shape == df.shape
+    assert not frame[columns].isna().any().any()
+
+
 STOCHASTIC_CALLS = {
-    "impute_hotdeck_random": lambda df, seed: impute_hotdeck_random(df, random_state=seed),
-    "impute_hotdeck_weighted": lambda df, seed: impute_hotdeck_weighted(df, random_state=seed),
+    "impute_hotdeck_random": lambda df, seed: impute_hotdeck_random(
+        df, random_state=seed
+    ),
+    "impute_hotdeck_weighted": lambda df, seed: impute_hotdeck_weighted(
+        df, random_state=seed
+    ),
     "impute_pmm": lambda df, seed: impute_pmm(df, max_iter=2, random_state=seed),
     "impute_logreg": lambda df, seed: impute_logreg(df, max_iter=2, random_state=seed),
-    "impute_polyreg": lambda df, seed: impute_polyreg(df, max_iter=2, random_state=seed),
+    "impute_polyreg": lambda df, seed: impute_polyreg(
+        df, max_iter=2, random_state=seed
+    ),
     "impute_polr": lambda df, seed: impute_polr(df, max_iter=2, random_state=seed),
     "impute_rf": lambda df, seed: impute_rf(df, max_iter=1, random_state=seed),
     "impute_gb": lambda df, seed: impute_gb(df, max_iter=1, random_state=seed),
@@ -84,8 +108,7 @@ def test_every_stochastic_function_accepts_each_seed_type(name, seed_kind):
     result = STOCHASTIC_CALLS[name](df, seed_factory())
     frames = result if isinstance(result, list) else [result]
     for frame in frames:
-        assert frame.shape == df.shape
-        assert not frame.isna().any().any()
+        _assert_filled(name, frame, df)
 
 
 @pytest.mark.parametrize("name", sorted(STOCHASTIC_CALLS))
@@ -115,13 +138,15 @@ def test_none_seed_is_accepted_by_every_stochastic_function():
     """``random_state=None`` keeps working and fills every missing cell."""
     df = _seeded_frame()
     for name, call in STOCHASTIC_CALLS.items():
-        assert not call(df, None).isna().any().any(), name
+        result = call(df, None)
+        for frame in result if isinstance(result, list) else [result]:
+            _assert_filled(name, frame, df)
 
 
 def test_as_generator_returns_generator_for_every_accepted_seed():
-    from missingly._validation import as_generator, as_sklearn_seed
-
     """The shared helper returns a Generator for each supported seed type."""
+    from missingly._validation import as_generator
+
     generator = np.random.default_rng(5)
     assert as_generator(generator) is generator
     assert isinstance(as_generator(None), np.random.Generator)
@@ -131,9 +156,9 @@ def test_as_generator_returns_generator_for_every_accepted_seed():
 
 
 def test_as_generator_int_seed_matches_default_rng_exactly():
-    from missingly._validation import as_generator, as_sklearn_seed
-
     """An int seed yields the same stream as ``np.random.default_rng(seed)``."""
+    from missingly._validation import as_generator
+
     for seed in (0, 3, 2**32 + 5, 2**40):
         expected = np.random.default_rng(seed).integers(0, 10**9, size=8)
         actual = as_generator(seed).integers(0, 10**9, size=8)
@@ -150,9 +175,9 @@ def test_as_generator_rejects_invalid_seed(bad_seed):
 
 
 def test_as_sklearn_seed_keeps_small_int_and_derives_large_seed():
-    from missingly._validation import as_generator, as_sklearn_seed
-
     """Ints below 2**32 pass through unchanged; larger seeds map to a valid sklearn int."""
+    from missingly._validation import as_sklearn_seed
+
     assert as_sklearn_seed(7) == 7
     assert as_sklearn_seed(np.int64(7)) == 7
     assert as_sklearn_seed(None) is None
@@ -163,9 +188,9 @@ def test_as_sklearn_seed_keeps_small_int_and_derives_large_seed():
 
 
 def test_as_sklearn_seed_derives_from_generator():
-    from missingly._validation import as_generator, as_sklearn_seed
-
     """A Generator seed maps to a deterministic sklearn-valid integer."""
+    from missingly._validation import as_sklearn_seed
+
     first = as_sklearn_seed(np.random.default_rng(9))
     second = as_sklearn_seed(np.random.default_rng(9))
     assert first == second
@@ -217,7 +242,9 @@ def test_mice_return_result_accepts_numpy_integer_arguments():
         n_imputations=np.int64(2),
         return_result=True,
     )
-    reference = impute_mice(df, max_iter=2, random_state=5, n_imputations=2, return_result=True)
+    reference = impute_mice(
+        df, max_iter=2, random_state=5, n_imputations=2, return_result=True
+    )
     assert typed.data.n_imputations == 2
     assert typed.data.plan.seed_sequence == (5, 6)
     for left, right in zip(typed.data.imputations, reference.data.imputations):
@@ -228,7 +255,9 @@ def test_mice_return_result_accepts_generator_and_random_state_seeds():
     """Generator and RandomState seeds build a typed result with integer chain seeds."""
     df = _seeded_frame()
     for seed in (np.random.default_rng(2), np.random.RandomState(2)):
-        typed = impute_mice(df, max_iter=2, random_state=seed, n_imputations=2, return_result=True)
+        typed = impute_mice(
+            df, max_iter=2, random_state=seed, n_imputations=2, return_result=True
+        )
         assert all(isinstance(value, int) for value in typed.data.plan.seed_sequence)
         assert len(set(typed.data.plan.seed_sequence)) == 2
 
