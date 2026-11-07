@@ -32,9 +32,10 @@ they are treated as current defects.
   `n_gaps`, `mean_gap`, and `max_gap`; it does not take a `col` parameter.
 - Mixed-metric (`metric="mixed"`) KNN is a standalone transductive operation.
   `MissinglyImputer` rejects it until a train-only Gower donor contract exists.
-- The authoritative Python 3.12 CI coverage artifact measures **92.50%
-  (3846/4158)**. The active 98% target is not yet met, and CI enforcement
-  remains 80% until real coverage reaches that target.
+- CI fails below the `fail_under` value in `pyproject.toml`,
+  currently 90% line and branch coverage. That value is the single source of the
+  enforced gate; the active 98% target (#69) is raised there only once real
+  coverage reaches it.
 - Core/static plotting is offline-only: it makes no network requests, never
   writes a user font cache, and does not import DQT. RTL uses an explicitly
   packaged font only when present, otherwise local system-font fallback with a
@@ -115,13 +116,13 @@ not mix benchmark provenance changes with correctness fixes in the same pull req
 
 ### [2026-08-03] Unrelated-branch reconciliation and statistical credibility
 
-- Verified that `origin/main` and `agent/missingly-analytics-upgrade` have unrelated Git
-  histories; the package branch remains canonical and the web/statistics product is not
-  force-merged.
+- Verified that `origin/main` and a separate web/statistics product branch (since
+  deleted) had unrelated Git histories; the package branch remains canonical and the
+  web/statistics product was not force-merged.
 - Selectively ported the compatible strengths: evidence-gated competitor analysis,
   statistical conformance policy, and deterministic provenance.
-- Added a keep/drop audit in `BRANCH_INTEGRATION.md`; FastAPI, auth, payments, general
-  statistics, and product UI remain outside the missing-data-only scope.
+- Recorded the keep/drop audit: FastAPI, auth, payments, general statistics, and
+  product UI remain outside the missing-data-only scope.
 - Removed placeholder-only skips and the external Gower test skip. Optional DQT tests
   remain conditional locally and are mandatory in their dedicated CI job.
 - Corrected Rubin pooling terminology and behavior: large-sample Rubin degrees of
@@ -458,7 +459,8 @@ more methods.
 - Add property-based, metamorphic, mutation, minimum-dependency, installed-wheel, and
   cross-platform tests. Passing test count and line coverage are not statistical
   evidence.
-- The release coverage floor is **85%**, with a non-decreasing ratchet. CI also runs
+- The release coverage floor is a non-decreasing ratchet set by `fail_under` in
+  `pyproject.toml`. CI also runs
   formatting/linting, type checking, docstring-contract checks, dependency auditing,
   package build validation, and docs builds on supported Windows, macOS, and Linux
   combinations.
@@ -731,10 +733,9 @@ currently resolves to the module rather than the documented singleton, and
 - Restructure tests into `unit/`, `integration/`, `fixtures/`.
 - Required fixtures: `df_no_missing`, `df_all_missing_col`, `df_single_row`,
   `df_mixed_dtypes`, `df_large`, `df_high_cardinality_cat`.
-- The 81% measurement is historical evidence. The current authoritative Python 3.12
-  CI artifact measures 92.50% (3846/4158). Issue #69 tracks reaching 98% without
-  exclusions that hide public paths; the CI enforcement threshold remains 80% until
-  that real measurement is achieved.
+- The 81% measurement is historical evidence. The enforced gate is the `fail_under`
+  value in `pyproject.toml`, currently 90% line and branch coverage. Issue #69 tracks
+  reaching 98% without exclusions that hide public paths.
 - **Prerequisite: A1 done ✓. `manual_tests/` must also be deleted here.**
 - **Acceptance:** `pytest tests/` runs cleanly. Coverage ≥ 85%. `manual_tests/` does not exist.
 
@@ -747,8 +748,9 @@ currently resolves to the module rather than the documented singleton, and
 - GitHub Actions: `lint`, `typecheck`, `docstrings`, `doctest`, `test`, package build,
   dependency audit, and docs build. Matrix: supported Python versions and Windows,
   macOS, and Linux coverage as defined by release policy.
-- Coverage gate: the current `--cov-fail-under=80` is a temporary floor; issue #69
-  raises it to 98% only after the CI artifact measures that real coverage.
+- Coverage gate: `fail_under` in `pyproject.toml` (currently
+  90% line and branch coverage) is the enforced floor; issue #69 raises it to 98% only after real
+  coverage is measured at that level.
 - No unexplained warning, skip, xfail, or optional dependency degradation can produce a
   green release check.
 

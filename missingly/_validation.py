@@ -26,15 +26,20 @@ missingly.exceptions.MissingColumnError: Column(s) not found in DataFrame: ['z']
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Collection, Optional
 
 import numpy as np
 import pandas as pd
 
 from missingly.exceptions import (
+    InvalidSeedError,
     InvalidStrategyError,
     MissingColumnError,
 )
+
+#: Exclusive upper bound of the seed range accepted by scikit-learn estimators.
+SKLEARN_SEED_LIMIT = 2**32
 
 
 def validate_dataframe(
@@ -210,6 +215,12 @@ def validate_positive_int(
     ValueError
         If *value* does not satisfy the positivity constraint.
 
+    Warns
+    -----
+    FutureWarning
+        If *value* is a boolean.  ``True`` is checked as ``1`` and ``False`` as
+        ``0``, as before; a future release will reject booleans.
+
     Examples
     --------
     >>> from missingly._validation import validate_positive_int
@@ -219,14 +230,198 @@ def validate_positive_int(
         ...
     ValueError: `max_iter` must be a positive integer (> 0); got 0.
     """
-    if not isinstance(value, (int, np.integer)):
+    if isinstance(value, bool):
+        _warn_bool_value(param)
+    elif not isinstance(value, (int, np.integer)):
         raise TypeError(
             f"`{param}` must be an integer; got {type(value).__name__}."
         )
     threshold = 0 if allow_zero else 1
     comparator = ">= 0" if allow_zero else "> 0"
     qualifier = "non-negative" if allow_zero else "positive"
-    if value < threshold:
+    if int(value) < threshold:
         raise ValueError(
             f"`{param}` must be a {qualifier} integer ({comparator}); got {value}."
         )
+
+
+_SEED_CONTRACT = (
+    "None, a non-negative integer, a numpy Generator or a numpy RandomState"
+)
+
+
+def _warn_bool_value(param: str) -> None:
+    """Emit the deprecation warning for a boolean given where an integer is expected."""
+    warnings.warn(
+        f"bool given for `{param}` is deprecated and will raise InvalidSeedError"
+        " (or TypeError for counts) in a future release; pass an integer instead.",
+        FutureWarning,
+        stacklevel=3,
+    )
+
+
+def _seed_as_int(random_state: Any) -> Optional[int]:
+    """Return the integer value of an integer-like seed, or None for other types.
+
+    A Python ``bool`` is accepted with a :class:`FutureWarning` and maps to
+    ``1`` or ``0``, as the package always did.  ``numpy.bool_`` is not an
+    integer seed and gives None.
+    """
+    if isinstance(random_state, bool):
+        _warn_bool_value("random_state")
+        return int(random_state)
+    if isinstance(random_state, (int, np.integer)):
+        return int(random_state)
+    return None
+
+
+def _invalid_seed(random_state: Any) -> InvalidSeedError:
+    """Build the error for a seed that is not an accepted type or range."""
+    return InvalidSeedError(
+        param="random_state", got=random_state, reason=f"must be {_SEED_CONTRACT}"
+    )
+
+
+def as_generator(random_state: Any) -> np.random.Generator:
+    """Return a :class:`numpy.random.Generator` for a ``random_state`` value.
+
+    This is the single seed-normalisation rule for the package's stochastic
+    functions.  The mapping is:
+
+    * ``None`` -> a fresh generator seeded from OS entropy.
+    * non-negative integer (any size, Python or numpy) -> ``default_rng(seed)``.
+    * ``True`` / ``False`` -> deprecated; treated as ``1`` / ``0`` with a
+      :class:`FutureWarning`.
+    * :class:`numpy.random.Generator` -> returned unchanged, so the caller's
+      stream advances as usual.
+    * :class:`numpy.random.RandomState` -> a generator seeded by one draw from
+      the RandomState, so the same RandomState state gives the same stream.
+
+    Parameters
+    ----------
+    random_state : Any
+        Seed in one of the accepted forms above.
+
+    Returns
+    -------
+    numpy.random.Generator
+        Generator to draw from.
+
+    Raises
+    ------
+    InvalidSeedError
+        If *random_state* is a negative integer, a float, a string or any other
+        unsupported type.  It is also a ``ValueError`` and a ``TypeError``.
+
+    Warns
+    -----
+    FutureWarning
+        If *random_state* is a boolean.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from missingly._validation import as_generator
+    >>> bool(as_generator(7).integers(10) == np.random.default_rng(7).integers(10))
+    True
+    >>> as_generator(-1)
+    Traceback (most recent call last):
+        ...
+    missingly.exceptions.InvalidSeedError: Invalid configuration for `random_state` (got -1): must be None, a non-negative integer, a numpy Generator or a numpy RandomState
+    """
+    if isinstance(random_state, np.random.Generator):
+        return random_state
+    if random_state is None:
+        return np.random.default_rng()
+    if isinstance(random_state, np.random.RandomState):
+        seed = random_state.randint(0, SKLEARN_SEED_LIMIT, dtype=np.int64)
+        return np.random.default_rng(int(seed))
+    value = _seed_as_int(random_state)
+    if value is None or value < 0:
+        raise _invalid_seed(random_state)
+    return np.random.default_rng(value)
+
+
+def as_sklearn_seed(random_state: Any) -> Optional[int]:
+    """Return the integer seed a scikit-learn estimator accepts.
+
+    scikit-learn only accepts ``None``, a :class:`numpy.random.RandomState`
+    or an integer in ``[0, 2**32)``.  Integers in that range are returned
+    unchanged, so existing outputs do not move.  Larger integers, generators
+    and random states are reduced to one integer drawn through
+    :func:`as_generator`, which is deterministic for a given seed.
+
+    Parameters
+    ----------
+    random_state : Any
+        Seed in any form accepted by :func:`as_generator`, or ``None``.
+
+    Returns
+    -------
+    int or None
+        ``None`` for ``None`` (scikit-learn then uses its global state), otherwise
+        an integer in ``[0, 2**32)``.
+
+    Raises
+    ------
+    InvalidSeedError
+        If *random_state* is invalid.
+
+    Warns
+    -----
+    FutureWarning
+        If *random_state* is a boolean.
+
+    Examples
+    --------
+    >>> from missingly._validation import as_sklearn_seed
+    >>> as_sklearn_seed(7), as_sklearn_seed(None)
+    (7, None)
+    """
+    if random_state is None:
+        return None
+    value = _seed_as_int(random_state)
+    if value is not None and 0 <= value < SKLEARN_SEED_LIMIT:
+        return value
+    return int(as_generator(random_state).integers(SKLEARN_SEED_LIMIT))
+
+
+def as_base_seed(random_state: Any) -> int:
+    """Return the integer base seed from which per-chain seeds are counted.
+
+    An integer seed is returned unchanged (``True`` / ``False`` as ``1`` / ``0``
+    with a :class:`FutureWarning`).  Every other accepted form is reduced to one
+    integer through :func:`as_generator`, so the result is always a Python
+    ``int`` that can be offset by a chain index.
+
+    Parameters
+    ----------
+    random_state : Any
+        Seed in any form accepted by :func:`as_generator`.
+
+    Returns
+    -------
+    int
+        Non-negative base seed.
+
+    Raises
+    ------
+    InvalidSeedError
+        If *random_state* is invalid.
+
+    Warns
+    -----
+    FutureWarning
+        If *random_state* is a boolean.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from missingly._validation import as_base_seed
+    >>> as_base_seed(np.int64(5))
+    5
+    """
+    value = _seed_as_int(random_state)
+    if value is not None and value >= 0:
+        return value
+    return int(as_generator(random_state).integers(SKLEARN_SEED_LIMIT))

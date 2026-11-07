@@ -17,6 +17,10 @@ For example:
    completed_datasets = result.data.imputations
    chain_seeds = result.data.plan.seed_sequence
 
+Chain seeds are derived from ``random_state`` with
+``numpy.random.SeedSequence(base_seed).spawn(n_imputations)``, so chains are
+independent and deterministic for a given seed.
+
 The contract records reproducibility metadata; it does not by itself establish
 convergence, MAR validity, or parity with R ``mice``.
 

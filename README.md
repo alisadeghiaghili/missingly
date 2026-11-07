@@ -152,7 +152,7 @@ mi.upset(df)             # UpSet plot of intersecting missingness sets
 # Nullity-correlation heatmap (Pearson on binary missingness indicators).
 # The core renderer is local, offline, and independent of DQT.
 mi.heatmap(df)
-mi.heatmap(df, mask_insignificant=True)  # grey out non-significant cells
+mi.heatmap(df, mask_insignificant=False)  # masking is on by default: non-significant cells are blanked
 
 # Hierarchical clustering of rows by missingness pattern.
 # Returns a single matplotlib.axes.Axes (not a dict).
@@ -181,6 +181,22 @@ mi.miss_case(df, interactive=True)
 mi.upset(df, interactive=True)
 mi.miss_patterns(df, interactive=True)
 ```
+
+Only these nine functions have a Plotly backend. Styling arguments the Plotly
+backend cannot honour (for example `color`, `figsize` or `cmap`) are reported
+with a warning instead of being dropped silently.
+
+#### Return values and unsupported keywords
+
+Static functions return the `matplotlib.axes.Axes` they drew on and accept an
+optional `ax=`. Exceptions: `mi.upset` returns a dict of axes (and always
+creates its own figure), `mi.vis_miss_fct` has no `ax` and returns the last
+facet's axes, and `mi.miss_impute_compare` returns a `Figure` (no `ax`).
+
+Keyword arguments a function does not support (a misspelled option, or
+`interactive=True` on a function without a Plotly backend) are still ignored,
+but now emit a `FutureWarning` naming the argument: a future release will raise
+`TypeError`. `mi.upset` already raises `TypeError` for unsupported options.
 
 ### Imputation
 

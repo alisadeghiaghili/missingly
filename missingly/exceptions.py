@@ -15,6 +15,7 @@ Hierarchy
     ├── MissingColumnError       # requested column not found in DataFrame
     ├── UnsupportedDtypeError    # column dtype cannot be imputed by the strategy
     └── ConfigurationError       # invalid config value or combination
+        └── InvalidSeedError     # random_state is not an accepted seed (also ValueError, TypeError)
 
 Examples
 --------
@@ -225,3 +226,30 @@ class ConfigurationError(MissinglyError):
         super().__init__(
             f"Invalid configuration for `{param}` (got {got!r}): {reason}"
         )
+
+
+class InvalidSeedError(ConfigurationError, ValueError, TypeError):
+    """Raised when a ``random_state`` value is not an accepted seed.
+
+    The error is a :class:`ConfigurationError`, so new code can catch the package
+    family.  It is also a :class:`ValueError` and a :class:`TypeError`, because
+    the stochastic functions raised one of those builtins for invalid seeds
+    before WP-05, and handlers written against them must keep working.
+
+    Parameters
+    ----------
+    param : str
+        Name of the seed parameter, normally ``'random_state'``.
+    got : Any
+        The invalid value that was supplied.
+    reason : str
+        Human-readable explanation of the accepted seed types.
+
+    Examples
+    --------
+    >>> err = InvalidSeedError(param="random_state", got=-1, reason="must be non-negative")
+    >>> isinstance(err, ValueError) and isinstance(err, TypeError)
+    True
+    >>> str(err)
+    'Invalid configuration for `random_state` (got -1): must be non-negative'
+    """
