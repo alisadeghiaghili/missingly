@@ -1,0 +1,704 @@
+{
+  "unformatted": [
+    "missingly/__init__.py",
+    "missingly/_deprecation.py",
+    "missingly/_distance.py",
+    "missingly/_validation.py",
+    "missingly/benchmark.py",
+    "missingly/compare.py",
+    "missingly/diagnostics.py",
+    "missingly/exceptions.py",
+    "missingly/hotdeck.py",
+    "missingly/impute.py",
+    "missingly/mi.py",
+    "missingly/mi_contracts.py",
+    "missingly/mi_workflow.py",
+    "missingly/naniar.py",
+    "missingly/performance.py",
+    "missingly/provenance.py",
+    "missingly/report.py",
+    "missingly/simulate.py",
+    "missingly/stats_extra.py",
+    "missingly/timeseries.py",
+    "missingly/transformer.py",
+    "missingly/visualisation/__init__.py",
+    "missingly/visualisation/_base.py",
+    "missingly/visualisation/interactive.py",
+    "missingly/visualisation/static.py",
+    "missingly/visualise.py",
+    "tests/fixtures/mice_numeric_fcs/generate_missingly_reference.py",
+    "tests/fixtures/mice_numeric_fcs/validate_mice_reference.py",
+    "tests/test_accessor.py",
+    "tests/test_benchmark.py",
+    "tests/test_compare.py",
+    "tests/test_competitor_analysis.py",
+    "tests/test_cv_compare.py",
+    "tests/test_diagnostic_association_contracts.py",
+    "tests/test_fitted_imputer.py",
+    "tests/test_hotdeck.py",
+    "tests/test_impute.py",
+    "tests/test_impute_knn.py",
+    "tests/test_impute_knn_mixed.py",
+    "tests/test_impute_mice.py",
+    "tests/test_impute_pmm_fitted_contracts.py",
+    "tests/test_impute_ts.py",
+    "tests/test_manipulation.py",
+    "tests/test_mi_contracts.py",
+    "tests/test_mi_pooling.py",
+    "tests/test_mi_workflow.py",
+    "tests/test_mice_convergence.py",
+    "tests/test_model_strategies.py",
+    "tests/test_naniar.py",
+    "tests/test_offline_visualization_boundaries.py",
+    "tests/test_packaging_contract.py",
+    "tests/test_provenance.py",
+    "tests/test_public_api.py",
+    "tests/test_r_mice_oracle_validator.py",
+    "tests/test_report.py",
+    "tests/test_rtl_base.py",
+    "tests/test_rtl_fallback.py",
+    "tests/test_simulate.py",
+    "tests/test_standalone_imputers.py",
+    "tests/test_static_visualisation_contracts.py",
+    "tests/test_statistical_conformance.py",
+    "tests/test_stats.py",
+    "tests/test_summary.py",
+    "tests/test_timeseries.py",
+    "tests/test_timeseries_summary.py",
+    "tests/test_timeseries_visuals.py",
+    "tests/test_transformer.py",
+    "tests/test_visualisation_boundary_contracts.py",
+    "tests/test_visualise.py",
+    "tests/test_visualise_interactive.py",
+    "tests/test_visualise_smoke.py",
+    "tests/unit/test_diagnostics.py",
+    "tests/unit/test_exceptions.py",
+    "tests/unit/test_impute.py",
+    "tests/unit/test_little_mcar_oracle.py",
+    "tests/unit/test_validation.py"
+  ],
+  "violations": {
+    "missingly/__init__.py": {
+      "E402": 1,
+      "E501": 1,
+      "RUF022": 1
+    },
+    "missingly/_deprecation.py": {
+      "UP045": 2
+    },
+    "missingly/_distance.py": {
+      "E501": 1,
+      "PLR2004": 1,
+      "UP045": 1
+    },
+    "missingly/_dtypes.py": {
+      "E501": 4,
+      "RUF022": 1,
+      "UP006": 15,
+      "UP035": 4,
+      "UP045": 6
+    },
+    "missingly/_validation.py": {
+      "ARG001": 1,
+      "E501": 3,
+      "TRY003": 6,
+      "UP035": 1,
+      "UP045": 4
+    },
+    "missingly/accessor.py": {
+      "B010": 1,
+      "E501": 6,
+      "PLR2004": 1,
+      "TRY003": 1,
+      "UP006": 33,
+      "UP007": 2,
+      "UP035": 3,
+      "UP045": 19
+    },
+    "missingly/benchmark.py": {
+      "E501": 2,
+      "TRY003": 17,
+      "UP006": 2,
+      "UP035": 3,
+      "UP037": 1,
+      "UP045": 1
+    },
+    "missingly/compare.py": {
+      "C901": 1,
+      "E501": 1,
+      "N803": 1,
+      "N806": 6,
+      "PD003": 1,
+      "PD011": 4,
+      "PLR0912": 1,
+      "PLR0915": 1,
+      "RET505": 1,
+      "TRY003": 5,
+      "UP006": 3,
+      "UP035": 1,
+      "UP045": 4
+    },
+    "missingly/diagnostics.py": {
+      "ARG001": 1,
+      "E501": 6,
+      "N803": 5,
+      "N806": 8,
+      "PD003": 11,
+      "PD011": 5,
+      "PLC0415": 1,
+      "PLR0912": 1,
+      "PLR0915": 1,
+      "PLR2004": 12,
+      "RET504": 1,
+      "RUF002": 2,
+      "RUF046": 1,
+      "RUF059": 1,
+      "TRY003": 19,
+      "UP006": 39,
+      "UP007": 1,
+      "UP035": 2,
+      "UP045": 19
+    },
+    "missingly/exceptions.py": {
+      "E501": 8,
+      "UP006": 3,
+      "UP035": 1,
+      "UP045": 1
+    },
+    "missingly/hotdeck.py": {
+      "N803": 1,
+      "RUF001": 1,
+      "RUF002": 2,
+      "TRY003": 3
+    },
+    "missingly/impute.py": {
+      "ARG001": 1,
+      "C901": 1,
+      "E501": 31,
+      "ISC004": 3,
+      "N803": 8,
+      "N806": 36,
+      "PD011": 16,
+      "PLC0415": 2,
+      "PLR0912": 2,
+      "PLR0915": 2,
+      "PLR2004": 6,
+      "TRY003": 25,
+      "UP006": 50,
+      "UP007": 2,
+      "UP035": 3,
+      "UP037": 1,
+      "UP045": 21
+    },
+    "missingly/manipulation.py": {
+      "E501": 1,
+      "PD003": 4,
+      "PLC0415": 3,
+      "TRY003": 5,
+      "UP006": 7,
+      "UP007": 1,
+      "UP035": 2,
+      "UP045": 4
+    },
+    "missingly/mi.py": {
+      "E501": 1,
+      "PLR2004": 4,
+      "RUF002": 1,
+      "TRY003": 13,
+      "UP006": 2,
+      "UP035": 2
+    },
+    "missingly/mi_contracts.py": {
+      "E501": 13,
+      "TRY003": 39,
+      "UP006": 7,
+      "UP035": 2,
+      "UP037": 1,
+      "UP045": 2
+    },
+    "missingly/mi_workflow.py": {
+      "PD011": 2,
+      "PLR2004": 3,
+      "TRY003": 4,
+      "UP006": 7,
+      "UP035": 4,
+      "UP045": 1
+    },
+    "missingly/naniar.py": {
+      "ARG001": 1,
+      "PD010": 1,
+      "PLC0415": 4,
+      "PLW0108": 1,
+      "RUF059": 4,
+      "TRY003": 1,
+      "UP006": 11,
+      "UP035": 2,
+      "UP045": 14
+    },
+    "missingly/performance.py": {
+      "PLC0415": 3
+    },
+    "missingly/polars_adapter.py": {
+      "E501": 1,
+      "PLC0415": 1,
+      "TRY003": 2
+    },
+    "missingly/provenance.py": {
+      "C901": 1,
+      "PLR0911": 1,
+      "PLR0912": 1,
+      "TRY003": 5,
+      "UP006": 3,
+      "UP035": 1,
+      "UP045": 5
+    },
+    "missingly/report.py": {
+      "E501": 48,
+      "PD003": 6,
+      "PLC0415": 3,
+      "PLR0912": 1,
+      "PLR0915": 1,
+      "PLR2004": 5,
+      "RUF001": 15,
+      "TRY003": 1,
+      "TRY300": 1,
+      "UP045": 2
+    },
+    "missingly/simulate.py": {
+      "E501": 1,
+      "PD003": 5,
+      "PLW2901": 1,
+      "RUF046": 2,
+      "TRY003": 20,
+      "UP006": 7,
+      "UP035": 2,
+      "UP045": 14
+    },
+    "missingly/stats_extra.py": {
+      "PD003": 3,
+      "PLC0415": 2,
+      "RET504": 1,
+      "TRY003": 1,
+      "UP006": 2,
+      "UP035": 1,
+      "UP045": 3
+    },
+    "missingly/timeseries.py": {
+      "E501": 6,
+      "PD003": 4,
+      "PLR0912": 1,
+      "TRY003": 4,
+      "UP006": 13,
+      "UP035": 1,
+      "UP045": 19
+    },
+    "missingly/transformer.py": {
+      "ARG002": 2,
+      "B007": 1,
+      "E501": 5,
+      "N803": 20,
+      "N806": 16,
+      "PD003": 1,
+      "PD011": 5,
+      "PLC0415": 2,
+      "PLR2004": 1,
+      "TRY003": 12,
+      "UP006": 13,
+      "UP035": 4,
+      "UP037": 2,
+      "UP045": 6
+    },
+    "missingly/visualisation/__init__.py": {
+      "RUF002": 2,
+      "RUF022": 1
+    },
+    "missingly/visualisation/_base.py": {
+      "B023": 1,
+      "PD003": 1,
+      "PGH003": 2,
+      "PLC0415": 1,
+      "PLR0912": 1,
+      "PLW0603": 6,
+      "RUF002": 2,
+      "RUF003": 2,
+      "RUF005": 1,
+      "S110": 3,
+      "SIM105": 2,
+      "TRY003": 1,
+      "TRY300": 2,
+      "UP006": 2,
+      "UP035": 2,
+      "UP037": 7
+    },
+    "missingly/visualisation/interactive.py": {
+      "E501": 3,
+      "E731": 2,
+      "PD011": 6,
+      "PLC0415": 4,
+      "PLR2004": 3,
+      "RUF002": 1,
+      "UP006": 10,
+      "UP035": 2,
+      "UP037": 9,
+      "UP045": 9
+    },
+    "missingly/visualisation/static.py": {
+      "E501": 13,
+      "E702": 1,
+      "PD003": 13,
+      "PD011": 4,
+      "PLC0415": 15,
+      "PLR0912": 2,
+      "PLR0913": 1,
+      "PLR2004": 6,
+      "RUF003": 15,
+      "RUF005": 1,
+      "RUF059": 20,
+      "TRY003": 6,
+      "TRY301": 1,
+      "UP006": 3,
+      "UP035": 2,
+      "UP045": 5
+    },
+    "missingly/visualise.py": {
+      "RUF002": 3,
+      "RUF022": 1
+    },
+    "tests/fixtures/little_mcar/validate_naniar_reference.py": {
+      "E501": 1,
+      "TRY003": 9
+    },
+    "tests/fixtures/mice_numeric_fcs/generate_missingly_reference.py": {
+      "E501": 4,
+      "TRY003": 2
+    },
+    "tests/fixtures/mice_numeric_fcs/validate_cross_tool_comparison.py": {
+      "E501": 4,
+      "TRY003": 14,
+      "UP035": 1
+    },
+    "tests/fixtures/mice_numeric_fcs/validate_mice_reference.py": {
+      "C901": 1,
+      "E501": 5,
+      "PLR0912": 1,
+      "TRY003": 17,
+      "TRY004": 3,
+      "UP035": 1,
+      "UP045": 2
+    },
+    "tests/golden/capture_golden.py": {
+      "UP006": 3,
+      "UP035": 1
+    },
+    "tests/golden/test_column_order_v1.py": {
+      "RUF005": 1,
+      "UP006": 8,
+      "UP035": 3
+    },
+    "tests/golden/test_transformer_legacy_parity.py": {
+      "UP006": 1,
+      "UP035": 1
+    },
+    "tests/test_accessor.py": {
+      "ARG002": 1,
+      "E501": 3,
+      "N802": 1,
+      "PLC0415": 3,
+      "PLW0177": 1
+    },
+    "tests/test_accessor_contract.py": {
+      "ARG001": 1,
+      "PLC0415": 2,
+      "PLW2901": 2,
+      "PT011": 2,
+      "RUF100": 8,
+      "SIM117": 1
+    },
+    "tests/test_benchmark.py": {
+      "E501": 2,
+      "PT001": 1,
+      "RUF043": 1
+    },
+    "tests/test_ci_quality_gates.py": {
+      "S603": 1,
+      "UP006": 10,
+      "UP035": 2
+    },
+    "tests/test_compare.py": {
+      "ARG001": 4,
+      "N803": 1,
+      "N806": 12,
+      "PD011": 3,
+      "PLC0415": 1,
+      "PT018": 1,
+      "TRY003": 1
+    },
+    "tests/test_competitor_analysis.py": {
+      "E501": 1
+    },
+    "tests/test_conditional_fallback_contracts.py": {
+      "ARG002": 6,
+      "N803": 2,
+      "PT030": 1,
+      "SIM117": 1,
+      "TRY003": 6
+    },
+    "tests/test_cv_compare.py": {
+      "N802": 1,
+      "N803": 1,
+      "N806": 12,
+      "PD003": 1
+    },
+    "tests/test_diagnostic_association_contracts.py": {
+      "ARG002": 4,
+      "N803": 2,
+      "TRY003": 2,
+      "UP037": 2
+    },
+    "tests/test_dtype_normalisation_matrix.py": {
+      "PLR0911": 1,
+      "PLR0912": 1,
+      "PLW0108": 1,
+      "UP006": 3,
+      "UP035": 2,
+      "UP045": 1
+    },
+    "tests/test_dtypes.py": {
+      "SIM300": 1
+    },
+    "tests/test_fitted_imputer.py": {
+      "PD003": 3
+    },
+    "tests/test_hotdeck.py": {
+      "PD003": 4
+    },
+    "tests/test_import_side_effects.py": {
+      "S603": 1
+    },
+    "tests/test_impute.py": {
+      "PD003": 2,
+      "PLC0415": 1
+    },
+    "tests/test_impute_dtype_contracts.py": {
+      "PT018": 1,
+      "UP031": 1
+    },
+    "tests/test_impute_knn.py": {
+      "E501": 2,
+      "PD003": 3,
+      "PT001": 2,
+      "PT030": 2
+    },
+    "tests/test_impute_knn_mixed.py": {
+      "E501": 1,
+      "N806": 3,
+      "PD003": 3,
+      "PT001": 2,
+      "RET504": 1
+    },
+    "tests/test_impute_mice.py": {
+      "ARG002": 5,
+      "B007": 3,
+      "E501": 13,
+      "N803": 6,
+      "PD003": 3,
+      "PT001": 3,
+      "PT011": 1,
+      "RUF012": 1
+    },
+    "tests/test_impute_pmm_fitted_contracts.py": {
+      "PT012": 1
+    },
+    "tests/test_impute_ts.py": {
+      "PD003": 7,
+      "PT001": 3
+    },
+    "tests/test_manipulation.py": {
+      "E501": 1,
+      "ERA001": 2,
+      "PD011": 1,
+      "PLC0415": 1
+    },
+    "tests/test_mi_contracts.py": {
+      "ARG001": 2,
+      "E501": 16,
+      "PT001": 3
+    },
+    "tests/test_mi_pooling.py": {
+      "PLC0415": 3,
+      "RUF012": 2
+    },
+    "tests/test_mi_workflow.py": {
+      "PD003": 1,
+      "PLC0415": 1,
+      "PT018": 1,
+      "RUF059": 1
+    },
+    "tests/test_mice_convergence.py": {
+      "B007": 1,
+      "PLC0415": 3
+    },
+    "tests/test_model_strategies.py": {
+      "PD003": 1
+    },
+    "tests/test_naniar.py": {
+      "E501": 2
+    },
+    "tests/test_offline_visualization_boundaries.py": {
+      "ARG001": 5,
+      "E501": 1,
+      "TRY003": 3
+    },
+    "tests/test_packaging_contract.py": {
+      "E501": 2,
+      "S603": 1,
+      "UP006": 13,
+      "UP035": 4
+    },
+    "tests/test_provenance.py": {
+      "DTZ001": 1,
+      "E501": 2,
+      "PT001": 1
+    },
+    "tests/test_public_api.py": {
+      "PLC0415": 4
+    },
+    "tests/test_r_mice_cross_tool_validator.py": {
+      "PT018": 1
+    },
+    "tests/test_r_mice_oracle_validator.py": {
+      "PT018": 1
+    },
+    "tests/test_r_oracle_validator.py": {
+      "E501": 2,
+      "PT018": 1,
+      "RUF043": 1
+    },
+    "tests/test_random_state_contracts.py": {
+      "E501": 8,
+      "PLC0415": 6
+    },
+    "tests/test_release_workflow_contract.py": {
+      "PT018": 1
+    },
+    "tests/test_report.py": {
+      "E501": 3,
+      "RUF005": 1
+    },
+    "tests/test_repository_truth_contracts.py": {
+      "E501": 1,
+      "PLC0415": 2
+    },
+    "tests/test_rtl_base.py": {
+      "ARG005": 4,
+      "E501": 4,
+      "PLC0415": 1,
+      "PLR0402": 1,
+      "PT001": 3,
+      "PT018": 3
+    },
+    "tests/test_rtl_fallback.py": {
+      "ARG005": 1,
+      "E501": 3,
+      "ERA001": 1,
+      "PLC0415": 5,
+      "PLR0402": 1,
+      "PT018": 1
+    },
+    "tests/test_simulate.py": {
+      "PD003": 17
+    },
+    "tests/test_standalone_imputers.py": {
+      "ARG002": 6,
+      "N803": 5,
+      "TRY003": 1
+    },
+    "tests/test_static_api_hygiene.py": {
+      "PLW0108": 10,
+      "TRY003": 1
+    },
+    "tests/test_static_plot_leaks_and_empty_inputs.py": {
+      "ARG001": 3,
+      "PT012": 1,
+      "TRY003": 1
+    },
+    "tests/test_static_visualisation_contracts.py": {
+      "ARG001": 6,
+      "PT012": 1,
+      "RUF059": 3,
+      "TRY003": 3
+    },
+    "tests/test_stats.py": {
+      "N806": 2
+    },
+    "tests/test_strict_mode_contract.py": {
+      "ARG002": 3,
+      "N803": 2,
+      "PT001": 1,
+      "RUF043": 1,
+      "TRY003": 2,
+      "UP037": 1
+    },
+    "tests/test_summary.py": {
+      "E712": 6
+    },
+    "tests/test_timeseries.py": {
+      "E501": 3,
+      "PD003": 3,
+      "PT001": 2
+    },
+    "tests/test_timeseries_summary.py": {
+      "E501": 2,
+      "PLC0415": 2,
+      "PT001": 2
+    },
+    "tests/test_timeseries_visuals.py": {
+      "E501": 1,
+      "PT001": 2,
+      "RUF059": 2
+    },
+    "tests/test_transformer.py": {
+      "E501": 9,
+      "PD003": 2
+    },
+    "tests/test_transformer_dtype_matrix.py": {
+      "PT018": 2,
+      "SIM300": 1,
+      "UP045": 1
+    },
+    "tests/test_visualisation_boundary_contracts.py": {
+      "ARG001": 2,
+      "TRY003": 2
+    },
+    "tests/test_visualise.py": {
+      "ARG001": 1,
+      "PD003": 2,
+      "RUF001": 1
+    },
+    "tests/test_visualise_interactive.py": {
+      "ARG002": 6,
+      "PLC0415": 17,
+      "TRY300": 1
+    },
+    "tests/test_visualise_smoke.py": {
+      "PLC0415": 1
+    },
+    "tests/unit/test_diagnostics.py": {
+      "E501": 2,
+      "E712": 3,
+      "PD011": 2,
+      "PLC0415": 2,
+      "RUF005": 1,
+      "RUF100": 2
+    },
+    "tests/unit/test_impute.py": {
+      "PGH003": 1
+    },
+    "tests/unit/test_little_mcar_oracle.py": {
+      "E501": 4
+    },
+    "tests/unit/test_validation.py": {
+      "PT011": 1
+    }
+  }
+}
