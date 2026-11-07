@@ -1,0 +1,5 @@
+# Source distributions ship the package and licence texts only. The test
+# suite depends on conftest.py, tests/fixtures and repository documents that
+# are not part of an sdist, so a partial tests/ tree would not run; test from a
+# git checkout instead.
+prune tests

@@ -6,43 +6,105 @@ on:
       - "v[0-9]*.[0-9]*.[0-9]*"
 
 permissions:
-  contents: write   # needed to create GitHub Release
-  id-token: write   # needed for OIDC trusted publisher (PyPI)
+  contents: read
 
 jobs:
-  release:
-    name: Build and publish to PyPI
-    runs-on: ubuntu-latest
+  verify-and-build:
+    name: Test, check version and build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install test and build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[test]' build twine
+
+      - name: Run the test suite
+        run: python -m pytest tests -q -p no:cacheprovider
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - name: Check that the tag, the package version and the wheel agree
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          import sys
+
+          import missingly
+
+          tag_version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          package_version = missingly.__version__
+          wheels = glob.glob("dist/*.whl")
+          if len(wheels) != 1:
+              sys.exit(f"expected exactly one wheel in dist/, found {wheels}")
+          wheel_version = os.path.basename(wheels[0]).split("-")[1]
+          print(f"tag={tag_version} package={package_version} wheel={wheel_version}")
+          if not tag_version == package_version == wheel_version:
+              sys.exit("tag, missingly.__version__ and wheel version must be identical")
+          PY
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI (trusted publishing)
+    needs: verify-and-build
+    runs-on: ubuntu-24.04
 
     environment:
       name: pypi
       url: https://pypi.org/project/missingly/
 
+    permissions:
+      contents: read
+      id-token: write  # OIDC token for PyPI trusted publishing; this job only
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v7
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          python-version: "3.12"
+          name: python-distributions
+          path: dist/
 
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
-      - name: Build sdist and wheel
-        run: python -m build
+  github-release:
+    name: Create GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-24.04
 
-      - name: Check distribution
-        run: twine check dist/*
+    permissions:
+      contents: write  # create the GitHub Release; nothing else
 
-      - name: Publish to PyPI (OIDC trusted publisher)
-        uses: pypa/gh-action-pypi-publish@release/v1
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python-distributions
+          path: dist/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           files: dist/*
           generate_release_notes: true
