@@ -130,6 +130,8 @@ _OVERRIDES: dict[str, dict[str, tuple[str, str]]] = {
     "vis_parallel_coords": {
         ZERO_ROWS: ("text", "No numeric columns available"),
         ZERO_COLS: ("text", "No numeric columns available"),
+        # Complete numeric data draws its lines; no state overlay is added.
+        NO_MISSING: ("plot", ""),
     },
     "upset": {
         ZERO_ROWS: ("text", "No missingness patterns"),
@@ -280,4 +282,6 @@ def test_degenerate_input_matches_the_decided_behaviour(name: str, case: str) ->
         return
     result = _invoke(name, frame)
     assert result is not None
+    if kind == "plot":
+        return
     assert any(message in text for text in _texts(result))
