@@ -28,6 +28,14 @@ Functions that accept ``**kwargs`` without a documented target currently
 ignore unsupported keywords.  Each such call emits a :class:`FutureWarning`
 naming the argument; a future release will raise :class:`TypeError` instead.
 
+Degenerate inputs and figure lifetime
+-------------------------------------
+A frame with no rows or no columns is rejected with :class:`ValueError` when
+no plot can be drawn, and otherwise drawn as an annotated empty state (for
+example "No missing values" or "All values are missing") without runtime
+warnings. A figure created by a call is closed if the call raises, and a call
+given *ax* never creates a figure.
+
 RTL support
 -----------
 Column names and index values that contain Arabic / Persian characters are
@@ -37,9 +45,10 @@ before being passed to matplotlib.
 
 from __future__ import annotations
 
+import functools
 import inspect
 import warnings
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, Optional, Sequence, TypeVar, cast
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -260,9 +269,145 @@ def _empty_upset_axes(
 
 
 # ===========================================================================
+# Figure lifetime and degenerate-input guard
+# ===========================================================================
+
+_ZERO_ROWS = "zero_rows"
+_ZERO_COLS = "zero_cols"
+_NO_MISSING = "no_missing"
+_ALL_MISSING = "all_missing"
+_EMPTY_STATE_TEXT = {
+    _ZERO_ROWS: "No rows to display",
+    _ZERO_COLS: "No columns to display",
+    _NO_MISSING: "No missing values",
+    _ALL_MISSING: "All values are missing",
+}
+_DEFAULT_EMPTY_FIGSIZE = (6, 4)
+_FuncT = TypeVar("_FuncT", bound=Callable[..., Any])
+_RAISE_NO_ROWS_OR_COLS = frozenset({_ZERO_ROWS, _ZERO_COLS})
+_RAISE_NO_COLS = frozenset({_ZERO_COLS})
+_KEEP_NO_ROWS_OR_COLS = frozenset({_ZERO_ROWS, _ZERO_COLS})
+_KEEP_NO_ROWS_COLS_OR_MISSING = frozenset({_ZERO_ROWS, _ZERO_COLS, _NO_MISSING})
+
+
+def _degenerate_case(frame: Any, missing_values: Any) -> str | None:
+    """Classify a frame as degenerate, or return ``None`` if it is not one."""
+    if not isinstance(frame, pd.DataFrame):
+        return None
+    if frame.shape[1] == 0:
+        return _ZERO_COLS
+    if frame.shape[0] == 0:
+        return _ZERO_ROWS
+    missing = _apply_sentinels(frame, missing_values).isnull().to_numpy()
+    if not missing.any():
+        return _NO_MISSING
+    if missing.all():
+        return _ALL_MISSING
+    return None
+
+
+def _close_figures_since(before: set[int]) -> None:
+    """Close every pyplot figure that was opened after *before* was taken."""
+    for number in set(plt.get_fignums()) - before:
+        plt.close(number)
+
+
+def _empty_state(
+    case: str,
+    ax: Any,
+    figsize: tuple[float, float] | None,
+    result: str,
+) -> Any:
+    """Return an annotated empty plot of the shape the public function returns."""
+    message = _EMPTY_STATE_TEXT[case]
+    if result == "upset":
+        return _empty_upset_axes(figsize, message)
+    if ax is None:
+        _, ax = plt.subplots(
+            figsize=figsize or _DEFAULT_EMPTY_FIGSIZE,
+            constrained_layout=True,
+        )
+    ax.text(0.5, 0.5, message, ha="center", va="center", transform=ax.transAxes)
+    ax.set_axis_off()
+    return ax.figure if result == "figure" else ax
+
+
+def _needs_message(func_name: str, case: str) -> str:
+    noun = "row" if case == _ZERO_ROWS else "column"
+    return f"{func_name}() needs at least one {noun}"
+
+
+def _guarded(
+    *,
+    raises: frozenset[str] = frozenset(),
+    keeps: frozenset[str] = frozenset(),
+    result: str = "axes",
+) -> Callable[[_FuncT], _FuncT]:
+    """Release figures on failure and handle degenerate inputs for a public plot.
+
+    Parameters
+    ----------
+    raises : frozenset of str, optional
+        Degenerate cases (zero rows or zero columns) that raise ``ValueError``.
+    keeps : frozenset of str, optional
+        Degenerate cases the function already annotates itself; the body runs.
+    result : {"axes", "figure", "upset"}, default "axes"
+        Return shape used for the generic empty state.
+
+    Returns
+    -------
+    callable
+        Decorator that wraps a public plotting function.
+
+    Examples
+    --------
+    >>> @_guarded(raises=frozenset({_ZERO_ROWS}))
+    ... def _demo(df):
+    ...     return df
+    >>> _demo(pd.DataFrame({"a": [1.0]})).shape
+    (1, 1)
+    """
+
+    def decorate(func: _FuncT) -> _FuncT:
+        signature = inspect.signature(func)
+        frame_name = next(iter(signature.parameters))
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            bound = signature.bind_partial(*args, **kwargs)
+            before = set(plt.get_fignums())
+            try:
+                arguments = bound.arguments
+                case = _degenerate_case(
+                    arguments.get(frame_name), arguments.get("missing_values")
+                )
+                plotly_requested = arguments.get("interactive") or (
+                    arguments.get("backend") == "plotly"
+                )
+                if plotly_requested or case is None or case in keeps:
+                    return func(*args, **kwargs)
+                if case in raises:
+                    raise ValueError(_needs_message(func.__name__, case))
+                return _empty_state(
+                    case,
+                    arguments.get("ax"),
+                    arguments.get("figsize"),
+                    result,
+                )
+            except BaseException:
+                _close_figures_since(before)
+                raise
+
+        return cast(_FuncT, wrapper)
+
+    return decorate
+
+
+# ===========================================================================
 # matrix
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_ROWS_OR_COLS)
 def matrix(
     df: pd.DataFrame,
     *,
@@ -318,6 +463,8 @@ def matrix(
 
     Raises
     ------
+    ValueError
+        If the frame has no rows or no columns.
     ValueError
         If *color* is not a valid Matplotlib colour.
     ImportError
@@ -420,6 +567,7 @@ def matrix(
 # bar
 # ===========================================================================
 
+@_guarded()
 def bar(
     df: pd.DataFrame,
     *,
@@ -542,6 +690,7 @@ def bar(
 # miss_case  – missing values per row
 # ===========================================================================
 
+@_guarded()
 def miss_case(
     df: pd.DataFrame,
     *,
@@ -654,6 +803,7 @@ def miss_case(
 # miss_var_pct  – % missing per variable
 # ===========================================================================
 
+@_guarded()
 def miss_var_pct(
     df: pd.DataFrame,
     *,
@@ -762,6 +912,7 @@ def miss_var_pct(
 # miss_which  – indicator grid (rows x missing cols)
 # ===========================================================================
 
+@_guarded()
 def miss_which(
     df: pd.DataFrame,
     *,
@@ -836,6 +987,7 @@ def miss_which(
 # upset
 # ===========================================================================
 
+@_guarded(keeps=_KEEP_NO_ROWS_COLS_OR_MISSING, result="upset")
 def upset(
     df: pd.DataFrame,
     *,
@@ -1005,6 +1157,7 @@ def upset(
 # miss_patterns
 # ===========================================================================
 
+@_guarded()
 def miss_patterns(
     df: pd.DataFrame,
     *,
@@ -1113,6 +1266,7 @@ def miss_patterns(
 # miss_cooccurrence
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_COLS)
 def miss_cooccurrence(
     df: pd.DataFrame,
     *,
@@ -1164,6 +1318,8 @@ def miss_cooccurrence(
 
     Raises
     ------
+    ValueError
+        If the frame has no columns.
     ImportError
         If Plotly output is requested but Plotly is not installed.
 
@@ -1222,6 +1378,7 @@ def miss_cooccurrence(
 # heatmap
 # ===========================================================================
 
+@_guarded(keeps=_KEEP_NO_ROWS_COLS_OR_MISSING)
 def heatmap(
     df: pd.DataFrame,
     *,
@@ -1400,6 +1557,7 @@ def heatmap(
 # dendrogram
 # ===========================================================================
 
+@_guarded(keeps=_KEEP_NO_ROWS_COLS_OR_MISSING)
 def dendrogram(
     df: pd.DataFrame,
     *,
@@ -1496,6 +1654,7 @@ def dendrogram(
 # vis_miss
 # ===========================================================================
 
+@_guarded()
 def vis_miss(
     df: pd.DataFrame,
     *,
@@ -1623,6 +1782,7 @@ def vis_miss(
 # miss_cluster  – heatmap after row+col clustering
 # ===========================================================================
 
+@_guarded()
 def miss_cluster(
     df: pd.DataFrame,
     *,
@@ -1714,6 +1874,7 @@ def miss_cluster(
 # miss_row_profile  – per-row completeness summary
 # ===========================================================================
 
+@_guarded(keeps=_KEEP_NO_ROWS_OR_COLS)
 def miss_row_profile(
     df: pd.DataFrame,
     *,
@@ -1798,6 +1959,7 @@ def miss_row_profile(
 # shadow_scatter  – scatter with missingness shadow
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_COLS)
 def shadow_scatter(
     df: pd.DataFrame,
     x: str,
@@ -1848,6 +2010,11 @@ def shadow_scatter(
     FutureWarning
         If any keyword argument (including ``interactive``) is given; it is
         ignored and a future release will raise ``TypeError``.
+
+    Raises
+    ------
+    ValueError
+        If the frame has no columns.
 
     Examples
     --------
@@ -1926,6 +2093,7 @@ def scatter_miss(
 # vis_miss_fct  – vis_miss faceted by a grouping variable
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_ROWS_OR_COLS)
 def vis_miss_fct(
     df: pd.DataFrame,
     fct: str,
@@ -1964,6 +2132,11 @@ def vis_miss_fct(
         If :func:`vis_miss` does not support a keyword argument; it is ignored
         and a future release will raise ``TypeError``.
 
+    Raises
+    ------
+    ValueError
+        If the frame has no rows or no columns.
+
     Examples
     --------
     >>> import pandas as pd
@@ -1994,6 +2167,7 @@ def vis_miss_fct(
 # vis_miss_by_group  – aggregate % missing per group
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_COLS)
 def vis_miss_by_group(
     df: pd.DataFrame,
     group_col: str,
@@ -2037,6 +2211,11 @@ def vis_miss_by_group(
     matplotlib.axes.Axes
         The heatmap axes.
 
+    Raises
+    ------
+    ValueError
+        If the frame has no columns.
+
     Examples
     --------
     >>> import pandas as pd
@@ -2070,6 +2249,7 @@ def vis_miss_by_group(
 # vis_impute_dist  – before/after imputation distributions
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_COLS)
 def vis_impute_dist(
     df_before: pd.DataFrame,
     df_after: pd.DataFrame,
@@ -2094,6 +2274,11 @@ def vis_impute_dist(
     Returns
     -------
     matplotlib.axes.Axes
+    Raises
+    ------
+    ValueError
+        If the frame has no columns.
+
     """
     df_before = _apply_sentinels(df_before, missing_values)
     df_after = _apply_sentinels(df_after, missing_values)
@@ -2125,6 +2310,7 @@ def vis_impute_dist(
 # miss_impute_compare  – multiple imputers side-by-side
 # ===========================================================================
 
+@_guarded(keeps=_KEEP_NO_ROWS_COLS_OR_MISSING, result="figure")
 def miss_impute_compare(
     original: pd.DataFrame,
     imputed: pd.DataFrame | Dict[str, pd.DataFrame],
@@ -2224,6 +2410,7 @@ def miss_impute_compare(
 # vis_miss_cumsum_var  – cumulative missingness by variable
 # ===========================================================================
 
+@_guarded()
 def vis_miss_cumsum_var(
     df: pd.DataFrame,
     *,
@@ -2267,6 +2454,7 @@ def vis_miss_cumsum_var(
 # vis_miss_cumsum_case  – cumulative missingness by case
 # ===========================================================================
 
+@_guarded()
 def vis_miss_cumsum_case(
     df: pd.DataFrame,
     *,
@@ -2307,6 +2495,7 @@ def vis_miss_cumsum_case(
 # vis_miss_span  – rolling window missingness over time
 # ===========================================================================
 
+@_guarded(raises=_RAISE_NO_COLS)
 def vis_miss_span(
     df: pd.DataFrame,
     column: str,
@@ -2334,6 +2523,11 @@ def vis_miss_span(
     Returns
     -------
     matplotlib.axes.Axes
+    Raises
+    ------
+    ValueError
+        If the frame has no columns.
+
     """
     df = _apply_sentinels(df, missing_values)
     window = span if span is not None else span_every
@@ -2361,6 +2555,7 @@ def vis_miss_span(
 # vis_parallel_coords  – parallel coordinates coloured by missingness
 # ===========================================================================
 
+@_guarded(keeps=_KEEP_NO_ROWS_COLS_OR_MISSING)
 def vis_parallel_coords(
     df: pd.DataFrame,
     *,

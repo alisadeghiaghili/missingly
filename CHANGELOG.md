@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Static-plot figure lifetime and degenerate inputs (WP-06): a static plot
+  that creates its own figure now closes it when it raises afterwards, for
+  example after a misspelled column name (F-375). A call given `ax` never
+  creates a figure (F-366). A frame with no rows or no columns makes
+  `matrix` and `miss_cooccurrence` (no columns) and the column-based plots
+  raise a clear `ValueError` instead of a `TypeError`, `KeyError` or
+  matplotlib error (F-367, F-302). Other degenerate frames (no rows, no
+  missing values, all values missing) are drawn as an annotated empty state
+  without runtime warnings, and `miss_row_profile` no longer shows a
+  completeness axis beyond 100% (F-302, F-374). `vis_miss_cumsum_var` and
+  `vis_miss_cumsum_case` no longer divide by zero when nothing is missing
+  (F-380).
 - Static-plot API hygiene (WP-06): unsupported keyword arguments of the static
   plot functions, `interactive=True` on functions without a Plotly backend and
   an unknown `backend` value are no longer swallowed silently; each emits a
