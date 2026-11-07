@@ -211,24 +211,21 @@ def test_conventions_and_contributing_publish_current_verified_status() -> None:
         assert issue in conventions
 
 
-def test_removed_working_notes_are_gone_and_unreferenced() -> None:
-    """Keep local working notes out of the repository and out of references."""
+def test_repository_root_only_holds_maintained_markdown_documents() -> None:
+    """Keep local working notes out of the repository root."""
+    allowed = {
+        "CHANGELOG.md",
+        "COMPETITOR_ANALYSIS.md",
+        "CONTRIBUTING.md",
+        "CONVENTIONS.md",
+        "README.md",
+        "README_DE.md",
+        "README_FA.md",
+        "TESTING.md",
+    }
     root_markdown = {path.name for path in REPOSITORY_ROOT.glob("*.md")}
-    assert not any(name.endswith("Visualiz.md") for name in root_markdown)
-    for removed in (
-        "SKILL_MISSINGLY.md",
-        "instructions.md",
-        "missingly-dev-skills.md",
-        "BRANCH_INTEGRATION.md",
-    ):
-        assert removed not in root_markdown
-        for document in (
-            "README.md",
-            "CONTRIBUTING.md",
-            "CONVENTIONS.md",
-            "TESTING.md",
-        ):
-            assert removed not in _read(document)
+
+    assert root_markdown <= allowed
 
 
 def test_repository_declares_a_cross_platform_text_normalization_policy() -> None:

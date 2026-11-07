@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CONVENTIONS.md and CONTRIBUTING.md; documentation states the enforced coverage
   gate from pyproject.toml instead of a pinned measured figure (HYG-01, HYG-02,
   F-326, F-197).
+- Reworded historical notes in the changelog, conventions and test docstrings so
+  they describe project facts neutrally; no entries were removed (HYG-03).
 - Raised the dependency floors to what the code uses: ``pandas>=2.1.0``
   (``DataFrame.map``) and ``scikit-learn>=1.4.0`` (random-forest imputation
   with missing feature values; ``OrdinalEncoder(encoded_missing_value=...)``
@@ -65,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made predictor-free ``impute_polr`` calls use their safe observed modal
   baseline without importing ``statsmodels``. This valid no-estimator path is
   unchanged by ``strict_mode=True``.
-- Reconciled the AI co-pilot context, README examples, legacy requirements,
+- Reconciled the contributor guidance, README examples, legacy requirements,
   and repository line-ending policy with the supported public API. In
   particular, the documented Python floor is 3.9, time-series examples use
   the actual summary schema, and mixed-metric KNN is no longer presented as
