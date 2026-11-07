@@ -274,7 +274,10 @@ def test_mice_return_result_accepts_numpy_integer_arguments():
         df, max_iter=2, random_state=5, n_imputations=2, return_result=True
     )
     assert typed.data.n_imputations == 2
-    assert typed.data.plan.seed_sequence == (5, 6)
+    assert typed.data.plan.seed_sequence == tuple(
+        int(child.generate_state(1, dtype=np.uint64)[0])
+        for child in np.random.SeedSequence(5).spawn(2)
+    )
     for left, right in zip(typed.data.imputations, reference.data.imputations):
         pd.testing.assert_frame_equal(left, right)
 
