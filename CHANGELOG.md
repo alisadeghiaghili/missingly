@@ -276,6 +276,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MICE results for a given `random_state` differ from earlier releases because
+  chain seeds are now derived with `SeedSequence.spawn` (WP-05, F-246).
+  `impute_mice` used to give chain *k* the seed `base_seed + k`, so chain 1 of
+  `random_state=s` repeated chain 0 of `random_state=s + 1`; chains now come
+  from `numpy.random.SeedSequence(base_seed).spawn(n_imputations)` and never
+  share a stream, within a call or across consecutive seeds. Results stay
+  deterministic for a given seed, a single chain equals the first chain of a
+  multi-chain call, and `result.data.plan.seed_sequence` holds the derived
+  seeds. The golden `mice` and `mice_history` entries were re-recorded; the
+  default seed (`random_state=0`) is unchanged.
 - Hardened the release workflow: publishing now depends on a job that runs the
   test suite, builds the distributions once and fails unless the pushed tag,
   ``missingly.__version__`` and the built wheel version are identical. PyPI

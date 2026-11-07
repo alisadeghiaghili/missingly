@@ -13,6 +13,10 @@ output legitimately depends on those library versions, and a string column is
 ``text``).  Within one stack the comparison allows ``1e-12`` relative and
 absolute difference, which only absorbs platform maths-library rounding.
 
+The ``mice`` and ``mice_history`` entries were re-recorded for every stack
+when the MICE chain seeds became independent (``SeedSequence.spawn``, WP-05,
+F-246); every other entry is still the pre-change recording.
+
 A stack without recorded values fails the test; it is never skipped.  Record
 it with the pre-change code::
 

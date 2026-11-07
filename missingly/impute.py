@@ -1114,6 +1114,37 @@ def _fill_categorical_gaps(
     return result
 
 
+def _chain_seeds(base_seed: int, n_chains: int) -> Tuple[int, ...]:
+    """Derive one independent integer seed per MICE chain.
+
+    The seeds come from ``numpy.random.SeedSequence(base_seed).spawn(n_chains)``,
+    so chains of one call are statistically independent and the chains of calls
+    with consecutive base seeds do not share a stream.  The result depends only
+    on ``base_seed`` and the chain index: chain *k* gets the same seed whatever
+    ``n_chains`` is.
+
+    Parameters
+    ----------
+    base_seed : int
+        Non-negative base seed, see :func:`~missingly._validation.as_base_seed`.
+    n_chains : int
+        Number of chains (positive).
+
+    Returns
+    -------
+    tuple of int
+        ``n_chains`` distinct 64-bit seeds, one per chain.
+
+    Examples
+    --------
+    >>> seeds = _chain_seeds(0, 3)
+    >>> len(seeds), len(set(seeds)), seeds == _chain_seeds(0, 5)[:3]
+    (3, 3, True)
+    """
+    children = np.random.SeedSequence(base_seed).spawn(n_chains)
+    return tuple(int(child.generate_state(1, dtype=np.uint64)[0]) for child in children)
+
+
 def _mice_impute_array(
     df_work: pd.DataFrame,
     missing_mask_df: pd.DataFrame,
@@ -1474,6 +1505,16 @@ def impute_knn(
 
     Notes
     -----
+    **Chain seeds.** The seed of chain *k* is taken from
+    ``numpy.random.SeedSequence(base_seed).spawn(n_imputations)[k]``, so chains
+    of one call are independent and calls with consecutive base seeds do not
+    share a chain stream.  Chain *k* gets the same seed whatever
+    ``n_imputations`` is, and a single chain equals the first chain of a
+    multi-chain call.  The derived seeds are recorded in
+    ``result.data.plan.seed_sequence`` with ``return_result=True``.  Results for
+    a given ``random_state`` differ from releases that counted seeds as
+    ``base_seed + k``.
+
     **Dtype handling.** Numeric columns, including nullable ``Int64`` /
     ``Float64`` and ``float32``, are modelled as ``float64`` and written back
     in their original dtype; imputed cells of an integer column are rounded
@@ -1592,9 +1633,9 @@ def impute_mice(
     max_iter : int, default 10
         Maximum number of MICE imputation iterations per chain.
     random_state : int, numpy integer, Generator, RandomState or None, default 0
-        Base random seed. Chain *i* uses ``base + i``; ``base`` is the integer
-        seed itself, or one integer drawn from a Generator, RandomState or
-        ``None``.
+        Base random seed.  The base is the integer seed itself, or one integer
+        drawn from a Generator, RandomState or ``None``; per-chain seeds are
+        derived from it as described in Notes.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
         value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
@@ -1724,7 +1765,7 @@ def impute_mice(
     n_imputations = int(n_imputations)
     max_iter = int(max_iter)
     base_seed = as_base_seed(random_state)
-    chain_seeds = tuple(base_seed + index for index in range(n_imputations))
+    chain_seeds = _chain_seeds(base_seed, n_imputations)
     if return_history and return_result:
         raise ValueError("return_result cannot be combined with return_history")
 
@@ -1873,7 +1914,7 @@ def impute_mice(
         )
 
     if n_imputations == 1:
-        return _single_chain(base_seed)
+        return _single_chain(chain_seeds[0])
 
     results = [_single_chain(seed) for seed in chain_seeds]
     if return_history:
