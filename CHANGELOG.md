@@ -70,9 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `knn`, `mice`, `rf` and `gb` pass a complete datetime, timedelta or
     mixed-type `object` column through unchanged and no longer use it as a
     predictor; an incomplete datetime column that the previous release imputed
-    as a nominal category now emits a `FutureWarning` and keeps working, every
-    other incomplete case, and missing cells that first appear at `transform`
-    time in such a column, raise `UnsupportedDtypeError`;
+    as a nominal category now emits a `FutureWarning` and keeps working (also
+    when the datetime column was complete at `fit` time and only has gaps at
+    `transform` time: they are filled with the training mode), every other
+    incomplete case raises `UnsupportedDtypeError`;
   - `mean`, `median` and `mode` raise `InsufficientDataError` for a column
     without observed values instead of failing on a shape mismatch.
   Output for `float64` and plain categorical inputs is unchanged (locked by

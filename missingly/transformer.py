@@ -217,7 +217,9 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
       but emits a ``FutureWarning`` because it will raise in a future release.
       Missing cells that appear at ``transform`` time in an opaque column that
       was complete at ``fit`` time raise
-      :class:`~missingly.exceptions.UnsupportedDtypeError` as well.
+      :class:`~missingly.exceptions.UnsupportedDtypeError`, except in a
+      datetime column, which is filled with its training mode and emits a
+      ``FutureWarning`` for the same reason.
     * ``"mean"``, ``"median"`` and ``"mode"`` raise
       :class:`~missingly.exceptions.InsufficientDataError` for a column with no
       observed value.
@@ -600,6 +602,13 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
             c for c in self.model_cols_ if c not in self.numeric_cols_
         ]
         self.cat_dtypes_: Dict[str, object] = {c: X[c].dtype for c in self.cat_cols_}
+        # Datetime columns set aside because they were complete keep a mode, for the
+        # deprecated serving-time case in which they suddenly have gaps.
+        self.fill_values_: Dict[Hashable, Any] = {
+            column: column_mode(X[column], ColumnKind.DATETIME)
+            for column in opaque
+            if kinds[column] is ColumnKind.DATETIME and X[column].notna().any()
+        }
 
     # ------------------------------------------------------------------
     # fit
@@ -693,7 +702,6 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         self.feature_names_in_: List[str] = X.columns.tolist()
         self._learn_schema(X)
         self.imputer_ = None
-        self.fill_values_: Dict[str, Any] = {}
         self.encoder_: Optional[OrdinalEncoder] = None
         self.rf_reg_models_: Dict[
             str, RandomForestRegressor | GradientBoostingRegressor
@@ -943,9 +951,17 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         ValueError
             If ``X`` has duplicate labels or does not match the fitted schema.
         UnsupportedDtypeError
-            If a datetime, timedelta or mixed-type ``object`` column that was
-            complete at ``fit`` time has missing values and the strategy is
-            model-based (``"knn"``, ``"mice"``, ``"rf"``, ``"gb"``).
+            If a timedelta or mixed-type ``object`` column that was complete at
+            ``fit`` time has missing values and the strategy is model-based
+            (``"knn"``, ``"mice"``, ``"rf"``, ``"gb"``).
+
+        Warns
+        -----
+        FutureWarning
+            For a model-based strategy: a datetime column that was complete at
+            ``fit`` time has missing values; they are filled with the training
+            mode for now and this will raise
+            :class:`~missingly.exceptions.UnsupportedDtypeError` later.
 
         Examples
         --------
@@ -1013,7 +1029,7 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         return result
 
     def _require_servable(self, X: pd.DataFrame) -> None:
-        """Reject missing cells in a column the fitted models set aside.
+        """Reject (or warn about) missing cells in a column the models set aside.
 
         Parameters
         ----------
@@ -1023,8 +1039,17 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         Raises
         ------
         UnsupportedDtypeError
-            If a datetime, timedelta or mixed-type ``object`` column that was
-            complete at fit time has missing values now: no model exists for it.
+            If a timedelta or mixed-type ``object`` column that was complete at
+            fit time has missing values now: no model exists for it.
+
+        Warns
+        -----
+        FutureWarning
+            For a datetime column that was complete at fit time and has missing
+            values now.  The previous release imputed it as a nominal category;
+            the gaps are filled with the training mode for now and this will
+            raise :class:`~missingly.exceptions.UnsupportedDtypeError` in a
+            future release.
 
         Examples
         --------
@@ -1038,13 +1063,23 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         t
         """
         for column in self.passthrough_cols_:
-            if X[column].isna().any():
+            if not X[column].isna().any():
+                continue
+            if column not in self.fill_values_:
                 raise UnsupportedDtypeError(
                     column=str(column),
                     dtype=X[column].dtype,
                     strategy=self.strategy,
                     reason=_NOT_FITTED_REASON,
                 )
+            warnings.warn(
+                f"Column {column!r} has dtype {X[column].dtype} with missing values "
+                f"that were not present at fit time; filling them with the training "
+                f"mode with {self.strategy!r} is deprecated and will raise "
+                "UnsupportedDtypeError in a future release.",
+                FutureWarning,
+                stacklevel=3,
+            )
 
     def _transform_modelled(self, X: pd.DataFrame) -> pd.DataFrame:
         """Impute the modelled columns with the fitted strategy.
@@ -1134,7 +1169,12 @@ class MissinglyImputer(BaseEstimator, TransformerMixin):
         """
         result = imputed.copy()
         for column in self.passthrough_cols_:
-            result[column] = original[column].array
+            source = original[column]
+            if source.isna().any():
+                source = self._fill_label(
+                    source, self.fill_values_[column], source.dtype
+                )
+            result[column] = source.array
         round_integers = self.strategy in _ROUNDING_STRATEGIES
         for column in self.numeric_cols_:
             source = original[column]
