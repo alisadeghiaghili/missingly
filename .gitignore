@@ -79,8 +79,12 @@ missing_data_report.html
 *.html.bak
 
 # Data files
-*.csv
+# CSVs are ignored only where the manual generators write them (repo root and
+# manual_tests). tests/fixtures holds committed statistical-oracle inputs.
+/*.csv
+manual_tests/*.csv
 *.npy
+!tests/fixtures/**/*.csv
 
 # Manual test outputs
 manual_tests/output_*/

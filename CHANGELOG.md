@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   floors exactly and no longer carries a stray extras hint, and the module
   notes in ``compare.py``, ``performance.py`` and ``stats_extra.py`` state the
   pandas 2.1 minimum (WP-01; F-154, F-195, F-196, F-314, F-330, F-384).
+- CI quality gates: the R-oracle workflow also runs when ``missingly/**``
+  changes (pull requests and pushes to ``main``); the coverage threshold is
+  now a single ``fail_under = 90`` in ``pyproject.toml`` with branch coverage
+  enabled, replacing the 80% gate in ``ci.yml``; fixture CSVs are no longer
+  git-ignored by a blanket ``*.csv`` rule; ``actionlint`` lints the workflows
+  in the quality job; and third-party actions in ``ci.yml``, ``r-oracle.yml``
+  and ``docs-pages.yml`` are pinned to commit SHAs (WP-02; F-062, F-319,
+  F-320).
 
 ### Fixed
 
