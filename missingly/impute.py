@@ -2486,9 +2486,10 @@ def impute_polr(
             imputed_ok = False
             if _HAS_STATSMODELS:
                 try:
-                    category_to_code = {category: index for index, category in enumerate(categories)}
+                    # Matching by value (not by hash) also covers datetime64 / Timestamp
+                    # labels, whose NumPy and pandas scalars do not hash alike.
                     y_obs_codes: NDArray[np.int64] = np.asarray(
-                        [category_to_code[value] for value in y_obs], dtype=np.int64
+                        pd.Categorical(y_obs, categories=categories).codes, dtype=np.int64
                     )
                     ord_model = _OrderedModel(y_obs_codes, X_obs_clean, distr="logit")
                     fit_result = ord_model.fit(method="bfgs", disp=False)
