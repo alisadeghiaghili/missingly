@@ -4,8 +4,10 @@ This module provides :func:`create_report`, which generates a
 self-contained, standalone HTML report summarising all aspects of
 missingness in a DataFrame.
 
-All plots are generated with a non-interactive Matplotlib backend so the
-function works correctly in headless CI environments and notebooks alike.
+Importing this module does not change the process-wide Matplotlib backend.
+Figures are serialised with :meth:`matplotlib.figure.Figure.savefig` into an
+in-memory PNG, which works with any backend, so report generation does not
+depend on the backend the caller configured.
 
 Compatibility
 -------------
@@ -19,8 +21,6 @@ import warnings
 from io import BytesIO
 from typing import Optional
 
-import matplotlib
-matplotlib.use("Agg")  # headless backend -- must be set before pyplot import
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
