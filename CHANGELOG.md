@@ -73,6 +73,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (the bound is ignored; it will become an error).
   - column order of the encoding-based imputers is unchanged (numeric columns
     first); `impute_knn(metric="mixed")` keeps the input order.
+- Static-plot figure lifetime and degenerate inputs (WP-06): a static plot
+  that creates its own figure now closes it when it raises afterwards, for
+  example after a misspelled column name (F-375). A call given `ax` never
+  creates a figure (F-366). A frame with no rows or no columns makes
+  `matrix` and `miss_cooccurrence` (no columns) and the column-based plots
+  raise a clear `ValueError` instead of a `TypeError`, `KeyError` or
+  matplotlib error (F-367, F-302). Other degenerate frames (no rows, no
+  missing values, all values missing) are drawn as an annotated empty state
+  without runtime warnings, and `miss_row_profile` no longer shows a
+  completeness axis beyond 100% (F-302, F-374). `vis_miss_cumsum_var` and
+  `vis_miss_cumsum_case` no longer divide by zero when nothing is missing
+  (F-380).
+- Static-plot API hygiene (WP-06): unsupported keyword arguments of the static
+  plot functions, `interactive=True` on functions without a Plotly backend and
+  an unknown `backend` value are no longer swallowed silently; each emits a
+  `FutureWarning` naming the argument (a future release will raise
+  `TypeError`; F-147, F-365, F-303). Styling arguments the Plotly backend
+  cannot honour (`color`, `figsize`, `cmap`, ...) now emit a `UserWarning`
+  (F-303). Interactive calls without Plotly now raise the `ImportError` that
+  names `missingly[interactive]` (F-299). `matrix(color=...)` accepts any
+  Matplotlib colour string (F-301). `fontsize` is honoured by `heatmap`,
+  `miss_cooccurrence`, `vis_miss_by_group` and by `dendrogram` for the
+  `left`/`right` orientations (F-370, F-371). `miss_case` labels its x axis
+  "Row (sorted by # missing)" when sorted and `vis_parallel_coords` no longer
+  hard-codes a colour in its title (F-368, F-382). The module, README and API
+  documentation now state which functions lack `ax`, return a non-`Axes`
+  value, or have a Plotly backend, and that `heatmap` masking is on by
+  default (F-298, F-364).
+- Fixed the ``df.miss`` accessor (WP-07): ``dendrogram()`` and
+  ``vis_miss_fct()`` no longer always raise ``TypeError`` (the accessor passed
+  ``method='ward'`` into scipy and ``ax`` twice; F-005, F-006, F-047, F-048),
+  ``vis_impute_dist()`` takes the required ``column`` (F-072) and
+  ``vis_miss_span()`` accepts the default window, ``span_every`` and ``span``
+  (F-209, F-210). Accessor methods now mirror the signature of the function
+  they wrap, so parameters such as ``missing_values`` and the ``mcar_test``
+  tuning arguments (``max_iter``, ``tol``, ``ridge``) are forwarded (F-205);
+  every v1 positional call form (for example ``df.miss.matrix(ax)``) keeps
+  working. ``DataFrame.miss.mar_mnar_test`` now raises for a partly
+  missing target exactly like ``missingness_association_test`` instead of
+  silently dropping rows (F-070, F-206, F-207). ``dendrogram`` gained an
+  honoured ``method`` linkage argument (default ``"average"``, the previous
+  module-function behaviour).
+- Deprecated the accessor arguments that were silently ignored
+  (``vis_miss(show_pct=...)`` for the matplotlib backend and
+  ``miss_cluster(method=...)``): they now emit a ``FutureWarning`` (F-071,
+  F-208). The accessor documentation no longer claims to expose every public
+  function and lists what it omits (F-204). A signature-parity test and a
+  contract test covering every accessor wrapper guard against future drift.
+- R-oracle validators now enforce their own identities. The Little's MCAR validator
+  hashes its generator script and compares it with the manifest, and checks the naniar
+  version and the R version and platform. The scoped mice comparison rejects an empty
+  tolerance set, computes the CSV SHA-256 itself instead of trusting a literal, and
+  requires the Missingly subject version to match the running package. The mice README
+  now states that the scoped Missingly comparison is run (WP-03; F-309, F-310, F-311,
+  F-312).
 - Importing missingly no longer switches the global matplotlib backend to Agg (WP-06, F-035).
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
@@ -171,6 +226,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Hardened the release workflow: publishing now depends on a job that runs the
+  test suite, builds the distributions once and fails unless the pushed tag,
+  ``missingly.__version__`` and the built wheel version are identical. PyPI
+  publishing uses trusted publishing from a dedicated job (the only one with
+  ``id-token: write``) in the ``pypi`` environment, the GitHub Release is
+  created in a separate job with only ``contents: write``, the workflow default
+  is ``contents: read`` and every action is pinned to a full commit SHA
+  (WP-01-R, F-050).
 - Renamed the `.gitignore` section for local working files and moved local tool patterns out of `.gitignore` (HYG-04).
 
 - Recorded the authoritative Python 3.12 CI coverage baseline as 89.64%
