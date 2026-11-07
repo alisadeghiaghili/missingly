@@ -1479,7 +1479,9 @@ def impute_knn(
     dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
     ``object`` columns are not modelled: a complete one is returned unchanged
     (after the modelled columns) and is not used as a predictor, an incomplete
-    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     Examples
     --------
@@ -1637,7 +1639,9 @@ def impute_mice(
     dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
     ``object`` columns are not modelled: a complete one is returned unchanged
     (after the modelled columns) and is not used as a predictor, an incomplete
-    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     ``bounds`` may only name numeric (integer or float) columns; boolean
     columns are rejected.  With ``return_result=True`` the completed frames
@@ -2593,7 +2597,9 @@ def impute_rf(
     dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
     ``object`` columns are not modelled: a complete one is returned unchanged
     (after the modelled columns) and is not used as a predictor, an incomplete
-    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     Examples
     --------
@@ -2680,7 +2686,9 @@ def impute_gb(
     dtype.  Datetime (naive or time-zone aware), timedelta and mixed-type
     ``object`` columns are not modelled: a complete one is returned unchanged
     (after the modelled columns) and is not used as a predictor, an incomplete
-    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.
+    one raises :class:`~missingly.exceptions.UnsupportedDtypeError`.  An
+    incomplete datetime column, which earlier releases imputed as a nominal
+    category, only emits a ``FutureWarning`` for now and keeps that behaviour.
 
     Examples
     --------

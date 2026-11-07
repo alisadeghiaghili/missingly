@@ -37,11 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     boolean columns and rounds integer columns;
   - model-based imputers (`impute_knn`, `impute_mice`, `impute_rf`,
     `impute_gb`, `impute_polyreg`, `impute_polr`, `impute_logreg`) no longer
-    treat datetime, timedelta or mixed-type `object` columns as numbers or
-    ordinal categories: complete ones pass through unchanged (and are not
-    predictors), incomplete ones raise the new
+    treat complete datetime, timedelta or mixed-type `object` columns as
+    numbers or ordinal categories: they pass through unchanged and are not
+    predictors. Incomplete ones that the previous release imputed without
+    error (datetime in KNN, MICE, RF, GB and the logistic imputers;
+    timedelta and mixed-type object in `impute_knn(metric="mixed")` and the
+    logistic imputers) now emit a `FutureWarning` and keep working; every
+    other incomplete case raises the new
     `missingly.exceptions.UnsupportedDtypeError`;
-  - `impute_mice(bounds=...)` now rejects boolean columns as non-numeric.
+  - `impute_mice(bounds=...)` on a boolean column emits a `FutureWarning`
+    (the bound is ignored; it will become an error).
+  - column order of the encoding-based imputers is unchanged (numeric columns
+    first); `impute_knn(metric="mixed")` keeps the input order.
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
   CI and documentation workflows install, the dynamic version source, the
