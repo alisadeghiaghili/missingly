@@ -1597,7 +1597,8 @@ def impute_mice(
         ``None``.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     estimator : sklearn estimator or None, default None
         Regression estimator used per column.  Defaults to
         ``BayesianRidge()`` with posterior sampling enabled.
@@ -1674,6 +1675,11 @@ def impute_mice(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Notes
     -----
@@ -1905,7 +1911,8 @@ def impute_pmm(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     n_nearest_donors : int, default 5
         Number of nearest observed values to consider as donors for each
         missing value. Larger values increase randomness.
@@ -1925,6 +1932,11 @@ def impute_pmm(
         If *df* is empty.
     InsufficientDataError
         If a column requiring imputation has no observed donor values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2144,7 +2156,8 @@ def impute_logreg(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a binary conditional model cannot fit or predict. If ``False``,
@@ -2172,6 +2185,11 @@ def impute_logreg(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2283,7 +2301,8 @@ def impute_polyreg(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when a multinomial conditional model cannot fit or predict. If
@@ -2312,6 +2331,11 @@ def impute_polyreg(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2421,7 +2445,8 @@ def impute_polr(
         Random seed for reproducibility.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If ``True``, raise :class:`~missingly.exceptions.ImputationError`
         when an ordinal or multinomial conditional model cannot fit or
@@ -2450,6 +2475,11 @@ def impute_polr(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -2617,7 +2647,8 @@ def impute_rf(
         Random seed passed to the Random Forest estimators.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2650,6 +2681,11 @@ def impute_rf(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Notes
     -----
@@ -2712,7 +2748,8 @@ def impute_gb(
         Random seed passed to the Gradient Boosting estimators.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
     strict_mode : bool or None, default None
         If True, raise :class:`~missingly.exceptions.ImputationError` on
         estimator failure instead of falling back to the column mean/mode.
@@ -2745,6 +2782,11 @@ def impute_gb(
     UnsupportedDtypeError
         If a datetime, timedelta or mixed-type ``object`` column has missing
         values.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Notes
     -----

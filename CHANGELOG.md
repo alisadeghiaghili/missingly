@@ -60,16 +60,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `missingly.exceptions.InvalidSeedError` before any draw (F-231). It is a
     `ConfigurationError` and is also a `ValueError` and a `TypeError`, so
     code that caught those builtins for invalid seeds keeps working. A
-    `bool` seed such as `True` used to act as seed 1; it is now rejected
-    with `TypeError`. `impute_polyreg`, `impute_polr`, `impute_rf` and
-    `impute_gb` used to return a silent fallback for an invalid seed; they
-    now raise;
+    `impute_polyreg`, `impute_polr`, `impute_rf` and `impute_gb` used to
+    return a silent mean or mode fallback for an invalid seed; they now raise
+    (F-033);
+  - a `bool` seed (`True` / `False`) is deprecated, not rejected: it still
+    gives exactly the output of `1` / `0` as before, and emits a
+    `FutureWarning`. A future release will raise `InvalidSeedError` for it;
   - `impute_rf` and `impute_gb` no longer turn a `Generator` seed, an integer
     of 2**32 or more, or a negative seed into mean imputation; these seeds
     now fit the model, and invalid seeds raise (F-033);
   - `impute_mice(return_result=True)` accepts numpy integers for
     `random_state`, `max_iter` and `n_imputations` (F-111);
-  - `validate_positive_int` rejects `True` and `False` (F-203);
+  - `validate_positive_int` (counters such as `n_neighbors`, `n_donors`,
+    `n_imputations`, `max_iter`, `n_nearest_donors`) treats a `bool` as
+    `1` / `0`, as before, and emits a `FutureWarning`; `False` is still
+    rejected where zero is not allowed. A future release will reject booleans
+    with `TypeError` (F-203, deprecated rather than rejected, so existing
+    code keeps its output);
+  - `impute_mice(return_result=True, n_imputations=True)` now works; it used
+    to fail with `ValueError` after all chains had run (F-111);
   - `impute_mice` accepts numpy-integer `bounds` and non-string column labels
     in `visit_sequence` (F-244).
   - Not changed here (WP-05b, needs owner approval): chain-seed derivation

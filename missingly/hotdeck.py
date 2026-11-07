@@ -337,7 +337,8 @@ def impute_hotdeck_random(
         reproducible results.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
 
     Returns
     -------
@@ -355,6 +356,11 @@ def impute_hotdeck_random(
         If *df* is empty.
     ValueError
         If any column is entirely missing (no donor available).
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
@@ -520,7 +526,8 @@ def impute_hotdeck_weighted(
         Seed for the random number generator.
         Accepts ``None``, a non-negative integer of any size (Python or numpy),
         a ``numpy.random.Generator`` or a ``numpy.random.RandomState``; any other
-        value raises :class:`~missingly.exceptions.InvalidSeedError`.
+        value raises :class:`~missingly.exceptions.InvalidSeedError`.  A boolean
+        is deprecated: it gives a :class:`FutureWarning` and acts as ``1`` or ``0``.
 
     Returns
     -------
@@ -538,6 +545,11 @@ def impute_hotdeck_weighted(
         If *df* is empty.
     TypeError
         If *n_donors* is not a positive integer.
+
+    Warns
+    -----
+    FutureWarning
+        If ``random_state`` is a boolean; it is treated as ``1`` or ``0``.
 
     Examples
     --------
