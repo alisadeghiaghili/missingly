@@ -260,30 +260,6 @@ def _warn_bool_value(param: str) -> None:
     )
 
 
-def is_integer_seed(value: Any) -> bool:
-    """Return True when *value* is a non-boolean integer seed.
-
-    Parameters
-    ----------
-    value : Any
-        Candidate seed.
-
-    Returns
-    -------
-    bool
-        True for Python and numpy integers of any sign and size, except
-        ``bool`` and ``numpy.bool_``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from missingly._validation import is_integer_seed
-    >>> is_integer_seed(np.int64(3)), is_integer_seed(True)
-    (True, False)
-    """
-    return isinstance(value, (int, np.integer)) and not isinstance(value, bool)
-
-
 def _seed_as_int(random_state: Any) -> Optional[int]:
     """Return the integer value of an integer-like seed, or None for other types.
 
