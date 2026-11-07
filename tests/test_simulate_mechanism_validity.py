@@ -264,7 +264,12 @@ def test_degenerate_explicit_threshold_warns():
 # F-121 / F-183: simulate_mixed keeps MAR drivers observed
 # ---------------------------------------------------------------------------
 
-MAR_STEP = {"mechanism": "mar", "target_col": "y", "predictor_col": "driver", "frac": 0.2}
+MAR_STEP = {
+    "mechanism": "mar",
+    "target_col": "y",
+    "predictor_col": "driver",
+    "frac": 0.2,
+}
 
 
 def _mixed_frame():
