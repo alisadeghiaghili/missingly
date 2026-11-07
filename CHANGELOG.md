@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `max-args = 13` and `max-positional-args = 13`. A ratchet script,
   `tools/ruff_ratchet.py`, compares per-file and per-rule counts and the
   unformatted file set with `tools/ruff_baseline.json`; CI fails on any new
-  violation and the baseline records existing debt (SQ-02).
+  violation and the baseline records existing debt. The ``quality`` extra pins
+  ``ruff==0.17.3`` so the baseline stays reproducible (SQ-02).
 - Removed local working notes from the repository root; project rules now live in
   CONVENTIONS.md and CONTRIBUTING.md; documentation states the enforced coverage
   gate from pyproject.toml instead of a pinned measured figure (HYG-01, HYG-02,

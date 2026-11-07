@@ -63,7 +63,7 @@ test = [
 ]
 quality = [
     "mypy>=1.13.0",
-    "ruff>=0.12.0",
+    "ruff==0.17.3",
 ]
 interactive = [
     "plotly>=5.0.0",
