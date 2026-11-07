@@ -285,3 +285,88 @@ def test_bounds_accept_numpy_integer_limits():
         bounds={"y": (np.int64(-50), np.int64(50))},
     )
     assert result["y"].between(-50, 50).all()
+
+
+LEGACY_CALLS = {
+    "impute_hotdeck_random": STOCHASTIC_CALLS["impute_hotdeck_random"],
+    "impute_hotdeck_weighted": STOCHASTIC_CALLS["impute_hotdeck_weighted"],
+    "impute_pmm": STOCHASTIC_CALLS["impute_pmm"],
+    "impute_logreg": STOCHASTIC_CALLS["impute_logreg"],
+    "impute_mice": STOCHASTIC_CALLS["impute_mice"],
+    "impute_mice_multi": STOCHASTIC_CALLS["impute_mice_multi"],
+    "impute_mice_history": lambda df, seed: impute_mice(
+        df, max_iter=2, random_state=seed, return_history=True
+    ),
+    "impute_mice_result": lambda df, seed: impute_mice(
+        df, max_iter=2, random_state=seed, return_result=True
+    ),
+}
+
+#: Builtin exception bases that the pre-WP-05 code (commit f342710) raised for each
+#: invalid seed. The new error must keep satisfying ``except ValueError`` and
+#: ``except TypeError`` handlers written against those versions.
+LEGACY_BUILTIN_REQUIREMENTS = {
+    -1: {
+        "impute_hotdeck_random": (ValueError,),
+        "impute_hotdeck_weighted": (ValueError,),
+        "impute_pmm": (ValueError,),
+        "impute_logreg": (ValueError,),
+        "impute_mice": (ValueError,),
+        "impute_mice_multi": (ValueError,),
+        "impute_mice_history": (ValueError,),
+        "impute_mice_result": (ValueError,),
+    },
+    1.5: {
+        "impute_hotdeck_random": (TypeError,),
+        "impute_hotdeck_weighted": (TypeError,),
+        "impute_pmm": (TypeError,),
+        "impute_logreg": (TypeError,),
+        "impute_mice": (ValueError, TypeError),
+        "impute_mice_multi": (ValueError, TypeError),
+        "impute_mice_history": (TypeError,),
+        "impute_mice_result": (TypeError,),
+    },
+    "a": {
+        "impute_hotdeck_random": (TypeError,),
+        "impute_hotdeck_weighted": (TypeError,),
+        "impute_pmm": (TypeError,),
+        "impute_logreg": (TypeError,),
+        "impute_mice": (ValueError, TypeError),
+        "impute_mice_multi": (TypeError,),
+        "impute_mice_history": (TypeError,),
+        "impute_mice_result": (TypeError,),
+    },
+}
+
+
+@pytest.mark.parametrize(
+    ("bad_seed", "name", "builtins"),
+    [
+        (seed, name, builtins)
+        for seed, by_name in LEGACY_BUILTIN_REQUIREMENTS.items()
+        for name, builtins in by_name.items()
+    ],
+    ids=lambda value: repr(value) if not callable(value) else "",
+)
+def test_invalid_seed_keeps_legacy_builtin_exception_types(bad_seed, name, builtins):
+    """Handlers written for ValueError or TypeError keep catching invalid seeds."""
+    with pytest.raises(ConfigurationError) as info:
+        LEGACY_CALLS[name](_seeded_frame(), bad_seed)
+    for builtin in builtins:
+        assert isinstance(info.value, builtin)
+
+
+@pytest.mark.parametrize("name", sorted(LEGACY_CALLS))
+def test_bool_seed_raises_type_error(name):
+    """``True`` used to act as seed 1; it is now rejected with a TypeError."""
+    with pytest.raises(TypeError):
+        LEGACY_CALLS[name](_seeded_frame(), True)
+
+
+def test_invalid_seed_error_is_configuration_error_and_both_builtins():
+    """The public seed error is a ConfigurationError that is also ValueError and TypeError."""
+    from missingly.exceptions import InvalidSeedError
+
+    assert issubclass(InvalidSeedError, ConfigurationError)
+    assert issubclass(InvalidSeedError, ValueError)
+    assert issubclass(InvalidSeedError, TypeError)
