@@ -61,7 +61,9 @@ jobs:
 
   test:
     name: pytest (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04, which has no Python 3.9 build for
+    # actions/setup-python. 24.04 keeps every version in the matrix available.
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
