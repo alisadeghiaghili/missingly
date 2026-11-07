@@ -228,9 +228,17 @@ CASES = [
 ]
 
 
-def _expects_unsupported(imputer: str, dtype: str, with_missing: bool) -> bool:
-    refuses_opaque = MODEL_IMPUTERS | MULTILEVEL_CONDITIONAL_IMPUTERS
-    return imputer in refuses_opaque and dtype in OPAQUE_DTYPES and with_missing
+def _outcome(imputer: str, dtype: str, with_missing: bool) -> str:
+    """Return ``"ok"``, ``"warn"`` (deprecated, still works) or ``"error"``."""
+    if dtype not in OPAQUE_DTYPES or not with_missing:
+        return "ok"
+    if imputer in MODEL_IMPUTERS:
+        if dtype.startswith("datetime") or imputer == "knn_mixed":
+            return "warn"
+        return "error"
+    if imputer in MULTILEVEL_CONDITIONAL_IMPUTERS:
+        return "error" if dtype == "datetime_tz" else "warn"
+    return "ok"
 
 
 def _expected_dtype(imputer: str, original, with_missing: bool) -> object:
@@ -253,7 +261,8 @@ def test_imputer_dtype_matrix(imputer: str, dtype: str, with_missing: bool) -> N
     frame = make_frame(dtype, with_missing)
     original = frame.copy(deep=True)
 
-    if _expects_unsupported(imputer, dtype, with_missing):
+    outcome = _outcome(imputer, dtype, with_missing)
+    if outcome == "error":
         with pytest.raises(MissinglyError) as excinfo:
             _run(imputer, frame)
         assert isinstance(excinfo.value, UnsupportedDtypeError)
@@ -261,7 +270,11 @@ def test_imputer_dtype_matrix(imputer: str, dtype: str, with_missing: bool) -> N
         pd.testing.assert_frame_equal(frame, original)
         return
 
-    result = _run(imputer, frame)
+    if outcome == "warn":
+        with pytest.warns(FutureWarning):
+            result = _run(imputer, frame)
+    else:
+        result = _run(imputer, frame)
 
     pd.testing.assert_frame_equal(frame, original)  # the input is never mutated
     assert set(result.columns) == set(frame.columns)
@@ -375,7 +388,10 @@ def test_single_observed_value_is_defined(imputer: str) -> None:
 )
 def test_conditional_imputers_refuse_incomplete_opaque_targets(imputer, dates) -> None:
     frame = pd.DataFrame(
-        {"x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "when": pd.to_datetime(dates)}
+        {
+            "x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            "when": pd.to_datetime(dates, utc=True),
+        }
     )
     with pytest.raises(UnsupportedDtypeError, match="'when'"):
         imputer(frame)

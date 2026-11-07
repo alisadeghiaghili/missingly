@@ -87,6 +87,7 @@ from missingly._dtypes import (
     classify_frame,
     column_mode,
     ensure_supported,
+    resolve_opaque_targets,
     fill_missing,
     fill_with_statistic,
     is_numeric_kind,
@@ -118,6 +119,9 @@ _SUPPORTED_STRATEGIES = frozenset({
 _SUPPORTED_KNN_METRICS = frozenset({"euclidean", "mixed"})
 # Strategies whose fit-state is a per-column scalar — the only ones FittedImputer supports.
 _SIMPLE_FIT_STRATEGIES = frozenset({"mean", "median", "mode"})
+# Opaque dtypes the previous release imputed without error; they now only warn.
+_LEGACY_ENCODED = frozenset({ColumnKind.DATETIME})
+_LEGACY_CONDITIONAL = frozenset({ColumnKind.DATETIME, ColumnKind.TIMEDELTA, ColumnKind.MIXED})
 
 
 # ---------------------------------------------------------------------------
@@ -807,7 +811,7 @@ def _impute_column_by_column(
     """
     effective_strict = _resolve_strict_mode(strict_mode)
 
-    normalized = normalize_frame(df, strategy_name)
+    normalized = normalize_frame(df, strategy_name, deprecated=_LEGACY_ENCODED)
     df_work, cat_cols, _, encoder, cat_dtypes = _split_encode(normalized.frame)
     all_cols = list(df_work.columns)
     df_result = df_work.copy()
@@ -1021,6 +1025,55 @@ def _run_mice_with_history(
 # ---------------------------------------------------------------------------
 # Public imputation functions
 # ---------------------------------------------------------------------------
+
+
+def _drop_boolean_bounds(
+    df: pd.DataFrame,
+    bounds: Dict[str, Tuple[float, float]],
+) -> Dict[str, Tuple[float, float]]:
+    """Validate the columns named in ``bounds`` and drop boolean ones with a warning.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Frame the bounds refer to.
+    bounds : dict
+        Column to ``(lower, upper)`` interval.
+
+    Returns
+    -------
+    dict
+        *bounds* without boolean columns.
+
+    Raises
+    ------
+    ValueError
+        If a bounded column is neither numeric nor boolean.
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"x": [1.0], "f": [True]})
+    >>> import warnings
+    >>> with warnings.catch_warnings():
+    ...     warnings.simplefilter("ignore")
+    ...     _drop_boolean_bounds(frame, {"x": (0.0, 2.0), "f": (0.0, 1.0)})
+    {'x': (0.0, 2.0)}
+    """
+    kept = {}
+    for column, interval in bounds.items():
+        kind = classify_column(df[column])
+        if kind is ColumnKind.BOOLEAN:
+            warnings.warn(
+                f"impute_mice: bounds for boolean column {column!r} are ignored and will "
+                "raise ValueError in a future release; bounds only apply to numeric columns.",
+                FutureWarning,
+                stacklevel=3,
+            )
+        elif not is_numeric_kind(kind):
+            raise ValueError(f"bounds column {column!r} must be numeric")
+        else:
+            kept[column] = interval
+    return kept
 
 
 def _fill_categorical_gaps(
@@ -1452,7 +1505,7 @@ def impute_knn(
     if metric == "mixed":
         return _impute_knn_gower(df, n_neighbors=n_neighbors)
 
-    normalized = normalize_frame(df, "knn")
+    normalized = normalize_frame(df, "knn", deprecated=_LEGACY_ENCODED)
     _require_observed(normalized.frame)
     if normalized.frame.shape[1] == 0:
         return df.copy()
@@ -1662,9 +1715,8 @@ def impute_mice(
         unknown_bounds = sorted(set(bounds) - set(df_norm.columns))
         if unknown_bounds:
             raise ValueError(f"bounds contains unknown columns: {unknown_bounds}")
+        bounds = _drop_boolean_bounds(df_norm, bounds)
         for column, interval in bounds.items():
-            if not is_numeric_kind(classify_column(df_norm[column])):
-                raise ValueError(f"bounds column {column!r} must be numeric")
             if not isinstance(interval, tuple) or len(interval) != 2:
                 raise TypeError("each bounds interval must be a (lower, upper) tuple")
             lower, upper = interval
@@ -1673,7 +1725,9 @@ def impute_mice(
             if lower > upper:
                 raise ValueError("bounds lower limit must not exceed upper limit")
 
-    normalized = normalize_frame(df_norm, "mice", targets=missing_targets)
+    normalized = normalize_frame(
+        df_norm, "mice", targets=missing_targets, deprecated=_LEGACY_ENCODED
+    )
     for column in missing_targets:
         n_observed = int((~original_missing_mask[column]).sum())
         if n_observed == 0:
@@ -2105,7 +2159,9 @@ def impute_logreg(
         col for col in df_norm.columns
         if len(df_norm[col].dropna().unique()) == 2
     ]
-    ensure_supported(df_norm, "logreg", binary_cols)
+    ensure_supported(
+        df_norm, "logreg", binary_cols, deprecated=_LEGACY_CONDITIONAL, deprecated_tz=False
+    )
     missing_masks = {col: df_norm[col].isna() for col in binary_cols}
 
     for _ in range(max_iter):
@@ -2238,7 +2294,9 @@ def impute_polyreg(
             and not pd.api.types.is_numeric_dtype(df_norm[col])
         )
     ]
-    ensure_supported(df_norm, "polyreg", cat_cols)
+    ensure_supported(
+        df_norm, "polyreg", cat_cols, deprecated=_LEGACY_CONDITIONAL, deprecated_tz=False
+    )
     missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
     for _ in range(max_iter):
@@ -2376,7 +2434,9 @@ def impute_polr(
             and not pd.api.types.is_numeric_dtype(df_norm[col])
         )
     ]
-    ensure_supported(df_norm, "polr", cat_cols)
+    ensure_supported(
+        df_norm, "polr", cat_cols, deprecated=_LEGACY_CONDITIONAL, deprecated_tz=False
+    )
     missing_masks = {col: df_norm[col].isna() for col in cat_cols}
 
     requires_ordered_model = any(
@@ -2673,7 +2733,7 @@ def _impute_knn_gower(
     """
     from missingly._distance import gower_distance
 
-    normalized = normalize_frame(df, "knn")
+    normalized = normalize_frame(df, "knn", deprecated=_LEGACY_CONDITIONAL)
     frame = normalized.frame
     _require_observed(frame)
     if frame.shape[1] == 0:
@@ -2687,7 +2747,7 @@ def _impute_knn_gower(
             result[col] = _gower_fill_column(
                 frame[col], dist_matrix, n_neighbors, normalized.kinds[col]
             )
-    return restore_dtypes(result, normalized)
+    return restore_dtypes(result, normalized, input_order=True)
 
 
 def _gower_fill_column(

@@ -46,6 +46,7 @@ Dtype rules (also documented in the public imputers)
 from __future__ import annotations
 
 import enum
+import warnings
 from dataclasses import dataclass
 from typing import Any, Collection, Dict, Hashable, List, Optional, Tuple
 
@@ -66,6 +67,7 @@ __all__ = [
     "fill_with_statistic",
     "is_numeric_kind",
     "normalize_frame",
+    "resolve_opaque_targets",
     "restore_dtypes",
     "restore_numeric",
     "to_float_array",
@@ -417,25 +419,108 @@ class NormalizedFrame:
     passthrough: Tuple[Hashable, ...]
 
 
-def ensure_supported(
+def resolve_opaque_targets(
     df: pd.DataFrame,
     strategy: str,
     targets: Optional[Collection[Hashable]] = None,
     kinds: Optional[Dict[Hashable, ColumnKind]] = None,
-) -> Dict[Hashable, ColumnKind]:
-    """Reject opaque columns that a model-based imputer would have to impute.
+    deprecated: Collection[ColumnKind] = (),
+    deprecated_tz: bool = True,
+) -> Tuple[Dict[Hashable, ColumnKind], Tuple[Hashable, ...]]:
+    """Decide what happens to incomplete opaque target columns.
+
+    An opaque (datetime, timedelta, mixed-type object) target column with
+    missing values raises :class:`~missingly.exceptions.UnsupportedDtypeError`,
+    unless the previous release imputed that dtype without error.  For those
+    legacy cases the call keeps working and emits a ``FutureWarning`` that the
+    column will be rejected in a future release.
 
     Parameters
     ----------
     df : pandas.DataFrame
         Input frame (Python ``None`` already normalised to ``NaN``).
     strategy : str
-        Imputer name used in the error message, for example ``"knn"``.
+        Imputer name used in messages, for example ``"knn"``.
     targets : collection of str, optional
         Columns the caller will impute.  Defaults to every column with a
         missing value.
     kinds : dict, optional
         Pre-computed result of :func:`classify_frame`.
+    deprecated : collection of ColumnKind, optional
+        Opaque kinds that previously worked and now only warn.
+    deprecated_tz : bool, default True
+        Whether time-zone aware datetimes belong to the deprecated cases.
+
+    Returns
+    -------
+    kinds : dict
+        Kind of every column.
+    legacy_columns : tuple
+        Incomplete target columns that only warned; callers keep imputing
+        them as nominal categories.
+
+    Raises
+    ------
+    UnsupportedDtypeError
+        For an incomplete opaque target that is not deprecated.
+
+    Examples
+    --------
+    >>> frame = pd.DataFrame({"t": pd.to_timedelta([1, None], unit="D")})
+    >>> try:
+    ...     resolve_opaque_targets(frame, "knn")
+    ... except UnsupportedDtypeError as error:
+    ...     print(error.column, error.strategy)
+    t knn
+    """
+    kinds = classify_frame(df) if kinds is None else kinds
+    wanted = set(df.columns[df.isna().any(axis=0)]) if targets is None else set(targets)
+    legacy = []
+    for column, kind in kinds.items():
+        if (
+            kind not in _OPAQUE_REASONS
+            or column not in wanted
+            or not df[column].isna().any()
+        ):
+            continue
+        dtype = df[column].dtype
+        tz_aware = isinstance(dtype, pd.DatetimeTZDtype)
+        if kind in deprecated and (deprecated_tz or not tz_aware):
+            warnings.warn(
+                f"Column {column!r} has dtype {dtype} with missing values; imputing it "
+                f"with {strategy!r} is deprecated and will raise UnsupportedDtypeError "
+                "in a future release.",
+                FutureWarning,
+                stacklevel=4,
+            )
+            legacy.append(column)
+            continue
+        raise UnsupportedDtypeError(
+            column=str(column),
+            dtype=dtype,
+            strategy=strategy,
+            reason=_OPAQUE_REASONS[kind],
+        )
+    return kinds, tuple(legacy)
+
+
+def ensure_supported(
+    df: pd.DataFrame,
+    strategy: str,
+    targets: Optional[Collection[Hashable]] = None,
+    kinds: Optional[Dict[Hashable, ColumnKind]] = None,
+    deprecated: Collection[ColumnKind] = (),
+    deprecated_tz: bool = True,
+) -> Dict[Hashable, ColumnKind]:
+    """Reject (or warn about) incomplete opaque target columns.
+
+    Thin wrapper over :func:`resolve_opaque_targets` for callers that only
+    need the column kinds.
+
+    Parameters
+    ----------
+    df, strategy, targets, kinds, deprecated, deprecated_tz
+        See :func:`resolve_opaque_targets`.
 
     Returns
     -------
@@ -445,35 +530,24 @@ def ensure_supported(
     Raises
     ------
     UnsupportedDtypeError
-        If a datetime, timedelta or mixed-type object target column has
-        missing values.
+        For an incomplete opaque target that is not deprecated.
 
     Examples
     --------
-    >>> frame = pd.DataFrame({"t": pd.to_timedelta([1, None], unit="D")})
-    >>> try:
-    ...     ensure_supported(frame, "knn")
-    ... except UnsupportedDtypeError as error:
-    ...     print(error.column, error.strategy)
-    t knn
+    >>> ensure_supported(pd.DataFrame({"a": [1.0, None]}), "knn")["a"].value
+    'float'
     """
-    kinds = classify_frame(df) if kinds is None else kinds
-    wanted = set(df.columns[df.isna().any(axis=0)]) if targets is None else set(targets)
-    for column, kind in kinds.items():
-        if kind in _OPAQUE_REASONS and column in wanted and df[column].isna().any():
-            raise UnsupportedDtypeError(
-                column=str(column),
-                dtype=df[column].dtype,
-                strategy=strategy,
-                reason=_OPAQUE_REASONS[kind],
-            )
-    return kinds
+    return resolve_opaque_targets(
+        df, strategy, targets, kinds, deprecated, deprecated_tz
+    )[0]
 
 
 def normalize_frame(
     df: pd.DataFrame,
     strategy: str,
     targets: Optional[Collection[Hashable]] = None,
+    deprecated: Collection[ColumnKind] = (),
+    deprecated_tz: bool = True,
 ) -> NormalizedFrame:
     """Prepare *df* for a model-based imputer.
 
@@ -487,6 +561,12 @@ def normalize_frame(
         Columns the caller will actually impute.  Defaults to every column
         with a missing value.  An opaque column with missing values outside
         *targets* is passed through with its missing cells intact.
+    deprecated : collection of ColumnKind, optional
+        Opaque kinds that the previous release imputed without error.  An
+        incomplete target of such a kind emits a ``FutureWarning`` and stays in
+        the modelled frame, to be imputed as a nominal category.
+    deprecated_tz : bool, default True
+        Whether time-zone aware datetimes belong to the deprecated cases.
 
     Returns
     -------
@@ -508,11 +588,13 @@ def normalize_frame(
     >>> str(normalized.frame["n"].dtype)
     'float64'
     """
-    kinds = ensure_supported(df, strategy, targets)
+    kinds, legacy = resolve_opaque_targets(
+        df, strategy, targets, None, deprecated, deprecated_tz
+    )
     modelled: Dict[Hashable, Any] = {}
     passthrough: List[Hashable] = []
     for column, kind in kinds.items():
-        if kind in _OPAQUE_REASONS:
+        if kind in _OPAQUE_REASONS and column not in legacy:
             passthrough.append(column)
         elif is_numeric_kind(kind):
             modelled[column] = to_float_array(df[column])
@@ -527,6 +609,7 @@ def restore_dtypes(
     normalized: NormalizedFrame,
     *,
     round_integers: bool = True,
+    input_order: bool = False,
 ) -> pd.DataFrame:
     """Return the imputed frame in the original column dtypes.
 
@@ -539,13 +622,18 @@ def restore_dtypes(
         Value returned by :func:`normalize_frame` for the same input.
     round_integers : bool, default True
         Passed to :func:`restore_numeric` for integer columns.
+    input_order : bool, default False
+        Return the columns in input order.  The default keeps the legacy
+        layout of the encoding-based imputers: numeric columns first, every
+        other column after them, each group in input order (restoring the
+        input order everywhere is tracked separately).
 
     Returns
     -------
     pandas.DataFrame
-        Columns of *imputed* in their existing order, followed by the opaque
-        pass-through columns.  Columns that had no missing value are copied
-        from the input, so their dtype and values are exactly preserved.
+        Columns in the requested order, including the opaque pass-through
+        columns.  Columns that had no missing value are copied from the input,
+        so their dtype and values are exactly preserved.
 
     Examples
     --------
@@ -573,4 +661,19 @@ def restore_dtypes(
             columns[column] = imputed[column]
     for label in normalized.passthrough:
         columns[label] = original[label]
-    return pd.DataFrame(columns, index=original.index)
+    return pd.DataFrame(columns, index=original.index)[
+        _output_order(original, input_order, columns)
+    ]
+
+
+def _output_order(
+    original: pd.DataFrame,
+    input_order: bool,
+    columns: Dict[Hashable, pd.Series],
+) -> List[Hashable]:
+    """Return the labels of *columns* in input order or in the legacy numeric-first order."""
+    if input_order:
+        return [label for label in original.columns if label in columns]
+    numeric = list(original.select_dtypes(include=[np.number]).columns)
+    rest = [label for label in original.columns if label not in numeric]
+    return [label for label in numeric + rest if label in columns]
