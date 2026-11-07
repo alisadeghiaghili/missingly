@@ -98,6 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Renamed the `.gitignore` section for local working files and moved local tool patterns out of `.gitignore` (HYG-04).
+
 - Recorded the authoritative Python 3.12 CI coverage baseline as 89.64%
   (3589/4004) and its `coverage-py312` artifact, without changing the
   separately tracked coverage-enforcement target.
