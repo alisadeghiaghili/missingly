@@ -110,6 +110,8 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py39"
+# frozen verbatim reference implementation used only as a characterisation oracle; never edited
+extend-exclude = ["tests/golden/legacy_transformer.py"]
 
 [tool.ruff.lint]
 # Mirrors the rule families SonarQube reports for Python. Existing debt is
