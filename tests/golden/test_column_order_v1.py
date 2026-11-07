@@ -97,7 +97,9 @@ def test_column_order_matches_the_v1_base_code(frame_name, imputer, columns) -> 
 
 @pytest.mark.parametrize("frame_name", ["dt_na", "dttz_na"])
 @pytest.mark.parametrize("imputer", _MODEL + ["knn_mixed"])
-def test_incomplete_datetime_target_warns_instead_of_raising(frame_name, imputer) -> None:
+def test_incomplete_datetime_target_warns_instead_of_raising(
+    frame_name, imputer
+) -> None:
     frame = _frames()[frame_name]
     with pytest.warns(FutureWarning, match="UnsupportedDtypeError"):
         result = IMPUTERS[imputer](frame)
@@ -106,14 +108,18 @@ def test_incomplete_datetime_target_warns_instead_of_raising(frame_name, imputer
 
 
 @pytest.mark.parametrize("imputer", ["polyreg", "polr"])
-def test_incomplete_naive_datetime_target_warns_for_the_conditional_imputers(imputer) -> None:
+def test_incomplete_naive_datetime_target_warns_for_the_conditional_imputers(
+    imputer,
+) -> None:
     frame = _frames()["dt_na"]
     with pytest.warns(FutureWarning, match="UnsupportedDtypeError"):
         IMPUTERS[imputer](frame)
 
 
 def test_mice_bounds_on_a_boolean_column_warns_instead_of_raising() -> None:
-    frame = pd.DataFrame({"flag": [True, False, True, False], "x": [1.0, np.nan, 3.0, 4.0]})
+    frame = pd.DataFrame(
+        {"flag": [True, False, True, False], "x": [1.0, np.nan, 3.0, 4.0]}
+    )
     with pytest.warns(FutureWarning, match="bounds.*boolean"):
         result = impute_mice(frame, max_iter=2, bounds={"flag": (0.0, 1.0)})
     assert not result.isna().any().any()

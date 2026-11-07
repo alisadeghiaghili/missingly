@@ -1,119 +1,44 @@
 """Characterisation (golden) tests for float64 imputation outputs.
 
-The numbers in ``impute_float64_golden.json`` were recorded from the
-implementation before the internal dtype-normalisation layer was introduced.
-Float64 inputs must keep producing the same output, whatever happens to
-the nullable / extension dtype handling around them. The comparison allows a
-relative and absolute difference of ``1e-12``: chained-equation imputation
-accumulates floating-point rounding that differs in the last bits between
-platform maths libraries (the file was recorded on Windows, CI runs on Linux),
-while any behavioural change moves values by many orders of magnitude more.
+``impute_float64_golden.json`` holds, per software stack, the output of the
+imputers recorded **before** the dtype-normalisation layer existed (captured
+with ``capture_golden.py`` from ``origin/fix/pyproject-regression``).  Float64
+inputs must keep producing the same output whatever happens to the nullable /
+extension dtype handling around them.
 
-Regenerate the file only for an intentional, reviewed numeric change::
+The golden values are keyed per stack (numpy major.minor, pandas major,
+scikit-learn major.minor) because chained-equation, forest and boosting
+output legitimately depends on those library versions, and a string column is
+``object`` on pandas 2 but ``str`` on pandas 3 (string-like dtypes compare as
+``text``).  Within one stack the comparison allows ``1e-12`` relative and
+absolute difference, which only absorbs platform maths-library rounding.
 
-    python -m tests.golden.test_impute_float64_golden
+A stack without recorded values fails the test; it is never skipped.  Record
+it with the pre-change code::
+
+    python tests/golden/capture_golden.py out.json
+
+and merge ``out.json`` into the golden file.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Callable, Dict
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.impute import (
-    impute_gb,
-    impute_knn,
-    impute_mean,
-    impute_median,
-    impute_mice,
-    impute_mode,
-    impute_pmm,
-    impute_rf,
+from tests.golden.capture_golden import (
+    CASES,
+    build_frame,
+    dtype_label,
+    stack_key,
 )
 
 GOLDEN_PATH = Path(__file__).with_name("impute_float64_golden.json")
-_N_ROWS = 40
-_SEED = 20261106
-
-
-def build_frame() -> pd.DataFrame:
-    """Return the deterministic float64 + object frame used by every golden case."""
-    rng = np.random.default_rng(_SEED)
-    base = rng.normal(size=(_N_ROWS, 3))
-    frame = pd.DataFrame(
-        {
-            "a": base[:, 0] * 3.0 + 10.0,
-            "b": base[:, 0] + base[:, 1],
-            "c": base[:, 2] * 0.5,
-        }
-    )
-    frame["g"] = np.where(frame["a"] > 10.0, "hi", "lo").astype(object)
-    for column, step in (("a", 7), ("b", 5), ("c", 9), ("g", 6)):
-        frame.loc[frame.index[step - 1 :: step], column] = np.nan
-    return frame
-
-
-def _knn(frame: pd.DataFrame) -> pd.DataFrame:
-    return impute_knn(frame, n_neighbors=3)
-
-
-def _knn_mixed(frame: pd.DataFrame) -> pd.DataFrame:
-    return impute_knn(frame, n_neighbors=3, metric="mixed")
-
-
-def _mice(frame: pd.DataFrame) -> pd.DataFrame:
-    return impute_mice(frame, max_iter=3, random_state=1)
-
-
-def _mice_history(frame: pd.DataFrame) -> pd.DataFrame:
-    result, _ = impute_mice(frame, max_iter=3, random_state=1, return_history=True)
-    return result
-
-
-def _pmm(frame: pd.DataFrame) -> pd.DataFrame:
-    return impute_pmm(frame, max_iter=2, random_state=2)
-
-
-def _rf(frame: pd.DataFrame) -> pd.DataFrame:
-    return impute_rf(frame, random_state=3, n_estimators=8)
-
-
-def _gb(frame: pd.DataFrame) -> pd.DataFrame:
-    return impute_gb(frame, random_state=4, n_estimators=8)
-
-
-CASES: Dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
-    "mean": impute_mean,
-    "median": impute_median,
-    "mode": impute_mode,
-    "knn": _knn,
-    "knn_mixed": _knn_mixed,
-    "mice": _mice,
-    "mice_history": _mice_history,
-    "pmm": _pmm,
-    "rf": _rf,
-    "gb": _gb,
-}
-
-
-def _encode(frame: pd.DataFrame) -> dict:
-    payload: dict = {
-        "columns": list(frame.columns),
-        "dtypes": [str(d) for d in frame.dtypes],
-    }
-    values = {}
-    for column in frame.columns:
-        series = frame[column]
-        if pd.api.types.is_float_dtype(series):
-            values[column] = [float(v).hex() for v in series.to_numpy(dtype=float)]
-        else:
-            values[column] = series.tolist()
-    payload["values"] = values
-    return payload
+GOLDEN_TOLERANCE = 1e-12
 
 
 def _decode(payload: dict) -> pd.DataFrame:
@@ -127,39 +52,33 @@ def _decode(payload: dict) -> pd.DataFrame:
     return pd.DataFrame(data, columns=payload["columns"])
 
 
-GOLDEN_TOLERANCE = 1e-12
-
-
 @pytest.fixture(scope="module")
 def golden() -> dict:
-    return json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+    recorded = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+    key = stack_key()
+    if key not in recorded:
+        pytest.fail(
+            f"No golden values recorded for the stack {key!r} (recorded: "
+            f"{sorted(recorded)}). Generate them with the pre-change code: "
+            "python tests/golden/capture_golden.py out.json, then merge out.json "
+            "into impute_float64_golden.json."
+        )
+    return recorded[key]
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_float64_output_matches_recorded_golden(
-    name: str, golden: dict
-) -> None:
+def test_float64_output_matches_recorded_golden(name: str, golden: dict) -> None:
     result = CASES[name](build_frame())
-    expected = _decode(golden[name])
     pd.testing.assert_frame_equal(
         result.reset_index(drop=True),
-        expected,
+        _decode(golden[name]),
         check_exact=False,
         rtol=GOLDEN_TOLERANCE,
         atol=GOLDEN_TOLERANCE,
         check_dtype=False,
     )
-    assert [str(d) for d in result.dtypes] == golden[name]["dtypes"]
+    assert [dtype_label(d) for d in result.dtypes] == golden[name]["dtypes"]
 
 
 def test_golden_file_covers_every_case(golden: dict) -> None:
     assert sorted(golden) == sorted(CASES)
-
-
-def _regenerate() -> None:
-    payload = {name: _encode(func(build_frame())) for name, func in CASES.items()}
-    GOLDEN_PATH.write_text(json.dumps(payload, indent=1), encoding="utf-8")
-
-
-if __name__ == "__main__":
-    _regenerate()
