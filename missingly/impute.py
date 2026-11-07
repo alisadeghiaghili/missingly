@@ -87,7 +87,6 @@ from missingly._dtypes import (
     classify_frame,
     column_mode,
     ensure_supported,
-    resolve_opaque_targets,
     fill_missing,
     fill_with_statistic,
     is_numeric_kind,

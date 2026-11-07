@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from missingly.exceptions import UnsupportedDtypeError
 from missingly.impute import (
     _assign_labels,
     _fill_categorical_gaps,
