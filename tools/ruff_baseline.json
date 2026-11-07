@@ -28,6 +28,7 @@
     "missingly/visualise.py",
     "tests/fixtures/mice_numeric_fcs/generate_missingly_reference.py",
     "tests/fixtures/mice_numeric_fcs/validate_mice_reference.py",
+    "tests/golden/legacy_transformer.py",
     "tests/test_accessor.py",
     "tests/test_benchmark.py",
     "tests/test_compare.py",
@@ -184,7 +185,7 @@
       "PLR0915": 2,
       "PLR2004": 6,
       "TRY003": 25,
-      "UP006": 49,
+      "UP006": 50,
       "UP007": 2,
       "UP035": 3,
       "UP037": 1,
@@ -295,20 +296,18 @@
     "missingly/transformer.py": {
       "ARG002": 2,
       "B007": 1,
-      "E501": 7,
-      "N803": 11,
-      "N806": 18,
-      "PD003": 2,
-      "PD011": 7,
+      "E501": 5,
+      "N803": 20,
+      "N806": 16,
+      "PD003": 1,
+      "PD011": 5,
       "PLC0415": 2,
-      "PLR0912": 1,
       "PLR2004": 1,
-      "SIM114": 1,
       "TRY003": 12,
-      "UP006": 8,
-      "UP035": 2,
+      "UP006": 13,
+      "UP035": 4,
       "UP037": 2,
-      "UP045": 5
+      "UP045": 6
     },
     "missingly/visualisation/__init__.py": {
       "RUF002": 2,
@@ -392,10 +391,31 @@
       "UP006": 3,
       "UP035": 1
     },
+    "tests/golden/legacy_transformer.py": {
+      "ARG002": 2,
+      "B007": 1,
+      "E501": 7,
+      "N803": 11,
+      "N806": 18,
+      "PD003": 2,
+      "PD011": 7,
+      "PLC0415": 2,
+      "PLR0912": 1,
+      "SIM114": 1,
+      "TRY003": 12,
+      "UP006": 8,
+      "UP035": 2,
+      "UP037": 2,
+      "UP045": 5
+    },
     "tests/golden/test_column_order_v1.py": {
       "RUF005": 1,
       "UP006": 8,
       "UP035": 3
+    },
+    "tests/golden/test_transformer_legacy_parity.py": {
+      "UP006": 1,
+      "UP035": 1
     },
     "tests/test_accessor.py": {
       "ARG002": 1,
@@ -658,6 +678,11 @@
     "tests/test_transformer.py": {
       "E501": 9,
       "PD003": 2
+    },
+    "tests/test_transformer_dtype_matrix.py": {
+      "PT018": 2,
+      "SIM300": 1,
+      "UP045": 1
     },
     "tests/test_visualisation_boundary_contracts.py": {
       "ARG001": 2,
