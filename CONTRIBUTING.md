@@ -31,6 +31,24 @@ Please make sure to run the tests before submitting a pull request.
 pytest
 ```
 
+## Lint ratchet
+
+Ruff lint and format checks run as a ratchet rather than a hard zero. The
+rule set in `pyproject.toml` (`[tool.ruff.lint]`) mirrors the families SonarQube
+reports. Existing debt is recorded per file and rule in
+`tools/ruff_baseline.json`.
+
+```bash
+python tools/ruff_ratchet.py            # check against the baseline
+python tools/ruff_ratchet.py --update   # rewrite the baseline after fixing debt
+```
+
+The check fails when a violation count rises, a new file/rule pair appears, or
+a formatted file becomes unformatted. Fixing debt passes and prints a hint to
+run `--update`; commit the refreshed baseline in the same pull request. Do not
+raise the baseline to hide a new violation. Tests for the gate live in
+`tests/test_ruff_ratchet.py`.
+
 ## Project rules
 
 ### Supported runtime
