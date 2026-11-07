@@ -481,7 +481,10 @@ class TestMultipleImputation:
         )
 
         assert isinstance(result, ImputationResult)
-        assert result.data.plan.seed_sequence == (17, 18)
+        assert result.data.plan.seed_sequence == tuple(
+            int(child.generate_state(1, dtype=np.uint64)[0])
+            for child in np.random.SeedSequence(17).spawn(2)
+        )
         assert result.data.n_imputations == 2
         assert set(result.data.plan.methods) == {"age", "score", "category"}
         assert len(result.histories) == 2

@@ -80,6 +80,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (the bound is ignored; it will become an error).
   - column order of the encoding-based imputers is unchanged (numeric columns
     first); `impute_knn(metric="mixed")` keeps the input order.
+- `MissinglyImputer` now classifies column dtypes with the same layer as the
+  functional imputers (WP-04, F-039, F-041, F-043). Nullable `Int64` /
+  `Float64` / `boolean` / `string`, `float32`, `int64`, `bool`, datetime,
+  timedelta and mixed-type `object` columns no longer crash `fit` or
+  `transform` for any strategy, and the imputed columns come back in their
+  original dtype:
+  - numeric columns are modelled as `float64`; columns without missing values
+    are returned exactly as given (an `int64` column stays `int64`, where it
+    used to become `float64`); integer targets of `knn`, `mice`, `pmm`, `rf`
+    and `gb` are rounded to the nearest integer so `Int64` stays `Int64`
+    (`rf` / `gb` no longer fail on an `Int64` target); `mean` and `median`
+    keep a nullable integer dtype when the fill is integral and return
+    `Float64` otherwise;
+  - `boolean` and `bool` targets are imputed as categories and come back as
+    `boolean` / `bool` (the tree strategies returned floats such as `1.0` among
+    the booleans in an `object` column);
+  - `mean`, `median`, `mode`, `pmm` and `hotdeck` fill datetime, timedelta and
+    mixed-type `object` columns with observed values;
+  - `knn`, `mice`, `rf` and `gb` pass a complete datetime, timedelta or
+    mixed-type `object` column through unchanged and no longer use it as a
+    predictor; an incomplete datetime column that the previous release imputed
+    as a nominal category now emits a `FutureWarning` and keeps working (also
+    when the datetime column was complete at `fit` time and only has gaps at
+    `transform` time: they are filled with the training mode), every other
+    incomplete case raises `UnsupportedDtypeError`;
+  - `mean`, `median` and `mode` raise `InsufficientDataError` for a column
+    without observed values instead of failing on a shape mismatch.
+  Output for `float64` and plain categorical inputs is unchanged (locked by
+  `tests/golden/test_transformer_legacy_parity.py`).
 - Unified `random_state` handling for stochastic imputers and argument
   validation (WP-05, F-033, F-111, F-203, F-231, F-244):
   - every stochastic function (`impute_hotdeck_random`,
@@ -283,6 +312,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MICE results for a given `random_state` differ from earlier releases because
+  chain seeds are now derived with `SeedSequence.spawn` (WP-05, F-246).
+  `impute_mice` used to give chain *k* the seed `base_seed + k`, so chain 1 of
+  `random_state=s` repeated chain 0 of `random_state=s + 1`; chains now come
+  from `numpy.random.SeedSequence(base_seed).spawn(n_imputations)` and never
+  share a stream, within a call or across consecutive seeds. Results stay
+  deterministic for a given seed, a single chain equals the first chain of a
+  multi-chain call, and `result.data.plan.seed_sequence` holds the derived
+  seeds. The golden `mice` and `mice_history` entries were re-recorded; the
+  default seed (`random_state=0`) is unchanged.
 - Hardened the release workflow: publishing now depends on a job that runs the
   test suite, builds the distributions once and fails unless the pushed tag,
   ``missingly.__version__`` and the built wheel version are identical. PyPI
