@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Importing missingly no longer switches the global matplotlib backend to Agg (WP-06, F-035).
 - Restored the packaging metadata lost when the license field was updated:
   the ``docs``, ``test``, ``quality``, ``polars`` and ``upset`` extras that the
   CI and documentation workflows install, the dynamic version source, the
