@@ -33,6 +33,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hot-deck imputation correctness (WP-18, F-013, F-085, F-086, F-087, F-340,
+  F-341, F-342; the dtype findings F-012, F-232 and F-233 were already fixed
+  by WP-04):
+  - `impute_hotdeck_weighted` orders equally near donors at random before
+    taking the `n_donors` nearest, so every tied donor is used (F-013). With
+    no matching column, or an `n_donors=1` tie, the donor is now uniform
+    over the tied donors instead of a fixed position;
+  - the donor weight is now documented and bounded: `1 / (1 + distance)`,
+    normalised over the pool. Before, `1 / (distance + 1e-10)` gave an
+    exact-match donor about 10**10 times the weight of any other donor, so
+    `n_donors` hardly mattered (F-087). Seeded output of
+    `impute_hotdeck_weighted` with `n_donors > 1` can differ from earlier
+    releases; with `n_donors=1` and a unique nearest donor it is unchanged;
+  - datetime and timedelta matching columns are compared by their distance
+    in time (range-scaled, time-zone aware values in UTC) instead of exact
+    equality (F-342);
+  - the Gower distances are computed with NumPy in chunks instead of a
+    Python loop per recipient and donor, which makes the function about an
+    order of magnitude faster; it also warns (`UserWarning`) when the
+    number of recipient-donor pairs exceeds 25 million, not only above
+    `config.large_df_threshold` rows (F-085);
+  - new `by=` argument on `impute_hotdeck_random`, `impute_hotdeck_sequential`
+    and `impute_hotdeck_weighted` defines imputation classes: donors and
+    carried values never cross classes, for example panel subjects (F-086,
+    F-340). Rows with a missing class key form their own class, the `by`
+    columns are not imputed, and a class with a missing value but no donor
+    raises `ValueError` for the random and weighted variants;
+  - `impute_hotdeck_sequential` gains `direction="closest"` (the observed
+    value nearest in row position, ties to the previous row) and
+    `direction="forward_then_backward"` (the former `"nearest"` rule) (F-341).
+    `direction="nearest"` keeps its result and emits a `FutureWarning` when
+    it differs from `"closest"`;
+  - docstrings state the donor-selection rule and no longer claim equivalence
+    with `VIM::hotdeck()` or SAS fractional imputation.
 - Added one internal dtype normalisation layer (`missingly._dtypes`) and routed
   the imputers in `missingly.impute` through it (WP-04). Nullable `Int64` /
   `Float64`, `float32`, `int64`, `bool`, `boolean`, `string`, `category`,
