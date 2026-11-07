@@ -88,7 +88,6 @@ manual_tests/*.csv
 manual_tests/*.npy
 
 # Local working files
-.mimocode/
 mice.md
 missing_ecosystem_table.png
 missingly_context_handoff.md
