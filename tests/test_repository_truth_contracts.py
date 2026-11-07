@@ -121,20 +121,14 @@ def test_readme_does_not_advertise_mixed_knn_as_an_inductive_pipeline_mode() -> 
 
 def test_legacy_requirements_share_the_packaging_dependency_floors() -> None:
     """Keep direct requirements installs consistent with project metadata."""
-    requirements = _read("requirements.txt")
+    from tests.test_packaging_contract import _floors, _pyproject, _requirements_lines
 
-    for requirement in (
-        "pandas>=2.0.0",
-        "numpy>=1.24.0",
-        "matplotlib>=3.7.0",
-        "seaborn>=0.12.0",
-        "scipy>=1.10.0",
-        "scikit-learn>=1.2.0",
-        "statsmodels>=0.14.0",
-        "jinja2>=3.1.0",
-    ):
-        assert requirement in requirements
-    assert 'pip install "missingly[upset]"' in requirements
+    requirements = _requirements_lines()
+    declared = _floors(_pyproject()["project"]["dependencies"])
+
+    assert declared
+    assert _floors(requirements) == declared
+    assert all("missingly[" not in line for line in requirements)
 
 
 def test_translated_readmes_match_time_series_and_mixed_knn_contracts() -> None:
