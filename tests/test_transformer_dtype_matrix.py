@@ -152,12 +152,18 @@ def test_serving_rows_with_missing_after_complete_training(
     train = make_frame(dtype, with_missing=False)
     serve = make_frame(dtype, with_missing=True)
     imputer = make_imputer(strategy).fit(train)
-    if strategy in MODEL_STRATEGIES and dtype in OPAQUE_DTYPES:
+    opaque_model = strategy in MODEL_STRATEGIES and dtype in OPAQUE_DTYPES
+    if opaque_model and dtype not in DATETIME_DTYPES:
         with pytest.raises(UnsupportedDtypeError) as caught:
             imputer.transform(serve)
         assert caught.value.column == "s"
         return
-    result = imputer.transform(serve)
+    if opaque_model:
+        # The previous release imputed it as a nominal category: warn, keep working.
+        with pytest.warns(FutureWarning, match="deprecated"):
+            result = imputer.transform(serve)
+    else:
+        result = imputer.transform(serve)
     assert_contract(result, serve, strategy, dtype)
 
 
