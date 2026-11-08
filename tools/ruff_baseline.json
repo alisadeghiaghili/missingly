@@ -8,7 +8,6 @@
     "missingly/compare.py",
     "missingly/diagnostics.py",
     "missingly/exceptions.py",
-    "missingly/hotdeck.py",
     "missingly/impute.py",
     "missingly/mi.py",
     "missingly/mi_contracts.py",
@@ -166,9 +165,6 @@
       "UP045": 1
     },
     "missingly/hotdeck.py": {
-      "N803": 1,
-      "RUF001": 1,
-      "RUF002": 2,
       "TRY003": 3
     },
     "missingly/impute.py": {

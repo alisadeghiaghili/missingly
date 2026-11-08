@@ -38,7 +38,7 @@ in survey research, epidemiology, and official statistics:
     selection reviewed by Andridge & Little (2010); it is not a port of
     VIM's ``hotdeck()`` or of SAS fractional imputation.
     The distance matrix is built with NumPy in chunks, so the cost is
-    O(n_missing × n_donors × n_features) per column; a ``UserWarning`` is
+    O(n_missing x n_donors x n_features) per column; a ``UserWarning`` is
     emitted when the DataFrame exceeds ``config.large_df_threshold`` rows
     or when the number of recipient-donor pairs becomes very large.
 
@@ -56,8 +56,10 @@ Van Buuren, S. (2018). *Flexible Imputation of Missing Data* (2nd ed.),
 from __future__ import annotations
 
 import warnings
+from functools import partial
 from dataclasses import dataclass
-from typing import Any, Callable, List, Literal, Sequence, Union
+from collections.abc import Sequence
+from typing import Any, Callable, Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -96,7 +98,7 @@ ByType = Union[str, Sequence[str], None]
 # ---------------------------------------------------------------------------
 
 
-def _normalize_by(df: pd.DataFrame, by: ByType) -> List[Any]:
+def _normalize_by(df: pd.DataFrame, by: ByType) -> list[Any]:
     """Validate the ``by`` argument and return it as a list of column labels.
 
     Parameters
@@ -121,7 +123,7 @@ def _normalize_by(df: pd.DataFrame, by: ByType) -> List[Any]:
     if by is None:
         return []
     if isinstance(by, str):
-        labels: List[Any] = [by]
+        labels: list[Any] = [by]
     elif isinstance(by, (list, tuple)):
         labels = list(by)
     else:
@@ -134,7 +136,7 @@ def _normalize_by(df: pd.DataFrame, by: ByType) -> List[Any]:
     return labels
 
 
-def _class_rows(df: pd.DataFrame, by: List[Any]) -> List[np.ndarray]:
+def _class_rows(df: pd.DataFrame, by: list[Any]) -> list[np.ndarray]:
     """Return the positional row indices of every imputation class.
 
     Rows whose class key is missing form a class of their own.  Rows keep
@@ -161,7 +163,7 @@ def _class_rows(df: pd.DataFrame, by: List[Any]) -> List[np.ndarray]:
 
 
 def _no_donor_error(
-    df: pd.DataFrame, col: Any, by: List[Any], rows: np.ndarray
+    df: pd.DataFrame, col: Any, by: list[Any], rows: np.ndarray
 ) -> ValueError:
     """Build the error raised when a class has no observed donor.
 
@@ -191,8 +193,8 @@ def _no_donor_error(
 def _draw_sources(
     df: pd.DataFrame,
     col: Any,
-    by: List[Any],
-    classes: List[np.ndarray],
+    by: list[Any],
+    classes: list[np.ndarray],
     draw: Callable[[np.ndarray, np.ndarray], np.ndarray],
 ) -> np.ndarray:
     """Choose a donor row for every missing cell of one column.
@@ -245,7 +247,7 @@ class _GowerFeature:
 
     Attributes
     ----------
-    values : np.ndarray
+    data : np.ndarray
         Floats for numeric features (datetime-like values as nanoseconds),
         integer category codes otherwise.
     observed : np.ndarray of bool
@@ -256,7 +258,7 @@ class _GowerFeature:
         Observed range of a numeric feature; 0.0 contributes nothing.
     """
 
-    values: np.ndarray
+    data: np.ndarray
     observed: np.ndarray
     numeric: bool
     scale: float
@@ -351,8 +353,8 @@ def _matching_features(
     features: Sequence[_GowerFeature],
     columns: pd.Index,
     target_idx: int,
-    by: List[Any],
-) -> List[_GowerFeature]:
+    by: list[Any],
+) -> list[_GowerFeature]:
     """Select the matching variables of one target column.
 
     Parameters
@@ -412,8 +414,8 @@ def _gower_distance_block(
         denominator += usable
         if feature.numeric and feature.scale <= 0.0:
             continue
-        left = feature.values[recipients][:, None]
-        right = feature.values[donors][None, :]
+        left = feature.data[recipients][:, None]
+        right = feature.data[donors][None, :]
         if feature.numeric:
             gap = np.abs(left - right) / feature.scale
         else:
@@ -517,7 +519,7 @@ def _warn_if_large(n_rows: int, n_pairs: int) -> None:
     if n_rows > _config.large_df_threshold:
         warnings.warn(
             f"impute_hotdeck_weighted: DataFrame has {n_rows:,} rows. "
-            "Weighted hot-deck costs O(n_missing × n_donors) per column and may "
+            "Weighted hot-deck costs O(n_missing x n_donors) per column and may "
             "be slow. Consider impute_hotdeck_random() for large datasets.",
             UserWarning,
             stacklevel=3,
@@ -532,7 +534,7 @@ def _warn_if_large(n_rows: int, n_pairs: int) -> None:
         )
 
 
-def _pair_count(df: pd.DataFrame, classes: List[np.ndarray]) -> int:
+def _pair_count(df: pd.DataFrame, classes: list[np.ndarray]) -> int:
     """Return the largest number of recipient-donor pairs of any column.
 
     Parameters
@@ -545,7 +547,7 @@ def _pair_count(df: pd.DataFrame, classes: List[np.ndarray]) -> int:
     Returns
     -------
     int
-        Maximum over columns of the summed ``n_missing × n_donors`` per class.
+        Maximum over columns of the summed ``n_missing x n_donors`` per class.
     """
     observed = df.notna().to_numpy()
     worst = 0
@@ -602,7 +604,7 @@ def _sequential_sources(observed: np.ndarray, direction: str) -> np.ndarray:
 
 def _sequence_donors(
     observed: np.ndarray,
-    classes: List[np.ndarray],
+    classes: list[np.ndarray],
     direction: str,
 ) -> np.ndarray:
     """Return donor positions of one column, computed inside each class.
@@ -698,7 +700,9 @@ def impute_hotdeck_random(
     1  35.0
     2  35.0
     3  35.0
-    >>> panel = pd.DataFrame({"g": ["a", "a", "b", "b"], "v": [1.0, np.nan, 9.0, np.nan]})
+    >>> panel = pd.DataFrame(
+    ...     {"g": ["a", "a", "b", "b"], "v": [1.0, np.nan, 9.0, np.nan]}
+    ... )
     >>> impute_hotdeck_random(panel, random_state=0, by="g")
        g    v
     0  a  1.0
@@ -776,8 +780,10 @@ def impute_hotdeck_sequential(
     ----------
     df : pd.DataFrame
         Input DataFrame, in the order in which values are carried.
-    direction : {"forward", "backward", "nearest", "forward_then_backward", "closest"}, default ``"nearest"``
-        Direction in which to search for a donor:
+    direction : str, default ``"nearest"``
+        One of ``"forward"``, ``"backward"``, ``"nearest"``,
+        ``"forward_then_backward"`` or ``"closest"``; the direction in which
+        to search for a donor:
 
         * ``"forward"``  — use the last seen observed value (LOCF).
           Leaves leading NaN unfilled.
@@ -1012,7 +1018,7 @@ def impute_hotdeck_weighted(
     without ordinal encoding.  Donor values are copied exactly, so ``Int64``
     integers keep full precision and every column keeps its dtype.
     Distances are computed with NumPy in chunks; the cost is
-    O(n_missing × n_donors × n_features) per column.  A ``UserWarning`` is
+    O(n_missing x n_donors x n_features) per column.  A ``UserWarning`` is
     emitted for frames with more than ``config.large_df_threshold`` rows or
     with a very large number of recipient-donor pairs.
 
@@ -1044,9 +1050,7 @@ def impute_hotdeck_weighted(
             continue
         matchers = _matching_features(features, df.columns, col_idx, by_cols)
 
-        def draw(recipients: np.ndarray, donors: np.ndarray) -> np.ndarray:
-            return _weighted_donor_rows(matchers, recipients, donors, n_donors, rng)
-
+        draw = partial(_weighted_donor_rows, matchers, n_donors=n_donors, rng=rng)
         source = _draw_sources(df, col, by_cols, classes, draw)
         # Copy the donors' own values so the column keeps its dtype exactly.
         result.iloc[np.flatnonzero(missing), col_idx] = (

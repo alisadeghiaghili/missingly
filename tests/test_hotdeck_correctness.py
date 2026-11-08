@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import time
 import warnings
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
 import pytest
 
-import missingly.hotdeck as hotdeck
+from missingly import hotdeck
 from missingly.hotdeck import (
     impute_hotdeck_random,
     impute_hotdeck_sequential,
@@ -112,7 +113,7 @@ class TestCharacterisation:
 
 
 class TestWeightedTies:
-    LEVELS = [float(v) for v in range(10)]
+    LEVELS: ClassVar[list[float]] = [float(v) for v in range(10)]
 
     def _tied_frame(self, n_recipients: int = 1000) -> pd.DataFrame:
         return pd.DataFrame(
@@ -146,8 +147,8 @@ class TestWeightedTies:
 
 
 class TestWeightedProbabilities:
-    DONOR_X = [0.0, 0.1, 0.5, 1.0]
-    LEVELS = [0.0, 1.0, 2.0, 3.0]
+    DONOR_X: ClassVar[list[float]] = [0.0, 0.1, 0.5, 1.0]
+    LEVELS: ClassVar[list[float]] = [0.0, 1.0, 2.0, 3.0]
 
     def _frame(self, n_recipients: int = 4000) -> pd.DataFrame:
         return pd.DataFrame(
